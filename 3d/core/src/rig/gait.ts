@@ -1,6 +1,8 @@
 import type { Vec3 } from '../types.js';
 import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
+import { mobilityFor, type Mobility } from './mobility.js';
+import { pronePose, blendGroundPose } from './prone.js';
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
@@ -10,12 +12,33 @@ export interface RigPose { readonly id:string; readonly a:Vec3; readonly b:Vec3;
 export class PatientGait {
   private walkTime=0; private moveAmount=0; private next=0;
   private supportShift=0; private supportDrop=0;
+  private proneAmount=0;private crawlPhase=0;private crawlEffort=0;private crawlDirection=1;
+  private mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id));
+  private active:readonly string[]=LAB_SEGMENTS.map(s=>s.id);
+  private ground:(x:number,z:number)=>number=()=>0;
+  get posture(): 'upright'|'falling'|'prone' {return this.proneAmount===0?'upright':this.proneAmount===1?'prone':'falling';}
+  /** Pulse root translation in the same cycle as the visible crawl strokes. */
+  driveScale(mobility:Mobility):number{
+    if(!mobility.prone)return 1;
+    if(this.proneAmount<1||mobility.mode==='unsupported')return 0;
+    const stroke=Math.cos(this.crawlPhase),both=mobility.arms[0]>0&&mobility.arms[1]>0;
+    return both?.2+1.2*Math.abs(stroke):.08+2.1*Math.max(0,stroke);
+  }
   private feet:[Foot,Foot];
   constructor(root:Vec3,yaw=0){
     const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,.055,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false};};
     this.feet=[foot(-1),foot(1)];
   }
-  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],support:readonly [boolean,boolean]=[true,true]):void{
+  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id)):void{
+    this.mobility=mobility;this.active=active;this.ground=ground;
+    const support=mobility.support;
+    this.proneAmount=clamp(this.proneAmount+(mobility.prone?1:-1)*dt/.65);
+    if(mobility.prone){
+      const desired=mobility.speedScale>0?clamp(Math.abs(speed)/(.9*mobility.speedScale)):0;
+      this.crawlEffort+=(desired-this.crawlEffort)*(1-Math.exp(-7*dt));
+      if(Math.abs(speed)>.005)this.crawlDirection=Math.sign(speed);
+      if(this.proneAmount>=1)this.crawlPhase+=dt*5*this.crawlEffort;
+    }
     const sprint=Math.abs(speed)>1.4;
     const single=support[0]!==support[1];
     const blend=1-Math.exp(-5*dt);
@@ -71,6 +94,8 @@ export class PatientGait {
       const elbow=add(shoulder,[side*.055,-.31,.08+swing*.12]),hand=add(shoulder,[side*.06,-.59,-.06+swing*.22]);
       put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,hand);put(key+'hand',hand);
     }
-    return LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
+    const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
+    if(this.proneAmount===0)return standing;
+    return blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
   }
 }

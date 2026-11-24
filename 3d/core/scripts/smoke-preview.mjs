@@ -34,6 +34,12 @@ try{
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===0);
  await page.locator('#pause').click();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)>2);
+ await page.locator('#scenario').selectOption('arms');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.posture==='prone',{},{timeout:30000});
+ const z=Number(await page.locator('#stats').getAttribute('data-z'));
+ await page.keyboard.down('KeyW');
+ try{await page.waitForFunction(start=>Number(document.getElementById('stats')?.dataset.z)<start-.06,z,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
+ assert.equal(await page.locator('#stats').getAttribute('data-mode'),'arm-crawl');
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Browser smoke passed: offline modules, WebGL first frame, fixed ticks, pause and reset.');
 }finally{await browser?.close();await new Promise(ok=>server.close(ok));}

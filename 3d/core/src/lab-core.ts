@@ -106,11 +106,12 @@ export class LabSimulationCore implements SimulationCore {
       }
       target*=mobility.speedScale;
       a.speed = mobility.mode==='unsupported'?0:damp(a.speed,target,3);
-      a.x = clamp(a.x+Math.sin(a.yaw)*a.speed*dt,-5.65,5.65);
-      a.z = clamp(a.z-Math.cos(a.yaw)*a.speed*dt,-5.65,5.65);
+      const drive=a.gait.driveScale(mobility);
+      a.x = clamp(a.x+Math.sin(a.yaw)*a.speed*drive*dt,-5.65,5.65);
+      a.z = clamp(a.z-Math.cos(a.yaw)*a.speed*drive*dt,-5.65,5.65);
       const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
-      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground,mobility.support);
+      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground,mobility,a.segments);
     }
     this.tick++;
     const hits:SegmentContact[] = [];
@@ -138,6 +139,7 @@ export class LabSimulationCore implements SimulationCore {
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
+      postures:this.actors.map(a=>a.gait.posture),
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
