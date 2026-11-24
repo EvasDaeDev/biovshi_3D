@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
 test('detached segment falls, rests on floor, and reset removes bodies',async()=>{
  await RAPIER.init();const world=new DebrisWorld(RAPIER);
