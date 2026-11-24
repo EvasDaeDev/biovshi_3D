@@ -1,3 +1,4 @@
+import { analyzeSupport } from './rig/support.js';
 import { MOVEMENT } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
 import { expandLegacyTorso } from './rig/anatomy.js';
@@ -65,6 +66,7 @@ export class LabSimulationCore implements SimulationCore {
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
     this.collisionStats = {tests:0,contacts:0,wallContacts:0};
     this.ready = true;
+    for(const a of this.actors)a.gait.advance([a.x,a.y,a.z],a.yaw,0,0,()=>a.baseY,mobilityFor(a.segments),a.segments);
   }
 
   private random(): number {
@@ -137,12 +139,14 @@ export class LabSimulationCore implements SimulationCore {
       fighterIds[i]=a.id;
       roots.set([a.x,a.y,a.z,a.yaw],i*4);
     });
+    const rigSegments=this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)));
+    const supports=rigSegments.map((parts,i)=>analyzeSupport(parts,(x,z)=>this.actors[i]!.baseY+terrainHeight(x,z,this.mounds)));
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
       hopHeights:this.actors.map(a=>a.gait.hopHeight),hopPhases:this.actors.map(a=>a.gait.hopPhase),
-      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
+      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
   dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0; this.rng=0;this.events=[];this.episodes.reset(); }

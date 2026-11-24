@@ -6,6 +6,8 @@ import { pronePose, blendGroundPose } from './prone.js';
 import { MOVEMENT,stepLead } from './movement-timing.js';
 import { HopCycle, type HopSample } from './hop-cycle.js';
 import { constrainRig } from './rig-constraints.js';
+import { balanceStandingPose } from './balance.js';
+const FOOT_RADIUS=LAB_SEGMENTS.find(p=>p.id==='L.foot')!.radius;
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
@@ -37,7 +39,7 @@ export class PatientGait {
   }
   private feet:[Foot,Foot];
   constructor(root:Vec3,yaw=0){
-    const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,.055,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false};};
+    const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,FOOT_RADIUS,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false};};
     this.feet=[foot(-1),foot(1)];
   }
   advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id)):void{
@@ -69,13 +71,13 @@ export class PatientGait {
     for(let i=0;i<2;i++){
       const f=this.feet[i]!;
       if(!support[i]){f.moving=false;continue;}
-      if(!f.moving){f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+.055,f.plant[2]];continue;}
+      if(!f.moving){f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+FOOT_RADIUS,f.plant[2]];continue;}
       f.phase=Math.min(1,f.phase+dt/MOVEMENT.stepSwingSeconds);
       const t=f.phase*f.phase*(3-2*f.phase),p=mix(f.start,f.target,t);
-      f.plant=[p[0],Math.max(ground(p[0],p[2])+.055,p[1]+Math.sin(Math.PI*f.phase)*(sprint?.19:.13)),p[2]];
-      if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+.055,f.target[2]];}
+      f.plant=[p[0],Math.max(ground(p[0],p[2])+FOOT_RADIUS,p[1]+Math.sin(Math.PI*f.phase)*(sprint?.19:.13)),p[2]];
+      if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
     }
-    const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+.055,z];};
+    const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+FOOT_RADIUS,z];};
     if((support[0]||support[1])&&Math.abs(speed)>.03&&!this.feet.some(f=>f.moving)){
       const index=single?(support[0]?0:1):this.next;
       const f=this.feet[index]!;const target=ideal(index===0?-1:1,stepLead(speed));
@@ -115,7 +117,12 @@ export class PatientGait {
       put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,hand);put(key+'hand',hand);
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
-    if(this.proneAmount===0){const fixed=constrainRig(standing),lift=this.hopSample.lift;return lift===0?fixed:fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));}
+    if(this.proneAmount===0){
+      const fixed=constrainRig(standing),lift=this.hopSample.lift;
+      if(lift>0)return fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));
+      const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
+      return balanceStandingPose(fixed,this.active,stance,this.ground);
+    }
     return blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
   }
 }

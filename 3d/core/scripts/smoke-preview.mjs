@@ -28,6 +28,9 @@ try{
   await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&Number(document.getElementById('stats')?.dataset.tick)>2,{},{timeout:45000});
  }catch(e){throw new Error('Lab startup failed: '+await page.locator('#stats').innerText()+'; browser errors: '+errors.join('; '),{cause:e});}
  assert.equal(await page.locator('canvas').count(),1);
+ await page.locator('#support-debug').check();
+ await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.supportCount)>0);
+ await page.locator('#support-debug').uncheck();
  await page.locator('#pause').click();
  await page.waitForFunction(()=>document.getElementById('stats')?.textContent.includes('PAUSED'));
  await page.locator('#reset').click();

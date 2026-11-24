@@ -15,13 +15,24 @@ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerW
 scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);scene.add(lamp);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,new THREE.GridHelper(14,28,0x5d7265,0x34483c));
 const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),cylinder=new THREE.CylinderGeometry(1,1,1,12),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
+const supportDebug=document.getElementById('support-debug'),supportGroup=new THREE.Group();scene.add(supportGroup);supportGroup.visible=false;
+const contactMaterial=new THREE.MeshBasicMaterial({color:0x72df9c}),massMaterial=new THREE.MeshBasicMaterial({color:0xffca62});
+const contactMarkers=[],massMarker=new THREE.Mesh(sphere,massMaterial);massMarker.scale.setScalar(.055);supportGroup.add(massMarker);
+const hullGeometry=new THREE.BufferGeometry(),hullPositions=new Float32Array(256*3);hullGeometry.setAttribute('position',new THREE.BufferAttribute(hullPositions,3));
+const hullMaterial=new THREE.LineBasicMaterial({color:0x72df9c}),hullLine=new THREE.LineLoop(hullGeometry,hullMaterial);hullLine.frustumCulled=false;supportGroup.add(hullLine);
+function drawSupport(state){supportGroup.visible=supportDebug.checked;if(!supportGroup.visible)return;
+ massMarker.visible=!!state.centerOfMass;if(state.centerOfMass)massMarker.position.set(...state.centerOfMass);
+ for(let i=0;i<state.contacts.length;i++){let m=contactMarkers[i];if(!m){m=new THREE.Mesh(sphere,contactMaterial);m.scale.set(.035,.018,.035);supportGroup.add(m);contactMarkers.push(m);}m.visible=true;const p=state.contacts[i].point;m.position.set(p[0],p[1]+.022,p[2]);}
+ for(let i=state.contacts.length;i<contactMarkers.length;i++)contactMarkers[i].visible=false;
+ const n=Math.min(256,state.hull.length);for(let i=0;i<n;i++){hullPositions[i*3]=state.hull[i][0];hullPositions[i*3+1]=.025;hullPositions[i*3+2]=state.hull[i][1];}hullGeometry.attributes.position.needsUpdate=true;hullGeometry.setDrawRange(0,n);hullLine.visible=n>1;hullMaterial.color.setHex(state.margin!==null&&state.margin<0?0xee8e65:0x72df9c);
+}
 const moundMeshes=new Map(),cone=new THREE.ConeGeometry(1,1,14),moundMaterial=new THREE.MeshStandardMaterial({color:0x4d574c,roughness:1,flatShading:true});
 let paused=false,last=null,frameRequest=0,checkSnapshot=true;
 const stats=document.getElementById('stats');
 function scheduleFrame(){if(!frameRequest)frameRequest=requestAnimationFrame(frame);}
 function assertSnapshot(s){
  const n=s.fighterIds?.length;
- if(!n||s.roots?.length!==n*4||s.rigVersion!==2||s.rigSegments?.length!==n||s.mobilityModes?.length!==n||s.postures?.length!==n||s.hopHeights?.length!==n||s.hopPhases?.length!==n||!s.damageStats||!s.collisionStats)throw new Error('Несогласованные файлы симуляции и рендера. Обновите страницу; сборка '+stats.dataset.build);
+ if(!n||s.roots?.length!==n*4||s.rigVersion!==2||s.rigSegments?.length!==n||s.mobilityModes?.length!==n||s.postures?.length!==n||s.hopHeights?.length!==n||s.hopPhases?.length!==n||s.supports?.length!==n||!s.damageStats||!s.collisionStats)throw new Error('Несогласованные файлы симуляции и рендера. Обновите страницу; сборка '+stats.dataset.build);
 }
 const scenario=document.getElementById('scenario');
 const requestedScenario=new URLSearchParams(location.search).get('scenario');
@@ -49,5 +60,6 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
   if(moundMeshes.has(d.id))continue;
   const m=new THREE.Mesh(cone,moundMaterial);m.position.set(d.x,d.height/2,d.z);m.scale.set(d.radius,d.height,d.radius);scene.add(m);moundMeshes.set(d.id,m);
  }
- document.getElementById('stats').textContent=`Build ${stats.dataset.build} | Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | detached ${s.damageStats.detached} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]} / ${s.postures[0]} | hop ${s.hopPhases[0]}`;renderer.render(scene,camera);document.getElementById('stats').dataset.tick=String(s.tick);document.getElementById('stats').dataset.posture=s.postures[0];document.getElementById('stats').dataset.mode=s.mobilityModes[0];document.getElementById('stats').dataset.z=String(s.roots[2]);stats.dataset.hop=String(s.hopHeights[0]);if(document.getElementById('stats').dataset.state!=='running')window.labStartup.ready();scheduleFrame();}catch(e){window.labStartup.fail(e);}}
+ const support=s.supports[0];drawSupport(support);stats.dataset.supportCount=String(support.contacts.length);
+ document.getElementById('stats').textContent=`Build ${stats.dataset.build} | Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | detached ${s.damageStats.detached} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]} / ${s.postures[0]} | hop ${s.hopPhases[0]} | support ${support.contacts.length} | margin ${support.margin===null?'air':support.margin.toFixed(3)+' m'}`;renderer.render(scene,camera);document.getElementById('stats').dataset.tick=String(s.tick);document.getElementById('stats').dataset.posture=s.postures[0];document.getElementById('stats').dataset.mode=s.mobilityModes[0];document.getElementById('stats').dataset.z=String(s.roots[2]);stats.dataset.hop=String(s.hopHeights[0]);if(document.getElementById('stats').dataset.state!=='running')window.labStartup.ready();scheduleFrame();}catch(e){window.labStartup.fail(e);}}
 window.labStartup.show('Подготовка первого кадра…');reset();
