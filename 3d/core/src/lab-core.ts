@@ -1,3 +1,4 @@
+import { PatientGait } from './rig/gait.js';
 import { FIXED_DT } from './fixed-clock.js';
 import type { FighterCommand, InputFrame, SimulationCore, SimulationEvent, WorldConfig, WorldSnapshot } from './types.js';
 
@@ -8,10 +9,10 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[];
+  segments: string[]; gait: PatientGait;
 }
 
-/** Root locomotion only. No rig, collisions or debris yet.
+/** Root locomotion and procedural rig. No collisions or debris yet.
  * Public yaw is positive right (towards +X from -Z).
  * Lab Three.js heading is the negative of this yaw.
  */
@@ -35,7 +36,7 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:[...f.segmentIds]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:[...f.segmentIds],gait:new PatientGait(f.origin)};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
     this.tick = 0;
@@ -83,6 +84,7 @@ export class LabSimulationCore implements SimulationCore {
       a.speed = damp(a.speed,target,3);
       a.x = clamp(a.x+Math.sin(a.yaw)*a.speed*dt,-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*a.speed*dt,-5.65,5.65);
+      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt);
     }
     this.tick++;
   }
@@ -96,7 +98,8 @@ export class LabSimulationCore implements SimulationCore {
       roots.set([a.x,a.y,a.z,a.yaw],i*4);
     });
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
-      segmentIds:this.actors.map(a=>Object.freeze([...a.segments]))};
+      segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
+      rigVersion:1, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); return []; }
   dispose(): void { this.ready=false; this.actors=[]; this.tick=0; this.rng=0; }

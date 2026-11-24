@@ -31,6 +31,9 @@ export interface WorldConfig {
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
 export interface WorldSnapshot {
+  /** Optional procedural rig snapshot; world-space capsule endpoints, metres. */
+  readonly rigVersion?: 1;
+  readonly rigSegments?: readonly (readonly {readonly id: SegmentId; readonly a: Vec3; readonly b: Vec3; readonly radius: number}[])[];
   readonly tick: number;
   readonly elapsedSeconds: number;
   readonly fighterIds: Uint32Array;
