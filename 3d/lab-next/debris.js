@@ -1,3 +1,4 @@
+import {moundDimensions,terrainHeight} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 /** Physics adapter owns Rapier bodies; renderer consumes plain snapshots. */
@@ -7,7 +8,7 @@ export class DebrisWorld {
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
-  this.items=[];this.nextId=0;
+  this.items=[];this.mounds=[];this.nextId=0;
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
   this.world.createCollider(R.ColliderDesc.cuboid(7,.19,7).setFriction(.95),floor);
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
@@ -28,9 +29,27 @@ export class DebrisWorld {
   const id=this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
   rb.setLinvel({x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
   rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
-  this.items.push({id,rb,length,radius:p.radius,fighterId:event.fighterId});
+  this.items.push({id,rb,length,radius:p.radius,fighterId:event.fighterId,age:0,still:0});
  }
- step(dt){if(dt!==1/60)throw new RangeError('Debris requires fixed 60 Hz');this.world.step();}
+ step(dt){
+  if(dt!==1/60)throw new RangeError('Debris requires fixed 60 Hz');
+  this.world.step();
+  for(let i=this.items.length-1;i>=0;i--){
+   const d=this.items[i],t=d.rb.translation(),q=d.rb.rotation(),v=d.rb.linvel(),w=d.rb.angvel();
+   const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.12;
+   const bottom=t.y-(Math.abs(1-2*(q.x*q.x+q.z*q.z))*d.length*.5+d.radius);
+   const nearGround=bottom<=terrainHeight(t.x,t.z,this.mounds)+.045;
+   d.age++;d.still=(speed<.20&&(nearGround||d.rb.isSleeping()))?d.still+1:0;
+   if(d.still>=60||(d.age>720&&nearGround)){
+    const m=moundDimensions(t.x,t.z,d.length,d.radius),R=this.R;
+    this.world.removeRigidBody(d.rb);
+    const rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
+    this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010002),rb);
+    this.mounds.push({id:d.id,...m});this.items.splice(i,1);
+   }
+  }
+ }
+ moundSnapshot(){return this.mounds.map(m=>({...m}));}
  snapshot(){return this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,fighterId:d.fighterId,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));}
- dispose(){this.world?.free();this.world=null;this.items=[];}
+ dispose(){this.world?.free();this.world=null;this.items=[];this.mounds=[];}
 }
