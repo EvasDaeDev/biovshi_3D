@@ -20,14 +20,9 @@ jobs:
           node-version: '22'
       - run: npm install --prefix 3d/core --no-audit --no-fund
       - run: npm --prefix 3d/core test
-      - run: |
-          mkdir -p _site/3d/core
-          cp 3d/index.html _site/3d/
-          cp -r 3d/lab 3d/lab-next _site/3d/
-          cp -r 3d/core/dist _site/3d/core/
-          cp 3d/index.html _site/index.html
-          sed -i 's|href="./lab/|href="./3d/lab/|g; s|href="./lab-next/|href="./3d/lab-next/|g' _site/index.html
-          touch _site/.nojekyll
+      - run: npm --prefix 3d/core run preview:stage
+      - run: npx --prefix 3d/core playwright install --with-deps chromium
+      - run: npm --prefix 3d/core run preview:smoke
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

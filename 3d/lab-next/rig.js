@@ -3,11 +3,14 @@ import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
 import {LabSimulationCore,createLabConfig,FixedClock} from '../core/dist/index.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
+window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
+window.labStartup.show('Создание физического мира…');
 const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
 const core=new LabSimulationCore(),clock=new FixedClock(),keys=new Set();
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x09100e);
 const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,60);camera.position.set(8,6,9);camera.lookAt(0,1,0);
+window.labStartup.show('Инициализация WebGL…');
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));document.body.append(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);scene.add(lamp);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,new THREE.GridHelper(14,28,0x5d7265,0x34483c));
@@ -22,7 +25,7 @@ const input=()=>({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS
 document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};document.getElementById('reset').onclick=reset;
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4();
-function frame(now){const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{core.setTerrainMounds(debris.moundSnapshot());core.step(t,input());for(const e of core.drainEvents())debris.accept(e);debris.step(t);},paused||document.hidden);const s=core.getSnapshot();
+function frame(now){try{const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{core.setTerrainMounds(debris.moundSnapshot());core.step(t,input());for(const e of core.drainEvents())debris.accept(e);debris.step(t);},paused||document.hidden);const s=core.getSnapshot();
  for(const mesh of meshes.values())mesh.visible=false;
  s.rigSegments.forEach((parts,i)=>parts.forEach(p=>{const key=s.fighterIds[i]+':'+p.id;const f=boneFrame(p.a,p.b,[Math.sin(s.roots[i*4+3]),0,-Math.cos(s.roots[i*4+3])]);let m=meshes.get(key);if(!m){m=new THREE.Mesh(f.length>1e-8?cylinder:sphere,materials[i===0?0:1]);meshes.set(key,m);scene.add(m);}m.visible=true;m.position.copy(v(f.center));if(f.length>1e-8){basis.makeBasis(v(f.x),v(f.y),v(f.z));m.quaternion.setFromRotationMatrix(basis);m.scale.set(p.radius,f.length,p.radius);}else m.scale.setScalar(p.radius);}));
  const falling=debris.snapshot(),active=new Set(falling.map(d=>d.id));
@@ -36,5 +39,5 @@ function frame(now){const dt=last===null?0:(now-last)/1000;last=now;clock.advanc
   if(moundMeshes.has(d.id))continue;
   const m=new THREE.Mesh(cone,moundMaterial);m.position.set(d.x,d.height/2,d.z);m.scale.set(d.radius,d.height,d.radius);scene.add(m);moundMeshes.set(d.id,m);
  }
- document.getElementById('stats').textContent=`Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | detached ${s.damageStats.detached} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]}`;renderer.render(scene,camera);requestAnimationFrame(frame);}
-reset();requestAnimationFrame(frame);
+ document.getElementById('stats').textContent=`Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | detached ${s.damageStats.detached} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]}`;renderer.render(scene,camera);document.getElementById('stats').dataset.tick=String(s.tick);if(document.getElementById('stats').dataset.state!=='running')window.labStartup.ready();requestAnimationFrame(frame);}catch(e){window.labStartup.fail(e);}}
+window.labStartup.show('Подготовка первого кадра…');reset();requestAnimationFrame(frame);
