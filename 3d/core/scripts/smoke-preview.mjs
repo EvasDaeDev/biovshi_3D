@@ -37,6 +37,10 @@ try{
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===0);
  await page.locator('#pause').click();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)>2);
+ await page.locator('#scenario').selectOption('walk');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&document.getElementById('stats')?.dataset.mode==='biped');
+ await page.keyboard.down('KeyW');
+ try{await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.steps)>=3,{},{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  await page.locator('#scenario').selectOption('arms');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.posture==='prone',{},{timeout:30000});
  const z=Number(await page.locator('#stats').getAttribute('data-z'));

@@ -111,10 +111,12 @@ export class LabSimulationCore implements SimulationCore {
       a.speed = mobility.mode==='unsupported'?0:damp(a.speed,target,3);
       const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
       const travel=a.gait.travel(dt,a.speed,mobility,a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT,ground);
+      const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+Math.sin(a.yaw)*travel,-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*travel,-5.65,5.65);
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
-      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground,mobility,a.segments);
+      const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
+      a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments);
     }
     this.tick++;
     const hits:SegmentContact[] = [];
@@ -145,6 +147,7 @@ export class LabSimulationCore implements SimulationCore {
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
+      stepCounts:this.actors.map(a=>a.gait.stepCount),footStates:this.actors.map(a=>a.gait.footStates),
       hopHeights:this.actors.map(a=>a.gait.hopHeight),hopPhases:this.actors.map(a=>a.gait.hopPhase),
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports,crawlAnchors:rigSegments.map((parts,i)=>this.actors[i]!.gait.crawlAnchors(parts)),residualTraction:rigSegments.map((parts,i)=>this.actors[i]!.gait.residualSupport(parts))};
   }

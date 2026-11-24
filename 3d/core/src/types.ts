@@ -41,6 +41,8 @@ export interface WorldSnapshot {
   readonly residualTraction?: readonly (ResidualTraction|null)[];
   readonly crawlAnchors?: readonly (readonly CrawlAnchor[])[];
   readonly supports?: readonly SupportState[];
+  readonly stepCounts?: readonly number[];
+  readonly footStates?: readonly (readonly {readonly moving:boolean;readonly target:Vec3;readonly point:Vec3}[])[];
   readonly hopHeights?: readonly number[];
   readonly hopPhases?: readonly ('idle'|'flight'|'pause')[];
   readonly postures?: readonly ('upright'|'falling'|'prone')[];

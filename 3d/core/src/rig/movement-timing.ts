@@ -27,3 +27,13 @@ export function stepLead(speed:number):number{
  const v=Math.abs(speed),f=Math.max(0,Math.min(1,(v-MOVEMENT.stepLeadStart)/(MOVEMENT.stepLeadFull-MOVEMENT.stepLeadStart)));
  return Math.sign(speed)*Math.min(v*MOVEMENT.stepLeadSeconds,MOVEMENT.stepLeadMax)*f;
 }
+
+/** A 3D biped needs a full stance interval, not the v1 short replant error
+ * and swing duration alone. Signed lead includes predicted root displacement
+ * throughout swing plus half the distance between consecutive landings. */
+export function bipedStep(speed:number){
+ const v=Math.abs(speed),run=Math.max(0,Math.min(1,(v-MOVEMENT.walkSpeed)/(MOVEMENT.sprintSpeed-MOVEMENT.walkSpeed)));
+ const interval=.50-.14*run,swing=.32-.06*run;
+ return {interval,swing,lead:Math.sign(speed)*Math.min(.92,v*(swing+interval*.5)),lift:.085+.045*run,run};
+}
+export const CRAWL_TIMING=Object.freeze({swing:.30,plant:.55,reach:.40});

@@ -1,14 +1,14 @@
 import type { Vec3 } from '../types.js';
 import type { RigPose } from './gait.js';
 import type { Mobility } from './mobility.js';
-import { MOVEMENT } from './movement-timing.js';
+import { MOVEMENT,CRAWL_TIMING } from './movement-timing.js';
 import { solveTwoBone } from './two-bone.js';
 type Ground=(x:number,z:number)=>number;
 type Side='L'|'R';
 export interface CrawlAnchor {readonly segmentId:string;readonly phase:'recover'|'plant';readonly point:Vec3;readonly valid:boolean}
 interface Arm {phase:'recover'|'plant';age:number;from:Vec3;target:Vec3;point:Vec3;count:number}
 const sides=['L','R'] as const;
-const radius=.083,plantSeconds=MOVEMENT.hopFlightSeconds;
+const radius=.083,plantSeconds=CRAWL_TIMING.plant;
 const distance=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 const endpoint=(pose:readonly RigPose[],side:Side)=>pose.find(p=>p.id===side+'.lowerArm')!.b;
 const segmentId=(side:Side,count:number)=>side+(count===3?'.hand':'.lowerArm');
@@ -28,7 +28,7 @@ export class CrawlAnchors {
    if(count<2){this.arms[i]=null;continue;}
    const current=endpoint(pose,side),shoulder=pose.find(p=>p.id===side+'.upperArm')!.a;
    const landing=():Vec3=>{
-    const reach=.26+Math.min(.09,Math.abs(speed)*MOVEMENT.stepLeadSeconds);
+    const reach=CRAWL_TIMING.reach+Math.min(.07,Math.abs(speed)*MOVEMENT.stepLeadSeconds);
     const x=shoulder[0]+Math.cos(yaw)*(i===0?-.10:.10)+Math.sin(yaw)*reach*dir;
     const z=shoulder[2]+Math.sin(yaw)*(i===0?-.10:.10)-Math.cos(yaw)*reach*dir;
     return [x,ground(x,z)+radius,z];
@@ -45,8 +45,8 @@ export class CrawlAnchors {
     a.age+=dt;
     if(a.age>=plantSeconds){a.phase='recover';a.age=0;a.from=current;a.target=landing();a.point=current;}
    }else{
-    a.age=Math.min(MOVEMENT.stepSwingSeconds,a.age+dt);
-    const q=a.age/MOVEMENT.stepSwingSeconds,t=q*q*(3-2*q);
+    a.age=Math.min(CRAWL_TIMING.swing,a.age+dt);
+    const q=a.age/CRAWL_TIMING.swing,t=q*q*(3-2*q);
     const x=a.from[0]+(a.target[0]-a.from[0])*t,z=a.from[2]+(a.target[2]-a.from[2])*t;
     a.point=[x,Math.max(ground(x,z)+radius,a.from[1]+(a.target[1]-a.from[1])*t)+Math.sin(Math.PI*q)*.095,z];
     if(q===1){a.phase='plant';a.age=0;a.point=[a.target[0],ground(a.target[0],a.target[2])+radius,a.target[2]];}
