@@ -44,6 +44,7 @@ export interface WorldSnapshot {
   readonly residualTraction?: readonly (ResidualTraction|null)[];
   readonly crawlAnchors?: readonly (readonly CrawlAnchor[])[];
   readonly supports?: readonly SupportState[];
+  readonly lifeStates?: readonly ('active'|'incapacitated')[];
   readonly balanceStates?: readonly BalancePhase[];
   readonly stepCounts?: readonly number[];
   readonly footStates?: readonly (readonly {readonly moving:boolean;readonly target:Vec3;readonly point:Vec3}[])[];
@@ -64,11 +65,14 @@ export interface WorldSnapshot {
   readonly segmentIds: readonly (readonly SegmentId[])[];
 }
 
+export interface PhysicsSegmentPose {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number}
+
 export interface SimulationEvent {
   readonly tick: number;
   readonly type: string;
   readonly fighterId: FighterId;
   readonly segmentId?: SegmentId;
+  readonly bodyPose?: readonly PhysicsSegmentPose[];
   readonly detachedPose?: {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number};
 }
 

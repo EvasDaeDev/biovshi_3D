@@ -1,3 +1,4 @@
+import {IncapacitatedBodies} from './incapacitated.js';
 import {moundDimensions,terrainHeight,capsuleVerticalHalfExtent} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -8,7 +9,7 @@ export class DebrisWorld {
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
-  this.items=[];this.mounds=[];this.nextId=0;
+  this.items=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
   this.world.createCollider(R.ColliderDesc.cuboid(7,.19,7).setFriction(.95),floor);
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
@@ -17,6 +18,7 @@ export class DebrisWorld {
   }
  }
  accept(event){
+  if(event.type==='fighter-incapacitated'){this.incapacitated.accept(event);return;}
   if(event.type!=='segment-detached'||!event.detachedPose)return;
   const p=event.detachedPose,f=boneFrame(p.a,p.b),R=this.R;
   // Quaternion rotating +Y onto the segment axis; sphere orientation is immaterial.
@@ -25,7 +27,7 @@ export class DebrisWorld {
   const length=f.length>.11?f.length:0;
   const rb=this.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(...f.center).setRotation(q).setLinearDamping(.6).setAngularDamping(1.25));
   const shape=length?R.ColliderDesc.capsule(length/2,p.radius):R.ColliderDesc.ball(p.radius);
-  this.world.createCollider(shape.setMass(clamp(.9+length*2.1,.9,2.8)).setFriction(.8).setRestitution(0).setCollisionGroups(0x00020001),rb);
+  this.world.createCollider(shape.setMass(clamp(.9+length*2.1,.9,2.8)).setFriction(.8).setRestitution(0).setCollisionGroups(0x00020005),rb);
   const id=this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
   rb.setLinvel({x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
   rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
@@ -44,12 +46,13 @@ export class DebrisWorld {
     const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y,q),R=this.R;
     this.world.removeRigidBody(d.rb);
     const rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
-    this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010002),rb);
+    this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
     this.mounds.push({id:d.id,...m});this.items.splice(i,1);
    }
   }
  }
+ bodySnapshot(){return this.incapacitated.snapshot();}
  moundSnapshot(){return this.mounds.map(m=>({...m}));}
  snapshot(){return this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,fighterId:d.fighterId,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));}
- dispose(){this.world?.free();this.world=null;this.items=[];this.mounds=[];}
+ dispose(){this.world?.free();this.world=null;this.items=[];this.mounds=[];this.incapacitated=null;}
 }

@@ -2,7 +2,7 @@ import type { SegmentContact } from './contact-episodes.js';
 import type { Vec3 } from '../types.js';
 import { capsuleContact, type Capsule } from './capsule-contact.js';
 import type { RigPose } from '../rig/gait.js';
-export interface CollisionActor { readonly id:number; x:number; y:number; z:number }
+export interface CollisionActor { readonly id:number; x:number; y:number; z:number; readonly fixed?:boolean }
 export interface CollisionStats { tests:number; contacts:number; wallContacts:number }
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
 const point=(p:Vec3)=>({x:p[0],y:p[1],z:p[2]});
@@ -14,10 +14,10 @@ function prepare(p:RigPose){
  * Rebuild after root corrections; planted feet stay in world coordinates. */
 export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[],hits?:SegmentContact[]):CollisionStats{
  const stats:CollisionStats={tests:0,contacts:0,wallContacts:0};
- const move=(a:T,x:number,z:number)=>{a.x=clamp(a.x+clamp(x,-.10,.10),-5.65,5.65);a.z=clamp(a.z+clamp(z,-.10,.10),-5.65,5.65);};
+ const move=(a:T,x:number,z:number)=>{if(a.fixed)return;a.x=clamp(a.x+clamp(x,-.10,.10),-5.65,5.65);a.z=clamp(a.z+clamp(z,-.10,.10),-5.65,5.65);};
  for(let iteration=0;iteration<3;iteration++){
   const shapes=actors.map(a=>{
-   const parts=pose(a);let x=0,z=0;
+   const parts=pose(a);if(a.fixed)return parts.map(prepare);let x=0,z=0;
    for(const p of parts)for(const end of [p.a,p.b]){
     const inner=6.95-1.47*clamp(end[1],0,4.3)/4.3-p.radius-.08;
     if(end[0]>inner)x=Math.min(x,inner-end[0]);
@@ -30,6 +30,7 @@ export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],
   });
   for(let i=0;i<actors.length;i++)for(let j=i+1;j<actors.length;j++){
    const a=actors[i]!,b=actors[j]!;
+   if(a.fixed&&b.fixed)continue;
    if((a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2>4.7**2)continue;
    let cx=0,cz=0,count=0;
    for(const ac of shapes[i]!)for(const bc of shapes[j]!){
@@ -44,7 +45,7 @@ export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],
     cx+=nx/len*push;cz+=nz/len*push;count++;
    }
    if(count){
-    const k=.5/Math.sqrt(count);
+    const k=(a.fixed||b.fixed?1:.5)/Math.sqrt(count);
     move(a,cx*k,cz*k);move(b,-cx*k,-cz*k);
     shapes[i]=pose(a).map(prepare);shapes[j]=pose(b).map(prepare);
    }
