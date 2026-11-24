@@ -1,3 +1,4 @@
+import { Knockdown,KNOCKDOWN } from './rig/knockdown.js';
 import { analyzeSupport } from './rig/support.js';
 import { MOVEMENT } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
@@ -16,7 +17,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait;
+  segments: string[]; gait: PatientGait; knockdown:Knockdown;
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -38,6 +39,7 @@ export class LabSimulationCore implements SimulationCore {
   private episodes = new ContactEpisodes();
   private events: SimulationEvent[] = [];
   private fracture = false;
+  private dynamicBalance=false;
   private hitCount = 0;
   private detachedCount = 0;
   private collisionStats: CollisionStats = {tests:0,contacts:0,wallContacts:0};
@@ -56,13 +58,14 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad)};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown()};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
     this.mounds=[];
     this.tick = 0;
     this.rng = config.seed;
     this.fracture = config.labContactFracture === true;
+    this.dynamicBalance=config.labDynamicBalance===true;
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
     this.collisionStats = {tests:0,contacts:0,wallContacts:0};
     this.ready = true;
@@ -92,6 +95,16 @@ export class LabSimulationCore implements SimulationCore {
       const c = commands.get(a.id);
       let target = 0;
       const mobility=mobilityFor(a.segments);
+      const previousPhase=a.knockdown.phase;
+      a.knockdown.advance(dt,!mobility.prone);
+      if(previousPhase!=='standing'&&a.knockdown.phase==='standing'&&!mobility.prone)this.events.push({tick:this.tick+1,type:'fighter-recovered',fighterId:a.id});
+      if(a.knockdown.blocked){
+        a.speed=0;
+        const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
+        a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
+        a.gait.advance([a.x,a.y,a.z],a.yaw,0,dt,ground,mobility,a.segments,a.knockdown.amount);
+        continue;
+      }
       if (c || a.id === 0) {
         a.yaw += (c?.turn ?? 0) * 2.15 * dt;
         target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? MOVEMENT.sprintSpeed : MOVEMENT.walkSpeed);
@@ -120,7 +133,17 @@ export class LabSimulationCore implements SimulationCore {
     }
     this.tick++;
     const hits:SegmentContact[] = [];
+    const before=this.dynamicBalance?this.actors.map(a=>[a.x,a.z] as const):[];
     this.collisionStats = resolveCollisions(this.actors,a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)),this.fracture?hits:undefined);
+    if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
+      const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
+      if(displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
+      const parts=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
+      const support=analyzeSupport(parts,(x,z)=>a.baseY+terrainHeight(x,z,this.mounds));
+      if(a.knockdown.observe(displacement,support.margin,true)){
+        a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
+      }
+    }
     if(this.fracture)this.episodes.advance(this.tick,hits,(id,part)=>this.actors.some(a=>a.id===id&&a.segments.includes(part)),(hit,chain)=>{
       this.hitCount++;
       this.events.push({tick:this.tick,type:'lab-hit',fighterId:hit.fighterId,segmentId:hit.segmentId});
@@ -147,6 +170,7 @@ export class LabSimulationCore implements SimulationCore {
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
+      balanceStates:this.actors.map(a=>a.knockdown.phase),
       stepCounts:this.actors.map(a=>a.gait.stepCount),footStates:this.actors.map(a=>a.gait.footStates),
       hopHeights:this.actors.map(a=>a.gait.hopHeight),hopPhases:this.actors.map(a=>a.gait.hopPhase),
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports,crawlAnchors:rigSegments.map((parts,i)=>this.actors[i]!.gait.crawlAnchors(parts)),residualTraction:rigSegments.map((parts,i)=>this.actors[i]!.gait.residualSupport(parts))};

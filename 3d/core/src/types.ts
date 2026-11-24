@@ -1,3 +1,4 @@
+import type { BalancePhase } from './rig/knockdown.js';
 import type { ResidualTraction } from './rig/residual-traction.js';
 import type { CrawlAnchor } from './rig/crawl-anchors.js';
 import type { SupportState } from './rig/support.js';
@@ -32,6 +33,8 @@ export interface WorldConfig {
   readonly seed: number;
   /** Lab stress-test only, not product combat balance. */
   readonly labContactFracture?: boolean;
+  /** Lab-only collision-induced temporary knockdown. */
+  readonly labDynamicBalance?: boolean;
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
@@ -41,6 +44,7 @@ export interface WorldSnapshot {
   readonly residualTraction?: readonly (ResidualTraction|null)[];
   readonly crawlAnchors?: readonly (readonly CrawlAnchor[])[];
   readonly supports?: readonly SupportState[];
+  readonly balanceStates?: readonly BalancePhase[];
   readonly stepCounts?: readonly number[];
   readonly footStates?: readonly (readonly {readonly moving:boolean;readonly target:Vec3;readonly point:Vec3}[])[];
   readonly hopHeights?: readonly number[];
