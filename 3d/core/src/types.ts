@@ -33,6 +33,8 @@ export interface WorldConfig {
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
 export interface WorldSnapshot {
+  /** Optional lab locomotion modes, in fighterIds order. */
+  readonly mobilityModes?: readonly ('biped'|'single-support'|'unsupported')[];
   readonly damageStats?: Readonly<{hits:number; detached:number}>;
   readonly collisionStats?: Readonly<{tests:number; contacts:number; wallContacts:number}>;
   /** Optional procedural rig snapshot; world-space capsule endpoints, metres. */

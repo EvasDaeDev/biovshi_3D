@@ -1,3 +1,4 @@
+import { mobilityFor } from './rig/mobility.js';
 import { expandLegacyTorso } from './rig/anatomy.js';
 import { terrainHeight, type Mound } from './collision/terrain.js';
 import { ContactEpisodes, type SegmentContact } from './collision/contact-episodes.js';
@@ -87,9 +88,10 @@ export class LabSimulationCore implements SimulationCore {
     for (const a of this.actors) {
       const c = commands.get(a.id);
       let target = 0;
+      const mobility=mobilityFor(a.segments);
       if (c || a.id === 0) {
         a.yaw += (c?.turn ?? 0) * 2.15 * dt;
-        target = (c?.forward ?? 0) * (c?.sprint ? 1.9 : .9);
+        target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? 1.9 : .9);
       } else {
         a.wanderTimer -= dt;
         if (a.wanderTimer <= 0) {
@@ -102,12 +104,13 @@ export class LabSimulationCore implements SimulationCore {
         a.yaw += clamp(wrap(a.wanderAngle-a.yaw),-1.1*dt,1.1*dt);
         target = a.wanderSpeed;
       }
-      a.speed = damp(a.speed,target,3);
+      target*=mobility.speedScale;
+      a.speed = mobility.mode==='unsupported'?0:damp(a.speed,target,3);
       a.x = clamp(a.x+Math.sin(a.yaw)*a.speed*dt,-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*a.speed*dt,-5.65,5.65);
       const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
-      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground);
+      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground,mobility.support);
     }
     this.tick++;
     const hits:SegmentContact[] = [];
@@ -134,6 +137,7 @@ export class LabSimulationCore implements SimulationCore {
     });
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
+      mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }

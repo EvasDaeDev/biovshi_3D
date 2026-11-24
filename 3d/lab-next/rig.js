@@ -36,5 +36,5 @@ function frame(now){const dt=last===null?0:(now-last)/1000;last=now;clock.advanc
   if(moundMeshes.has(d.id))continue;
   const m=new THREE.Mesh(cone,moundMaterial);m.position.set(d.x,d.height/2,d.z);m.scale.set(d.radius,d.height,d.radius);scene.add(m);moundMeshes.set(d.id,m);
  }
- document.getElementById('stats').textContent=`Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | detached ${s.damageStats.detached} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size}`;renderer.render(scene,camera);requestAnimationFrame(frame);}
+ document.getElementById('stats').textContent=`Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | detached ${s.damageStats.detached} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]}`;renderer.render(scene,camera);requestAnimationFrame(frame);}
 reset();requestAnimationFrame(frame);
