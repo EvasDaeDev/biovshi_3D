@@ -1,4 +1,4 @@
-import {moundDimensions,terrainHeight} from '../core/dist/collision/terrain.js';
+import {moundDimensions,terrainHeight,capsuleVerticalHalfExtent} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 /** Physics adapter owns Rapier bodies; renderer consumes plain snapshots. */
@@ -37,11 +37,11 @@ export class DebrisWorld {
   for(let i=this.items.length-1;i>=0;i--){
    const d=this.items[i],t=d.rb.translation(),q=d.rb.rotation(),v=d.rb.linvel(),w=d.rb.angvel();
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.12;
-   const bottom=t.y-(Math.abs(1-2*(q.x*q.x+q.z*q.z))*d.length*.5+d.radius);
+   const bottom=t.y-(capsuleVerticalHalfExtent(d.length,d.radius,q));
    const nearGround=bottom<=terrainHeight(t.x,t.z,this.mounds)+.045;
    d.age++;d.still=(speed<.20&&(nearGround||d.rb.isSleeping()))?d.still+1:0;
    if(d.still>=60||(d.age>720&&nearGround)){
-    const m=moundDimensions(t.x,t.z,d.length,d.radius),R=this.R;
+    const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y,q),R=this.R;
     this.world.removeRigidBody(d.rb);
     const rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
     this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010002),rb);
