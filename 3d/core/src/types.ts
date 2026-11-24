@@ -35,6 +35,8 @@ export interface WorldConfig {
 export interface WorldSnapshot {
   /** Optional lab locomotion modes, in fighterIds order. */
   readonly mobilityModes?: readonly ('biped'|'single-support'|'arm-crawl'|'head-crawl'|'torso-crawl'|'unsupported')[];
+  readonly hopHeights?: readonly number[];
+  readonly hopPhases?: readonly ('idle'|'flight'|'pause')[];
   readonly postures?: readonly ('upright'|'falling'|'prone')[];
   readonly damageStats?: Readonly<{hits:number; detached:number}>;
   readonly collisionStats?: Readonly<{tests:number; contacts:number; wallContacts:number}>;

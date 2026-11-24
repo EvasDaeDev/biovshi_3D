@@ -49,6 +49,10 @@ try{
    try{await page.waitForFunction(z=>Number(document.getElementById('stats')?.dataset.z)<z-.015,start,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
   }
  }
+ await page.locator('#scenario').selectOption('one-leg');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.mode==='single-support');
+ await page.keyboard.down('KeyW');
+ try{await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.hop)>.025,{},{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  await page.goto(base+'/3d/lab-next/rig.html?scenario=one-arm',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
  const release=await page.locator('#stats').getAttribute('data-build');

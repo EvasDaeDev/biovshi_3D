@@ -3,6 +3,8 @@ import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
 import { mobilityFor, type Mobility } from './mobility.js';
 import { pronePose, blendGroundPose } from './prone.js';
+import { MOVEMENT,stepLead } from './movement-timing.js';
+import { HopCycle, type HopSample } from './hop-cycle.js';
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
@@ -12,6 +14,14 @@ export interface RigPose { readonly id:string; readonly a:Vec3; readonly b:Vec3;
 export class PatientGait {
   private walkTime=0; private moveAmount=0; private next=0;
   private supportShift=0; private supportDrop=0;
+  private hop=new HopCycle();private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+  get hopHeight():number{return this.hopSample.lift;}
+  get hopPhase():HopSample['phase']{return this.hopSample.phase;}
+  travel(dt:number,speed:number,mobility:Mobility):number{
+    if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,speed);return this.hopSample.distance;}
+    this.hop.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+    return speed*this.driveScale(mobility)*dt;
+  }
   private proneAmount=0;private crawlPhase=0;private crawlEffort=0;private crawlDirection=1;
   private mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id));
   private active:readonly string[]=LAB_SEGMENTS.map(s=>s.id);
@@ -34,23 +44,32 @@ export class PatientGait {
     const support=mobility.support;
     this.proneAmount=clamp(this.proneAmount+(mobility.prone?1:-1)*dt/.65);
     if(mobility.prone){
-      const desired=mobility.speedScale>0?clamp(Math.abs(speed)/(.9*mobility.speedScale)):0;
+      const desired=mobility.speedScale>0?clamp(Math.abs(speed)/(MOVEMENT.walkSpeed*mobility.speedScale)):0;
       this.crawlEffort+=(desired-this.crawlEffort)*(1-Math.exp(-7*dt));
       if(Math.abs(speed)>.005)this.crawlDirection=Math.sign(speed);
-      if(this.proneAmount>=1)this.crawlPhase+=dt*5*this.crawlEffort;
+      if(this.proneAmount>=1)this.crawlPhase+=dt*Math.PI*this.crawlEffort/(MOVEMENT.hopFlightSeconds+MOVEMENT.hopPauseSeconds);
     }
     const sprint=Math.abs(speed)>1.4;
     const single=support[0]!==support[1];
     const blend=1-Math.exp(-5*dt);
     this.supportShift+=((single?(support[0]?-.12:.12):0)-this.supportShift)*blend;
     this.supportDrop+=((single?.055:(!support[0]&&!support[1]?.28:0))-this.supportDrop)*blend;
-    this.moveAmount+=(clamp(Math.abs(speed)/1.9)-this.moveAmount)*(1-Math.exp(-4*dt));
-    this.walkTime+=dt*Math.abs(speed)*5.2;
+    this.moveAmount+=(clamp(Math.abs(speed)/MOVEMENT.sprintSpeed)-this.moveAmount)*(1-Math.exp(-4*dt));
+    this.walkTime+=dt*Math.abs(speed)/MOVEMENT.stepCycleDistance;
+    if(single){
+      const index=support[0]?0:1,side=index===0?-1:1,f=this.feet[index]!;
+      this.feet[0].moving=false;this.feet[1].moving=false;
+      if(this.hopSample.followsRoot||Math.hypot(f.plant[0]-root[0],f.plant[2]-root[2])>.50){
+        const x=root[0]+Math.cos(yaw)*side*.18,z=root[2]+Math.sin(yaw)*side*.18;
+        f.plant=[x,ground(x,z)+.13,z];
+      }else f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+.13,f.plant[2]];
+      return;
+    }
     for(let i=0;i<2;i++){
       const f=this.feet[i]!;
       if(!support[i]){f.moving=false;continue;}
       if(!f.moving){f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+.055,f.plant[2]];continue;}
-      f.phase=Math.min(1,f.phase+dt*(sprint?3.8:2.8));
+      f.phase=Math.min(1,f.phase+dt/MOVEMENT.stepSwingSeconds);
       const t=f.phase*f.phase*(3-2*f.phase),p=mix(f.start,f.target,t);
       f.plant=[p[0],Math.max(ground(p[0],p[2])+.055,p[1]+Math.sin(Math.PI*f.phase)*(sprint?.19:.13)),p[2]];
       if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+.055,f.target[2]];}
@@ -58,8 +77,8 @@ export class PatientGait {
     const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+.055,z];};
     if((support[0]||support[1])&&Math.abs(speed)>.03&&!this.feet.some(f=>f.moving)){
       const index=single?(support[0]?0:1):this.next;
-      const f=this.feet[index]!;const target=ideal(index===0?-1:1,Math.sign(speed)*(single?.10:(sprint?.35:.23)));
-      if(dist(f.plant,target)>(single?.12:.23)){f.start=f.plant;f.target=target;f.phase=0;f.moving=true;this.next=1-index;}
+      const f=this.feet[index]!;const target=ideal(index===0?-1:1,stepLead(speed));
+      if(dist(f.plant,target)>MOVEMENT.stepReplantDistance){f.start=f.plant;f.target=target;f.phase=0;f.moving=true;this.next=1-index;}
     }
     if(Math.abs(speed)<=.09)this.feet.forEach((f,i)=>{if(support[i]&&!f.moving&&dist(f.plant,root)>.75)f.plant=ideal(i===0?-1:1,-.02);});
   }
@@ -95,7 +114,7 @@ export class PatientGait {
       put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,hand);put(key+'hand',hand);
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
-    if(this.proneAmount===0)return standing;
+    if(this.proneAmount===0){const lift=this.hopSample.lift;return lift===0?standing:standing.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));}
     return blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
   }
 }

@@ -1,3 +1,4 @@
+import { MOVEMENT } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
 import { expandLegacyTorso } from './rig/anatomy.js';
 import { terrainHeight, type Mound } from './collision/terrain.js';
@@ -91,7 +92,7 @@ export class LabSimulationCore implements SimulationCore {
       const mobility=mobilityFor(a.segments);
       if (c || a.id === 0) {
         a.yaw += (c?.turn ?? 0) * 2.15 * dt;
-        target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? 1.9 : .9);
+        target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? MOVEMENT.sprintSpeed : MOVEMENT.walkSpeed);
       } else {
         a.wanderTimer -= dt;
         if (a.wanderTimer <= 0) {
@@ -106,9 +107,9 @@ export class LabSimulationCore implements SimulationCore {
       }
       target*=mobility.speedScale;
       a.speed = mobility.mode==='unsupported'?0:damp(a.speed,target,3);
-      const drive=a.gait.driveScale(mobility);
-      a.x = clamp(a.x+Math.sin(a.yaw)*a.speed*drive*dt,-5.65,5.65);
-      a.z = clamp(a.z-Math.cos(a.yaw)*a.speed*drive*dt,-5.65,5.65);
+      const travel=a.gait.travel(dt,a.speed,mobility);
+      a.x = clamp(a.x+Math.sin(a.yaw)*travel,-5.65,5.65);
+      a.z = clamp(a.z-Math.cos(a.yaw)*travel,-5.65,5.65);
       const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground,mobility,a.segments);
@@ -140,6 +141,7 @@ export class LabSimulationCore implements SimulationCore {
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
+      hopHeights:this.actors.map(a=>a.gait.hopHeight),hopPhases:this.actors.map(a=>a.gait.hopPhase),
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }

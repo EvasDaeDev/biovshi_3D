@@ -1,0 +1,7 @@
+# P1 — v1 timing reference and single-leg hops
+
+Source: local v1 copy src/config.js (movement/idle), src/robot/locomotion.js (phase, swing, landing prediction), src/robot/scenes.js (hop displacement). Native 3D constants live in rig/movement-timing.ts; no v1 runtime dependency. Spatial calibration preserves the existing .9 m/s walk; Shift remains 1.9 m/s pending acceptance. The original .5 body scale applies to step cycle, replant error, swing rate and maximum step lead as in v1. Step lead is now speed-dependent with .18 s prediction. Crawl phase uses the .40 s hop cycle as a provisional rhythm reference, not a claim of v1 crawl parity.
+
+Single-leg hopping replaces the prior shuffle with .28 s flight, .12 s rest and smooth horizontal displacement, bounded by the calibrated original 18 cm hop distance and the current requested mobility speed. The vertical arc is a 3D adaptation using gravity (about 9.6 cm maximum). The whole pose is lifted; the remaining foot follows the root during the hop and plants on landing. Root Y still represents terrain base height; hopHeights carries the visual/physical capsule lift. Sprint stays disabled. No actual contact impulse, airborne steering constraints, swept wall checks or biomechanical balance yet. No changes to damage speed scales in this increment.
+
+Added isolated one-leg scenario, unit tests for fractional phase boundaries, distance and leg lengths, and a browser smoke check. Visual acceptance and measured performance pending.

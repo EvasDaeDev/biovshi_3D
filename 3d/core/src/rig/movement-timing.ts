@@ -1,0 +1,29 @@
+/** Native 3D movement profile. Source: src/config.js movement/idle,
+ * src/robot/locomotion.js and src/robot/scenes.js in the local v1 reference.
+ * No runtime import from the 2D game.
+ */
+const source={walkCm:32,chaseCm:55,fleeCm:64,speedMultiplier:1.2,bodyScale:.5,
+ stepReplantCm:15,stepCycleCm:8.4,stepSwingRate:4.5,stepLeadTime:.18,
+ stepLeadStartCm:30,stepLeadFullCm:60,stepLeadMaxCm:22,
+ hopFlight:.28,hopPause:.12,hopDistanceCm:18} as const;
+// Preserve the accepted .9 m/s 3D walk speed; conversion is a calibration,
+// not a claim that the 2D coordinate unit is a physical centimetre.
+const spatial=.9/(source.walkCm*.01*source.speedMultiplier);
+export const MOVEMENT=Object.freeze({
+ walkSpeed:source.walkCm*.01*source.speedMultiplier*spatial,
+ // Existing 3D Shift speed remains until player feel is accepted.
+ sprintSpeed:1.9,
+ stepSwingSeconds:source.bodyScale/source.stepSwingRate,
+ stepCycleDistance:source.stepCycleCm*.01*source.bodyScale*spatial,
+ stepReplantDistance:source.stepReplantCm*.01*source.bodyScale*spatial,
+ stepLeadSeconds:source.stepLeadTime,
+ stepLeadStart:source.stepLeadStartCm*.01*spatial,
+ stepLeadFull:source.stepLeadFullCm*.01*spatial,
+ stepLeadMax:source.stepLeadMaxCm*.01*source.bodyScale*spatial,
+ hopFlightSeconds:source.hopFlight,hopPauseSeconds:source.hopPause,
+ hopMaxDistance:source.hopDistanceCm*.01*spatial,gravity:9.81
+});
+export function stepLead(speed:number):number{
+ const v=Math.abs(speed),f=Math.max(0,Math.min(1,(v-MOVEMENT.stepLeadStart)/(MOVEMENT.stepLeadFull-MOVEMENT.stepLeadStart)));
+ return Math.sign(speed)*Math.min(v*MOVEMENT.stepLeadSeconds,MOVEMENT.stepLeadMax)*f;
+}
