@@ -107,7 +107,7 @@ export class LabSimulationCore implements SimulationCore {
       for(const id of chain)if(actor.segments.includes(id)){
         const pose=actor.gait.pose(actor.id,[actor.x,actor.y,actor.z],actor.yaw,this.tick*FIXED_DT).find(p=>p.id===id);
         actor.segments=actor.segments.filter(s=>s!==id);this.detachedCount++;
-        this.events.push({tick:this.tick,type:'segment-detached',fighterId:actor.id,segmentId:id,detachedPose:pose});
+        this.events.push({tick:this.tick,type:'segment-detached',fighterId:actor.id,segmentId:id,...(pose?{detachedPose:pose}:{})});
       }
     });
   }
