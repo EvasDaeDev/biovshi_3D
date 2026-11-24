@@ -1,0 +1,276 @@
+import hitPreset from "./render/hit-preset.json" with {type:"json"};
+
+export
+// ================= ОСНОВНЫЕ НАСТРОЙКИ =================
+// Расстояния — сантиметры, время — секунды, углы — градусы.
+// Меняйте значения здесь; после сохранения обновите страницу браузера.
+const CONFIG = {
+  rendering: {
+    maxPixelRatio: 2, // Ограничение размера WebGL-буфера на Retina, без изменения мира.
+    textureMaxSize: 256, // Максимальная сторона текстур в пикселях; обработка при сборке и загрузке.
+    texturePixelated: true, // Nearest-neighbour без сглаживания при уменьшении и отображении.
+    floorTintStrength: 0.76, // 0 — исходная текстура; 1 — полное тонирование.
+    floorTintColor: '#26312b', // Тёмная серо-зелёная плитка операционной.
+    wallTintStrength: 0.8,
+    wallTintColor: '#18231f', // Общий тинт периметра и препятствий.
+    coordinateGrid: false, // Координатная сетка и метровые подписи выключены.
+    quality: 'auto', // auto: лёгкая графика на сенсорных устройствах; full / light — вручную.
+    telemetryIntervalSec: 0.1, // Карточки: 10 обновлений/с вместо 30.
+    sparks: false, // Искры были скрыты CSS; не тратим время на невидимые частицы.
+  },
+  postEffects: {
+    enabled: true, // Общий выключатель в диагностике под телеметрией.
+    referenceSize: 960, // Эскиз Photoshop: масштаб эффектов относительно окна арены.
+    unsharpAmount: 0.8, // Unsharp Mask: 80%.
+    unsharpRadiusPx: 1,
+    unsharpThreshold: 0,
+    filmGrain: 0.7, // Halved grain intensity; size, colour and other film effects unchanged.
+    grainSize: 2.4, // Pixels at the reference viewport; mixed with finer grain.
+    grainColour: 0.14,
+    filmTone: 0.65, // Cool green shadows / warm lights, with red protection.
+    exposureDrift: 0.008, // At most ±0.8%; smooth irregular changes, no flashes.
+    distortion: -7,
+    redCyan: -35,
+    blueYellow: 29,
+    vignetteAmount: -76,
+    vignetteMidpoint: 50,
+  },
+  startup: {
+    spawnDurationSec: 0.2, // Вылет из тени и приземление.
+    spawnScale: 1.25, // Масштаб над землёй в начале появления.
+    spawnEdgeOutsetCm: 40, // Старт анимации за ближайшей границей арены.
+    spawnIntervalSec: 0.4,
+    // Пауза между появлениями пациентов.
+    spawnMarginCm: 60,
+    // Запас от стен и препятствий для всего скелета и хвоста.
+  },
+  arena: {
+    wallThicknessCm: 30, // Стена только снаружи игрового периметра.
+    outerWallDepthCm: 90, // Внешняя кирпичная облицовка за стеной, не игровая зона.
+    wallTileLengthCm: 100, // Длина тайла вдоль внутренней кромки стены.
+    wallViewMarginCm: 8, // Запас камеры за внешней кромкой.
+    cameraMaxDistanceFactor: 0.8, // И стартовый вид, и максимальное отдаление: 80% от прежнего.
+    outlineColor: 'none',
+    // Без цветной окантовки препятствий и периметра.
+    outlineWidthCm: 1.5 // Как конечность: 3 × масштаб робота 0.5.
+  },
+  vision: {
+    runnerAngleDeg: 100,
+    // Обзор всех свободных роботов, включая бегство.
+    memorySec: 2.4, // Память ИИ о последнем видимом противнике.
+    rangeCm: 300,
+    // Дальность зрения и фонарика.
+    headScanDeg: 60,
+    // Поворот головы при осмотре: ± этот угол.
+    scanSpeedDeg: 20,
+    // Скорость осмотра без цели.
+    trackingSpeedDeg: 40 // Скорость слежения за замеченной целью.
+  },
+  movement: {
+    speedMultiplier: 1.2,
+    // Все скорости наземного движения: +20%.
+    turnSpeedMultiplier: 1.1,
+    // Скорость поворота корпуса: +10%.
+    chaseSpeedCm: 55,
+    // Скорость преследования.
+    fleeSpeedCm: 64,
+    // Скорость убегания.
+    walkSpeedCm: 32,
+    // Обычная прогулка.
+    // Более длинная перестановка обеих пар рук/ног без роста скорости тела.
+    stepReplantErrorCm: 15, // было 12: минимальный путь опоры до нового шага (+25%).
+    stepCycleDistanceCm: 8.4, // было 7: циклы походки реже при том же перемещении (+20%).
+    stepSwingRate: 4.5, // Скорость взмаха (длительность остаётся прежней).
+    stepLeadStartSpeedCm: 30, // Упреждение начинается с быстрого шага.
+    stepLeadFullSpeedCm: 60, // Максимальное упреждение на бегу.
+    stepLeadTimeSec: 0.18, // Куда за время переноса успеет уйти корпус.
+    stepLeadMaxCm: 22, // Максимальный вынос опоры вперёд, до масштабирования.
+    stepLegForwardGainCm: 5, // Ноги в быстром беге можно поставить чуть ближе к тазу.
+    searchSpeedCm: 42,
+    // Скорость поиска противника.
+    boundaryStuckSec: 0.7,
+    // Блокировка у стены поля или любой грани препятствия.
+    boundaryReleaseCm: 30,
+    // Отступ до возвращения к обычному шагу.
+    boundaryRetreatSpeedCm: 32 // Скорость короткого безопасного отступа.
+  },
+  idle: {
+    minDelaySec: 10,
+    // Минимальный интервал между спокойными действиями.
+    maxDelaySec: 20,
+    // Максимальный интервал, пока робот свободно гуляет.
+    stretchSec: 2.2,
+    // Потягивание с изгибом спины и неподвижными опорами.
+    scratchSec: 1.8,
+    // Почёсывание головы одной рукой.
+    hopFlightSec: 0.28,
+    // Длительность одного короткого прыжка.
+    hopPauseSec: 0.12,
+    // Пауза между двумя прыжками.
+    hopDistanceCm: 18 // Длина каждого из двух прыжков вперёд.
+  },
+  robot: {
+    shadowOpacity: 0.5,
+    shadowPadding: 1.2,
+    scale: 0.5,
+    // Масштаб корпуса и конечностей.
+    vertebraBaseCm: 10,
+    // Звено × scale = 5 см в текущей версии.
+    tailSegments: 0,
+    // Хвост у робота D отключён: отдельные сегменты хвоста больше не создаются.
+    extraLimbMorphSec: 0.4,
+    // Раскрытие лап у водящего и складывание после приземления на жертву.
+    extraLimbLengthCm: 13,
+    // Длина каждого из двух звеньев дополнительной лапы.
+    sphereRadiusCm: 10 / 3,
+    // Сферы C: диаметр уменьшен в 1.5 раза (≈6.67 см).
+    sphereOffsetCm: 3 // Сферы перекрывают ось сегмента и рисуются под позвоночником.
+  },
+  attack: {
+    startleSec: 0.42,
+    // Испуг перед бегством.
+    startleCooldownSec: 3,
+    // Минимальный интервал между испугами.
+    pounceAlignDeg: 6,
+    // Допустимое отклонение корпуса от цели перед прыжком.
+    pounceTurnTimeoutSec: 1.4,
+    // Если разворот заблокирован, продолжить обычную погоню.
+    pounceSpeedCm: 200,
+    // Скорость напрыгивания.
+    pounceCooldownSec: 9,
+    // Minimum gap between combat jump attempts.
+    combatPounceChance: .20,
+    combatPounceMinCm: 60,
+    combatPounceMaxCm: 100,
+    combatPounceDamage: 2,
+    combatPounceRetreatCm: 10,
+    combatPounceRetreatSec: .14,
+    combatPounceRecoverSec: .4,
+    combatPounceDecisionSec: 2.4,
+    // Пауза между попытками напрыгивания.
+    eatSec: 2.6,
+    // Поедание и состояние «пойман» после посадки.
+    coverApproachSec: 0.22,
+    // Завершение прыжка: жертва бежит до посадки, затем захват и очко.
+    coverCenterGapCm: 12,
+    // Меньше значение — сильнее перекрытие тел.
+    dismountSec: 0.275,
+    // Длительность спрыгивания, без предварительного разворота.
+    dismountTurnSec: 0.12,
+    // Быстрый разворот перед спрыгиванием.
+    landingDistancesCm: [39, 52, 65, 78],
+    // Выбирается первая безопасная дистанция.
+    runAfterLandingSec: 1.1,
+    // Продолжать бег прямо после приземления.
+  },
+  light: {
+    ambientColor: '#8b9e91', // Холодный приглушённый больничный свет.
+    ambientIntensity: 0.55,
+    obstacleLightExtraDiameterCm: 100,
+    obstacleLightOpacity: 0.12,
+    obstacleLightReveal: 0.35,
+    staticResolution: 2, // Статичный свет: пикселей на сантиметр при однократной подготовке.
+    hitBoost: 0.5, // Успешное попадание: +50% к свету под атакующим.
+    hitFadeSec: 0.2, // Возврат к обычной яркости за 0.2 с игрового времени.
+    nearbyIntensity: 0.5, // Яркость простого кругового пятна.
+    nearbyRadiusCm: 75,
+    // Радиус ближнего света; диаметр = 150 см.
+    darknessOpacity: 0.92 // 0 — светло, 1 — полная темнота вне фонариков.
+  },
+  trails: {
+    radiusCm: 2.925, // Радиус отпечатка: ещё в 1.5 раза больше прежних 1.95 см.
+    limit: 10,
+    // Максимум отпечатков точек опоры на каждого робота.
+    fadeSec: 14,
+    // Полное исчезновение старого следа.
+    opacity: 0.251 // Втрое менее заметный свежий отпечаток.
+  },
+  oil: {
+    freshLimitFull: 1000,
+    freshLimitLight: 500,
+    limit: 2000, // Общий лимит пятен всех роботов; первыми удаляются самые старые.
+    dropSizeScale: 2, // Начальные радиус и диаметр капающей жидкости увеличены вдвое.
+    hueSpreadDeg: 12, // Узкий разброс вокруг тёмно-красного.
+    baseHue: 359,
+    saturation: 81,
+    lightness: 12.2, // Приблизительно #380607.
+    settledPuddleRadiusCm: 15, // Одинаковая лужа под остановившимся телом или фрагментом.
+    drySec: 18, // Старые пятна становятся буро-чёрными.
+    spriteColumns: 4,
+    spriteRows: 4,
+    spriteDryColor: '#160c09',
+    spriteDryStrength: 0.95,
+    coolantColor: '#63d9ff', // Голубой оттенок антифриза протезов.
+    coolantDryColor: '#123640', // Оттенок высохшего антифриза.
+    coolantTintStrength: 0.5, // 50% исходного цвета спрайта и 50% голубой перекраски.
+    minIntervalSec: 0.5,
+    // Минимальный интервал между каплями масла из раны.
+    maxIntervalSec: 0.7,
+    // Максимальный интервал между каплями.
+    sizeJitter: 0.2,
+    // Варьирование стартового размера капли на 20%.
+    spreadSec: 3,
+    // За сколько секунд капля растекается.
+    growFactor: 1.5 // Финальный размер пятна = стартовый × 1.5.
+  },
+  prosthetics: {
+    speedPerSegment: 0.03, // Доля исходных очков за сохранившийся сегмент протеза.
+    strengthPerSegment: 0.03,
+    maneuverPerSegment: -0.02,
+  },
+  combat: {
+    trauma: {
+      enabled: true,
+      threshold: 24, // Накопленная травма до потери сознания; отдельна от HP.
+      headMultiplier: 1.5, // Учитывается только фактически снятое HP.
+    },
+    healthPerSegment: 3,
+    // Три точных попадания уничтожают каждый сегмент.
+    attackRangeCm: 31.5,
+    // Дистанция удара на 25% короче прежних 42 см.
+    attackCooldownSec: 0.9,
+    // Интервал между ударами одного робота.
+    damageInvulnerabilitySec: 0.28,
+    // Защита конкретной детали от повторного касания.
+    debrisLifetimeSec: 60,
+    // Время лежания отломанного сегмента.
+    contactSenseCm: 32,
+    // Осязание у безголовых бойцов.
+    windupSec: 0.32,
+    // Подготовка реального движения конечности.
+    thrustSec: 0.20,
+    // Вынос руки или удар головой.
+    recoverSec: 0.26,
+    // Возврат конечности в опору после удара.
+    retreatSec: 2.5,
+    // Продолжительность защитного отхода.
+    dangerRangeCm: 115,
+    // Зона анализа риска и выбора фланга.
+    strikeReachCm: 18,
+    // Дополнительный выпад сокращён на 25% (ранее 24 см).
+    flankRadiusCm: 66,
+    // Точка захода за спину противника.
+    unarmedFailureMinSec: 10,
+    // Время до отказа робота без возможности атаковать.
+    unarmedFailureMaxSec: 15 // Случайная верхняя граница времени отказа.
+  },
+  effects: {
+    inertiaDistanceCm: 30,
+    inertiaSec: 1.5,
+    victoryGlowRangeCm: 30, // Мягкий золотой ореол от силуэта победителя.
+    hitEffects: true,
+    hitPoolLimit: 8,
+    ...hitPreset,
+    waveSec: 0.35,
+    // Длительность короткого кольца касания.
+    particleCount: 32,
+    // Частиц при одном касании.
+    particleLimit: 96,
+    // Общий предел одновременно существующих частиц.
+    particleSpread: 1.5,
+    // Множитель диаметра разлёта частиц.
+    particleLifeSec: 0.7 // Время затухания частиц.
+  }
+};
+// Четыре робота арены. Позиции выбираются заново при запуске.
+// Ниже — расчёты и отрисовка. Для обычной настройки их менять не нужно.

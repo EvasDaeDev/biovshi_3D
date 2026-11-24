@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<!-- telegram-sdk:start -->
+<script>
+// Fetch the pinned official SDK from the same origin as the game. Telegram's
+// CDN may be unreachable in the WebView even when GitHub Pages works.
+(function () {
+  var launch = location.hash + '&' + location.search.slice(1);
+  if (!/(?:^|[#&?])tgWebApp(?:Platform|Version)=/.test(launch)) return;
+  document.documentElement.classList.add('telegram-launch');
+  window.__loadTelegramSDK = function () {
+    var previous = window.__telegramSDK;
+    if (previous && (previous.state === 'loading' || previous.state === 'loaded')) return;
+    var script = document.createElement('script');
+    script.src = './vendor/telegram-web-app-65.js';
+    script.async = true;
+    var status = window.__telegramSDK = { state: 'loading', source: script.src, error: null };
+    script.onload = function () {
+      status.state = window.Telegram && window.Telegram.WebApp ? 'loaded' : 'unavailable';
+      window.dispatchEvent(new Event('telegram-sdk-ready'));
+    };
+    script.onerror = function () {
+      status.state = 'error';status.error = 'SDK script failed to load';
+      window.dispatchEvent(new Event('telegram-sdk-error'));
+    };
+    document.head.appendChild(script);
+  };
+  window.__loadTelegramSDK();
+})();
+</script>
+<!-- telegram-sdk:end -->
+<!-- Настройки игры: src/config.js. -->
+<title>ЭКЦЕПРИ (ECCEPRY) — Гладиаторские бои</title>
+<link rel="icon" type="image/png" sizes="64x64" href="./assets/textures/UI/icons/app_ico_64.png">
+<link rel="apple-touch-icon" href="./assets/textures/UI/icons/app_ico_512.png">
+<link rel="manifest" href="./manifest.webmanifest">
+
+
+
+<link rel="stylesheet" href="./styles/base.css">
+<link rel="stylesheet" href="./styles/layout.css">
+<link rel="stylesheet" href="./styles/betting.css">
+<link rel="stylesheet" href="./styles/interface.css">
+<link rel="stylesheet" href="./styles/wasteland.css">
+<link rel="stylesheet" href="./styles/usability.css">
+<link rel="stylesheet" href="./styles/tower.css">
+<link rel="stylesheet" href="./styles/streamer.css">
+<link rel="stylesheet" href="./styles/trauma.css">
+<link rel="stylesheet" href="./styles/boss.css">
+<link rel="stylesheet" href="./styles/responsive.css">
+<link rel="stylesheet" href="./styles/tutorial.css">
+<link rel="stylesheet" href="./styles/telegram.css">
+<link rel="stylesheet" href="./styles/ui-redesign.css">
+<link rel="stylesheet" href="./styles/typography.css">
+<link rel="stylesheet" href="./styles/metal-material.css">
+<link rel="stylesheet" href="./styles/menu-background.css">
+</head>
+<body>
+<div id="texture-loading" role="status"><div class="loading-center"><p class="loading-status">Запуск клиники…</p></div></div>
+<div id="menu-background" aria-hidden="true"><img alt=""></div>
+
+
+<div id="robot-tag-hops-v22">
+  <nav id="game-navigation" class="game-navigation" aria-label="Навигация по экранам">
+    <button id="game-nav-back" class="game-nav-back-control" type="button" aria-label="Назад на предыдущий экран" hidden>← НАЗАД</button>
+    <button id="game-nav-settings" type="button" aria-label="Настройки" aria-controls="arena-settings" aria-expanded="false" title="Настройки"></button>
+  </nav>
+  <div id="launch-overlay" class="launch-overlay" role="dialog" aria-modal="true" aria-labelledby="launch-title">
+    <div class="launch-paper">
+      <button id="launch-settings-button" class="btn settings-button launch-settings-button" type="button" aria-label="Настройки" aria-controls="arena-settings" aria-expanded="false" title="Настройки" tabindex="-1" aria-hidden="true"></button>
+      <p class="launch-stamp">ПРОТОКОЛ № 001 · ДОПУСК НА АРЕНУ</p>
+      <h1 id="launch-title">ЭКЦЕПРИ</h1>
+      <p class="launch-subtitle" aria-live="off"></p>
+      <div class="launch-divider" aria-hidden="true"></div>
+      <p class="launch-instruction">Выберите режим. Игроки и банк общие.</p>
+      <button id="launch-game" type="button" autofocus>ПОСМОТРЕТЬ БОЙ!</button>
+      <div class="tower-menu-block">
+        <div class="tower-menu-player">
+          <label for="menu-player">ИГРОК</label>
+          <button id="menu-player-create" type="button" aria-haspopup="dialog" hidden>ВЫБРАТЬ ИГРОКА</button>
+          <select id="menu-player" aria-label="Игрок"></select>
+          <span id="menu-patient-preview" class="menu-patient-preview" aria-label="Пациент выбранного игрока"></span>
+          <span id="menu-bank" aria-label="Баланс выбранного игрока"></span>
+        </div>
+        <p id="menu-tower-progress"></p>
+        <button id="launch-tower" type="button">РЕЖИМ БАШНЯ · ЭТАЖ 1</button>
+        <button id="tower-reset" type="button">СБРОС БАШНИ</button>
+      </div>
+      <button id="launch-totalizator" type="button" hidden>ТОТАЛИЗАТОР</button>
+      <button id="launch-setup" type="button" aria-haspopup="dialog">ПРОФИЛИ</button>
+      <p class="launch-footnote">СИГНАЛ ПОДАН · ПАЦИЕНТЫ ГОТОВЫ</p>
+    </div>
+  </div>
+  <dialog id="player-profiles" class="paper-dialog" aria-modal="true" aria-labelledby="player-profiles-title">
+    <h2 id="player-profiles-title" tabindex="-1">ПРОФИЛИ</h2>
+    <div class="profile-cards"></div>
+    <form class="profile-add">
+      <label>Имя нового игрока<input name="name" type="text" maxlength="32" required autocomplete="off"></label>
+      <button type="submit">ДОБАВИТЬ ИГРОКА</button>
+    </form>
+    <p class="profile-status" role="status"></p>
+    <footer class="paper-dialog-actions">
+      <button type="button" class="paper-dialog-primary" data-paper-dismiss>ЗАКРЫТЬ</button>
+    </footer>
+  </dialog>
+  <dialog id="startup-intro" class="paper-dialog" aria-modal="true" aria-labelledby="startup-intro-title">
+    <h2 id="startup-intro-title" tabindex="-1" autofocus>ЭКЦЕПРИ</h2>
+    <p class="paper-dialog-subtitle"><em>Экспериментальный центр протезирования и имплантации</em></p>
+    <p>Когда-то здесь создавали будущее.</p>
+    <p>По заказам частных военных корпораций Центр разрабатывал универсальных солдат — живучих, послушных и способных продолжать бой даже после потери большей части тела. Конечности заменяли протезами, органы — имплантами, а человеческие возможности расширяли до пределов, которые прежде считались невозможными.</p>
+    <p>Потом закончилось финансирование.</p>
+    <p>Заказчики исчезли. Учёные остались. Пациенты тоже.</p>
+    <p>Оборудование требовало обслуживания, персонал — зарплаты, а пациенты — новых конечностей взамен регулярно утрачиваемых. Закрыть Центр было нельзя. Содержать его — не на что.</p>
+    <p>Решение нашлось неожиданно быстро.</p>
+    <p>Теперь экспериментальные бои транслируются для платёжеспособной публики. Зрители делают ставки, а полученные травмы открывают новые возможности для исследований.</p>
+    <p>Особой популярностью пользуется <strong>Башня</strong> — многоуровневая программа испытаний, где каждый следующий этаж опаснее предыдущего. Победителям полагаются деньги, модификации и право продолжить эксперимент.</p>
+    <p>Проигравшим — медицинская помощь. По возможности.</p>
+    <p><strong>Добро пожаловать в Центр.</strong><br><em>Ваше здоровье по-прежнему является нашим главным научным интересом.</em></p>
+    <footer class="paper-dialog-actions">
+      <button type="button" class="paper-dialog-primary" data-paper-dismiss>ВПЕРЕД</button>
+    </footer>
+  </dialog>
+  <dialog id="archive-note-reader" class="paper-dialog" aria-modal="true" aria-labelledby="archive-note-number">
+    <h2 id="archive-note-number" tabindex="-1" autofocus></h2>
+    <p id="archive-note-sender" class="paper-dialog-subtitle"></p>
+    <h3 id="archive-note-title"></h3>
+    <p id="archive-note-text"></p>
+    <footer class="paper-dialog-actions">
+      <button type="button" class="paper-dialog-primary" data-paper-dismiss>ЗАКРЫТЬ</button>
+    </footer>
+  </dialog>
+  <div id="tower-preparation" class="bet-overlay" role="dialog" aria-modal="true" aria-labelledby="tower-prep-title" hidden><div class="bet-panel">
+    <header class="tower-prep-header"><button id="tower-prep-back" class="tower-nav-button" type="button" aria-label="Назад" tabindex="-1" aria-hidden="true">← НАЗАД</button><h2 id="tower-prep-title">БАШНЯ</h2><button id="tower-prep-settings" class="tower-nav-button" type="button" aria-label="Настройки" aria-controls="arena-settings" aria-expanded="false" tabindex="-1" aria-hidden="true">НАСТРОЙКИ ⚙</button></header><p id="tower-prep-name" class="tower-player-wallet"></p><div class="tower-prep-workspace"><section class="tower-prep-arena" aria-label="Арена и испытания"><div id="tower-floor-preview"></div></section><section class="tower-prep-patient" aria-label="Подготовка пациента">
+    <div id="tower-stats" class="bet-fields"></div>
+    <div id="tower-prep-artifacts" hidden></div>
+    <p id="tower-insurance-status" role="status" hidden></p>
+    </section></div><p id="tower-prep-error" role="status"></p><div class="bet-actions"><button id="tower-insurance" type="button" aria-live="polite">ДМС</button><button id="tower-fight" class="bet-primary" type="button">НА ЭТАЖ</button></div>
+  </div></div>
+  <div id="tower-controls" hidden><div id="tower-stick" role="group" aria-label="Джойстик движения"><span></span></div></div>
+  <div class="viz-controls atmosphere-controls">
+<button id="tag7hop-pause" class="btn" type="button" aria-pressed="false">Пауза</button>
+<button id="tag7hop-speed" class="btn" type="button" aria-pressed="false" aria-label="Ускорение времени в 2 раза" title="Ускорить бой в 2 раза">×2</button>
+<button id="tag7hop-reset" class="btn" type="button">Сброс</button>
+
+<output id="tower-wallet" hidden></output>
+<output id="render-fps" aria-label="Частота отрисовки">— FPS</output>
+<span id="tag7hop-status" class="text-small" aria-live="polite">Гладиаторы · каждый сам за себя</span>
+<button id="arena-settings-button" class="btn settings-button" type="button" aria-label="Настройки" aria-controls="arena-settings" aria-expanded="false" title="Настройки" tabindex="-1" aria-hidden="true">
+</button>
+</div>
+
+<div id="arena-settings" class="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="arena-settings-title" hidden>
+ <div class="settings-panel">
+  <header><h2 id="arena-settings-title">Настройки</h2><button id="arena-settings-close" class="btn" type="button" aria-label="Закрыть настройки">✕</button></header>
+  <label class="graphics-control">Графика <select id="graphics-quality" aria-label="Качество графики"><option value="auto">Авто</option><option value="full">Полная</option><option value="light">Лёгкая</option></select></label>
+  <div class="audio-controls" role="group" aria-label="Громкость">
+   <label for="sound-volume">Звуки <input id="sound-volume" type="range" min="0" max="100" step="1" value="50"><output for="sound-volume" id="sound-volume-value">50%</output></label>
+   <label for="music-volume">Музыка <input id="music-volume" type="range" min="0" max="100" step="1" value="50"><output for="music-volume" id="music-volume-value">50%</output></label>
+  </div>
+  <label class="tower-control-setting">Способ управления
+   <select id="tower-control-mode" aria-describedby="tower-control-hint"><option value="control">Управление</option><option value="direction">Направление</option></select>
+  </label>
+  <p id="tower-control-hint">Доступно в режиме башни.</p>
+  <div id="arena-settings-content"></div>
+  <button id="tutorial-start" type="button">РЕЖИМ ОБУЧЕНИЯ</button>
+  <button id="settings-main-menu" type="button">В ГЛАВНОЕ МЕНЮ</button>
+  <div class="credits-entry"><button id="arena-credits-open" type="button" aria-controls="arena-credits-view" aria-expanded="false">АВТОРЫ И ЛИЦЕНЗИИ</button></div>
+  <section id="arena-credits-view" class="credits-view" aria-labelledby="arena-credits-title" hidden>
+   <p class="credits-stamp">АРХИВ / ДЕЛО № 001</p>
+   <h3 id="arena-credits-title">АВТОРЫ И ЛИЦЕНЗИИ</h3>
+   <div class="credits-section">
+    <h4>СОЗДАНИЕ ПРОЕКТА</h4>
+    <p><strong>Станислав EvasDae Гирдо</strong><br>Автор идеи, концепции, дизайна, игровых механик и творческий руководитель проекта.</p>
+    <p><strong>ChatGPT (OpenAI)</strong><br>Техническая реализация и программирование по заданию автора проекта.</p>
+   </div>
+   <div class="credits-section">
+    <h4>МУЗЫКАЛЬНОЕ СОПРОВОЖДЕНИЕ</h4>
+    <p><strong>The Flower Duet (из оперы Lakmé)</strong><br>Композитор: Léo Delibes<br>Исполнение: под управлением Philip Milman<br>Источник: <a href="https://www.classicals.de/delibes-flower-duet" target="_blank" rel="noopener noreferrer">classicals.de/delibes-flower-duet</a><br>Лицензия: <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">Creative Commons CC BY 4.0</a>.</p>
+    <p>Если используется отредактированная версия записи: сокращение длительности, регулировка громкости и зацикливание для игры.</p>
+    <p><strong>Long Note Three</strong><br>Композитор: Kevin MacLeod<br>Источник: <a href="https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100424" target="_blank" rel="noopener noreferrer">incompetech.com</a><br>Лицензия: <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">Creative Commons CC BY 4.0</a>.<br>Версия для игры сокращена до 3:00, зациклена и воспроизводится на пониженной громкости.</p>
+   </div>
+   <div class="credits-section">
+    <h4>ШРИФТЫ</h4>
+    <p><strong>Kelly Slab</strong> · Denis Masharov<br><a href="./fonts/KellySlab-OFL.txt" download="KellySlab-OFL.txt">SIL Open Font License 1.1</a></p>
+    <p><strong>IBM Plex Mono</strong> · IBM Corp.<br><a href="./fonts/IBMPlexMono-OFL.txt" download="IBMPlexMono-OFL.txt">SIL Open Font License 1.1</a></p>
+    <p><strong>Rubik Distressed</strong> · The Rubik Filtered Project Authors<br><a href="./fonts/RubikDistressed-OFL.txt" download="RubikDistressed-OFL.txt">SIL Open Font License 1.1</a></p>
+   </div>
+   <p class="credits-footnote">Полный перечень авторов и материалов — в CREDITS.md репозитория.</p>
+   <button id="arena-credits-back" type="button">НАЗАД К НАСТРОЙКАМ</button>
+  </section>
+  <footer class="settings-copyright"><small>(с) <strong>Станислав EvasDae Гирдо</strong>, 2026. v<span id="settings-build-version"></span></small></footer>
+ </div>
+</div>
+
+  <div id="bet-overlay" class="bet-overlay" role="dialog" aria-modal="true" aria-labelledby="bet-title" hidden>
+ <div class="bet-panel">
+  <h2 id="bet-title"></h2>
+  <div id="bet-content"></div>
+ </div>
+</div>
+  <div class="tag7hop-layout">
+    <aside class="tag7hop-sidebar-wrap" aria-label="Карточки пациентов">
+      <div id="tag7hop-roles" class="tag7hop-sidebar"></div>
+    </aside>
+    <div class="tag7hop-main">
+  <div class="tag7hop-stage">
+  <div id="tower-reward-toast" role="status" aria-live="polite" hidden></div>
+  <div class="arena-pause-label" hidden>ПАУЗА</div>
+  <button id="combat-log-toggle" type="button" aria-expanded="true" aria-controls="combat-log" aria-label="Скрыть журнал" title="Скрыть журнал">▴</button>
+  <div id="tag7hop-intro" class="tag7hop-intro" role="dialog" aria-modal="true" aria-labelledby="tag7hop-intro-title">
+    <div class="tag7hop-intro-card">
+      <h1 id="tag7hop-intro-title"><span>ЭКЦЕПРИ</span> <small>ГЛАДИАТОРСКИЕ БОИ</small></h1>
+      <button id="tag7hop-start" type="button">В БОЙ!</button>
+    </div>
+  </div>
+  <svg id="tag7hop-field" viewBox="-38 -38 776 776" role="img" aria-label="Четыре пациента сражаются каждый сам за себя на арене семь на семь метров в мрачной операционной. Тёмная плитка, приглушённый больничный свет и тёплые фонари пациентов. Пять препятствий и внешний периметр со скошенными углами. Буквы пациентов совпадают по цвету с карточками." style="display:block;width:100%;height:auto;aspect-ratio:1;overflow:hidden">
+    <title>Гладиаторы: четыре пациента, поле 7 × 7 м</title>
+<g id="tag7hop-arena-content">
+    <rect width="700" height="700" fill="var(--background)">
+</rect>
+<g id="tag7hop-grid">
+</g>
+<g id="tag7hop-cones">
+</g>
+<g id="tag7hop-block">
+<rect x="300" y="300" width="100" height="100">
+</rect>
+</g>
+<g id="tag7hop-trails" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width=".8">
+</g>
+<g id="tag7hop-ground">
+</g>
+<g id="tag7hop-actors">
+</g>
+<g id="tag7hop-sparks" fill="none" stroke-width="1.2">
+</g>
+<g id="tag7hop-pulses" fill="none" stroke-width="1.2">
+</g>
+    <defs>
+<g id="tag7hop-gradients">
+</g>
+<mask id="tag7hop-darkness-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="700" height="700" style="mask-type:luminance">
+<rect width="700" height="700" fill="white">
+</rect>
+<g id="tag7hop-light-holes" fill="black">
+</g>
+</mask>
+</defs>
+    <rect id="tag7hop-darkness" width="700" height="700" fill="var(--night-bg)" opacity="0.9" mask="url(#tag7hop-darkness-mask)" pointer-events="none">
+</rect>
+<g id="tag7hop-flashlights" pointer-events="none">
+</g>
+    <g id="tag7hop-score" role="img" aria-label="Оставшиеся сегменты: A — 0, B — 0, C — 0, D — 0">
+<title>Съедено соперников</title>
+</g>
+    <text id="tag7hop-timer" x="350" y="30" text-anchor="middle" dominant-baseline="middle" role="timer" aria-live="off" aria-label="Время раунда" pointer-events="none">0:00</text>
+  </g>
+  </svg>
+  <button id="arena-expand-button" class="btn arena-expand-button" type="button" aria-label="Развернуть" aria-pressed="false" title="Развернуть">
+  </button>
+  </div>
+
+    </div>
+    <aside id="bet-hud" aria-label="Банк и ставки игроков" aria-live="polite" hidden></aside>
+  </div>
+  <div id="gladiator-results" class="gladiator-results" role="dialog" aria-modal="true" aria-labelledby="gladiator-results-title" hidden>
+    <div class="gladiator-results-card">
+      <h2 id="gladiator-results-title">ПОБЕДИТЕЛЬ — A</h2>
+      <p id="tower-results-player" class="tower-player-wallet" hidden></p>
+      <p id="gladiator-results-summary" class="gladiator-results-summary"></p>
+      <div id="bet-result-summary"></div>
+      <div class="results-actions"><button id="gladiator-results-again" type="button">К СТАВКАМ СЛЕДУЮЩЕГО РАУНДА</button><button id="gladiator-results-procedure" type="button">ПРОЦЕДУРНАЯ</button></div>
+      <details class="gladiator-results-details">
+        <summary>ПОДРОБНАЯ СТАТИСТИКА БОЯ</summary>
+        <div id="gladiator-results-totals" class="gladiator-results-totals"></div>
+        <div class="gladiator-results-table-wrap">
+          <table class="gladiator-results-table" aria-label="Статистика пациентов">
+            <thead><tr><th>Пациент</th><th>Сегменты</th><th>Попадания</th><th>Получено</th><th>Итог</th></tr></thead>
+            <tbody id="gladiator-results-rows"></tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+
+<script type="module" src="./src/main.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
+

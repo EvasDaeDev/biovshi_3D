@@ -1,0 +1,91 @@
+import {bossAssets} from '../boss/assets.js';
+// Paths are relative to public/. Use null to keep the current appearance and silence.
+export const ASSETS = {
+  textures: {
+    uiMenuBackground:'assets/textures/UI/menu-background.webp',
+    ...bossAssets(),
+    uiBone:'assets/textures/UI/icons/bone_01.png',
+    uiDice:'assets/textures/UI/dice.png',
+    uiTable:'assets/textures/UI/table.png',
+    uiCoin:'assets/textures/UI/icons/coin_01.png',
+    uiMobility:'assets/textures/UI/icons/mobi_01.png',
+    notePatient:'assets/textures/UI/icons/note_pla.png',
+    noteSecurity:'assets/textures/UI/icons/note_sec.png',
+    noteEngineer:'assets/textures/UI/icons/note_ing.png',
+    noteDoctor:'assets/textures/UI/icons/note_med.png',
+    uiScreen:'assets/textures/UI/icons/screen_01.png',
+    uiSettings:'assets/textures/UI/icons/setting_01.png',
+    uiSpeed:'assets/textures/UI/icons/speed_01.png',
+    uiStrength:'assets/textures/UI/icons/strench_01.png',
+    ...Object.fromEntries(Array.from({length:4},(_,a)=>['bg','1','2','3','4'].map(piece=>[`artifact${a+1}_${piece}`,`assets/textures/UI/artefacts/${a+1}/${piece}.png`])).flat()),
+    streamer: 'assets/textures/streamer/girl_atlas.png',
+    arenaFloor: 'assets/textures/arena/floor_01.webp',
+    floorDecals: 'assets/textures/arena/floor_decals.png',
+    arenaWall: 'assets/textures/arena/wall_01.webp',
+    arenaOuterWall: 'assets/textures/arena/wall_outer.png',
+    obstacle: 'assets/textures/arena/wall_02.webp',
+    liquids: 'assets/textures/arena/liquids.png',
+    flashlight: 'assets/textures/robots/flashlight.png',
+    hat1: 'assets/textures/robots/decor/head/1.png',
+    hat2: 'assets/textures/robots/decor/head/2.png',
+    hat3: 'assets/textures/robots/decor/head/3.png',
+    hat4: 'assets/textures/robots/decor/head/4.png',
+    robotAndroid: 'assets/textures/robots/ar_01.png',
+    // Include ALL artist-editable Tower upgrade atlases in both hosted and
+    // fully offline standalone builds. Runtime lookups select per segment.
+    ...Object.fromEntries(['brace','alignment','drive','impact','reflex'].map(id=>[
+      'towerSurgery_'+id,'assets/textures/robots/upgrades/ar_surg_'+id+'.png'
+    ])),
+    ...Object.fromEntries(['turbo','servo','piston','adrenal','predator','instinct',
+      'flywheel','gyro','spike','sinews','ossify','twitch','optic','synapse',
+      'focus','metronome','alarm','quiet'].map(id=>[
+      'towerMutation_'+id,'assets/textures/robots/upgrades/ar_mod_'+id+'.png'
+    ])),
+    robotA: 'assets/textures/robots/r_01.png',
+    robotB: 'assets/textures/robots/r_02.png',
+    robotC: 'assets/textures/robots/r_03.png',
+    robotD: 'assets/textures/robots/r_04.png',
+    robotEnemy1: 'assets/textures/robots/e_01.png',
+    robotEnemy2: 'assets/textures/robots/e_02.png',
+    robotEnemy3: 'assets/textures/robots/e_03.png',
+    robotEnemy4: 'assets/textures/robots/e_04.png',
+  },
+  sounds: {
+    // Patient voices are separate from the impact and severing effects.
+    manPain1: 'assets/sounds/combat/man_pain/hurt_01.mp3',
+    manPain2: 'assets/sounds/combat/man_pain/hurt_04.mp3',
+    manPain3: 'assets/sounds/combat/man_pain/hurt_05.mp3',
+    womanPain1: 'assets/sounds/combat/woman_pain/female_hurt_01.ogg',
+    womanPain2: 'assets/sounds/combat/woman_pain/female_hurt_02.ogg',
+    womanPain3: 'assets/sounds/combat/woman_pain/female_hurt_03.ogg',
+    womanPain4: 'assets/sounds/combat/woman_pain/female_hurt_04.ogg',
+    womanPain5: 'assets/sounds/combat/woman_pain/female_hurt_05.ogg',
+    womanPain6: 'assets/sounds/combat/woman_pain/female_hurt_06.ogg',
+    womanPain7: 'assets/sounds/combat/woman_pain/female_hurt_07.ogg',
+    pounce: 'assets/sounds/effects/56_Attack_03.ogg',
+    hit: 'assets/sounds/effects/hit_1.mp3',
+    crit: 'assets/sounds/effects/crit_hit_1.mp3',
+    death: 'assets/sounds/effects/death_body_1.mp3',
+    detach1: 'assets/sounds/effects/detach_limb_1.mp3',
+    detach2: 'assets/sounds/effects/detach_limb_2.mp3',
+    victory: 'assets/sounds/effects/end_01.mp3',
+    miss1: 'assets/sounds/effects/miss_1.mp3',
+    miss2: 'assets/sounds/effects/miss_2.mp3',
+    crawl: 'assets/sounds/effects/slow_death_run.mp3',
+    drag: 'assets/sounds/effects/step_1.mp3',
+    step: 'assets/sounds/effects/step_1.mp3',
+    music: 'assets/sounds/music/music_01.mp3',
+    menuMusic: 'assets/music/Long20Three.mp3',
+  },
+};
+export const isTowerTexture=key=>/^(?:robotBoss|robotEnemy|towerSurgery_|towerMutation_)/.test(key);
+export function sceneTextureKeys(tower=false){
+  return Object.keys(ASSETS.textures).filter(key=>
+    !/^(?:ui|note|artifact|streamer)/.test(key)&&(tower||!isTowerTexture(key)));
+}
+
+export function assetUrl(file) {
+  if (!file) return null;
+  const inline = typeof __INLINE_ASSETS__ === 'undefined' ? {} : __INLINE_ASSETS__;
+  return inline[file] ?? (import.meta.env?.BASE_URL ?? './') + file;
+}

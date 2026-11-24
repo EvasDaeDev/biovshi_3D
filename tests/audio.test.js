@@ -1,0 +1,381 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {JSDOM} from 'jsdom';
+import {createAudio,loadAudioSettings,playbackRate,painSoundKey,painLevelGain,makeRoomImpulse} from '../src/audio/audio.js';
+import {emitGameEvent} from '../src/game/event-bus.js';
+import {ASSETS} from '../src/assets/manifest.js';
+
+const flush=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();};
+function setup({phase='running',musicOffsets}={}){
+ const dom=new JSDOM(fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),{url:'https://audio.test/'});
+ const sources=[],gains=[],convolvers=[];
+ const context={state:'suspended',currentTime:0,sampleRate:48000,destination:{},resume(){this.state='running';return Promise.resolve();},
+  createBuffer(channels,length,rate){const data=Array.from({length:channels},()=>new Float32Array(length));return {numberOfChannels:channels,length,sampleRate:rate,getChannelData:i=>data[i]};},
+  createConvolver(){const node={connect(destination){this.destination=destination;},disconnect(){this.disconnected=true;}};convolvers.push(node);return node;},
+  createGain(){const param={value:1,events:[],cancelScheduledValues(t){this.events.push(['cancel',t]);},setValueAtTime(v,t){this.value=v;this.events.push(['set',v,t]);},linearRampToValueAtTime(v,t){this.events.push(['ramp',v,t]);},exponentialRampToValueAtTime(v,t){this.events.push(['exp',v,t]);},setTargetAtTime(v,t,tau){this.events.push(['target',v,t,tau]);}};const gain={gain:param,connections:[],connect(node){this.connections.push(node);},disconnect(){this.disconnected=true;}};gains.push(gain);return gain;},
+  createBufferSource(){const source={playbackRate:{value:1},connect(node){this.gain=node;},disconnect(){},start(...args){this.started=true;this.startArgs=args;},stop(){this.stopped=true;}};sources.push(source);return source;}};
+ context.createOscillator=()=>{const oscillator={frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){},start(){this.started=true;},stop(){this.stopped=true;this.onended?.();}};sources.push(oscillator);return oscillator;};
+ const state={root:dom.window.document.querySelector('#robot-tag-hops-v22'),startup:{phase},paused:false,combat:{finished:false,unarmedDeadline:[null,null]},robots:[{id:0,visible:true,mobile:true},{id:1,visible:true,mobile:true}]};
+ const target=new EventTarget();
+ const audio=createAudio({state,storage:dom.window.localStorage,eventTarget:target,contextFactory:()=>context,musicOffsets,bufferLoader:async(_context,path)=>{
+  if(path===ASSETS.sounds.music)return {path,duration:120};
+  if(path===ASSETS.sounds.menuMusic)return {path,duration:180};
+  return path;
+ }});
+ return {audio,state,context,sources,gains,convolvers,dom,target,unlock:async()=>{target.dispatchEvent(new Event('pointerdown'));await flush();},finish(){audio.dispose();dom.window.close();}};
+}
+const live=(sources,key)=>sources.filter(s=>s.started&&!s.stopped&&((s.buffer?.path??s.buffer)===ASSETS.sounds[key]));
+
+test('app deactivation stops music and pending effects; activation resumes music at its saved offset',async()=>{
+ const f=setup();try{
+  await f.unlock();const music=live(f.sources,'music')[0];f.context.currentTime=12;
+  emitGameEvent('hit',{by:0,robot:1,damage:1});
+  f.state.appInactive=true;f.audio.sync();await flush();
+  assert.ok(music.stopped);assert.equal(live(f.sources,'music').length,0);assert.equal(live(f.sources,'hit').length,0);
+  emitGameEvent('hit',{by:0,robot:1,damage:1});await flush();assert.equal(live(f.sources,'hit').length,0);
+  f.state.appInactive=false;f.audio.sync();await flush();
+  assert.equal(live(f.sources,'music')[0].startArgs[1],12);assert.equal(f.state.paused,false);
+ }finally{f.finish();}
+});
+
+test('menu music loops at 85% of the music slider and resumes after combat, mute and arena replacement',async()=>{
+ const musicOffsets=new Map();
+ const f=setup({phase:'menu',musicOffsets});
+ try{
+  await f.unlock();
+  const menu=live(f.sources,'menuMusic')[0];
+  assert.ok(menu.loop);
+  assert.equal(menu.playbackRate.value,1);
+  assert.equal(menu.gain.gain.value,.85);
+  assert.deepEqual(menu.gain.connections,[f.gains[1]]);
+  f.audio.setVolume('sounds',0);
+  f.state.startup.phase='tower-ready';
+  f.audio.sync();
+  assert.deepEqual(live(f.sources,'menuMusic'),[menu]);
+
+  f.context.currentTime=190;
+  f.state.startup.phase='running';
+  f.audio.sync();await flush();
+  assert.ok(menu.stopped);
+  assert.deepEqual(live(f.sources,'music')[0].startArgs,[0,0]);
+
+  f.context.currentTime=210;
+  menu.onended?.();
+  f.state.combat.finished=true;
+  f.audio.sync();await flush();
+  const resumed=live(f.sources,'menuMusic')[0];
+  assert.deepEqual(resumed.startArgs,[0,10]);
+
+  f.context.currentTime=215;
+  f.audio.setVolume('music',0);
+  assert.ok(resumed.stopped);
+  f.context.currentTime=220;
+  f.audio.setVolume('music',40);await flush();
+  assert.deepEqual(live(f.sources,'menuMusic')[0].startArgs,[0,15]);
+  assert.equal(f.gains[1].gain.value,.4);
+  f.context.currentTime=222;
+ }finally{f.finish();}
+
+ const next=setup({phase:'betting',musicOffsets});
+ try{
+  await next.unlock();
+  assert.deepEqual(live(next.sources,'menuMusic')[0].startArgs,[0,17]);
+ }finally{next.finish();}
+});
+
+test('effects unlock on gesture, use per-patient pitch, and a critical replaces a normal hit',async()=>{
+ const f=setup();
+ emitGameEvent('hit',{by:0,robot:1,damage:1});await flush();assert.equal(f.sources.length,0);
+ await f.unlock();
+ emitGameEvent('hit',{by:0,robot:1,damage:2});await flush();
+ assert.equal(live(f.sources,'hit').length,0);assert.equal(live(f.sources,'crit').length,1);
+ assert.ok(live(f.sources,'crit')[0].playbackRate.value<1);
+ emitGameEvent('hit',{by:3,robot:1,damage:1});await flush();assert.ok(live(f.sources,'hit')[0].playbackRate.value>1);
+ emitGameEvent('segment-broken',{by:0,robot:1,damage:1});await flush();
+ assert.equal(live(f.sources,'detach1').length+live(f.sources,'detach2').length,1);
+ emitGameEvent('robot-immobilized',{robot:1,reason:'потерял сознание'});await flush();assert.equal(live(f.sources,'death').length,0);
+ emitGameEvent('robot-immobilized',{robot:1,reason:'погиб'});await flush();assert.equal(live(f.sources,'death').length,1);
+ f.finish();assert.ok(f.sources.every(s=>s.stopped));
+});
+
+test('combat leap sound plays only at takeoff, using the uploaded OGG asset',async()=>{
+ assert.equal(ASSETS.sounds.pounce,'assets/sounds/effects/56_Attack_03.ogg');
+ const f=setup();await f.unlock();
+ emitGameEvent('pounce',{robot:0});await flush();
+ assert.equal(live(f.sources,'pounce').length,0,'preparation is silent');
+ emitGameEvent('pounce-launch',{robot:0});await flush();
+ assert.equal(live(f.sources,'pounce').length,1,'one cue at takeoff');
+ emitGameEvent('pounce-retreat',{robot:0});await flush();
+ assert.equal(live(f.sources,'pounce').length,1,'retreat does not replay jump cue');
+ f.finish();
+});
+
+test('music loops through pause; crawling stops on unconsciousness and music fades at combat end',async()=>{
+ const f=setup();await f.unlock();const music=live(f.sources,'music')[0];assert.ok(music.loop);assert.equal(music.playbackRate.value,1);
+ f.state.combat.unarmedDeadline[0]=10;f.audio.sync();await flush();assert.equal(live(f.sources,'crawl').length,1);assert.ok(live(f.sources,'crawl')[0].loop);
+ f.audio.sync();await flush();assert.equal(live(f.sources,'crawl').length,1,'one loop per patient');
+ f.state.paused=true;f.audio.sync();await flush();assert.equal(live(f.sources,'crawl').length,0);assert.equal(music.stopped,undefined);
+ f.state.paused=false;f.audio.sync();await flush();assert.equal(live(f.sources,'crawl').length,1);
+ f.state.robots[0].mobile=false;f.audio.sync();assert.equal(live(f.sources,'crawl').length,0);
+ f.state.combat.finished=true;emitGameEvent('combat-end',{winner:1});await flush();assert.equal(music.stopped,undefined);assert.deepEqual(music.gain.gain.events.slice(-3),[['cancel',0],['set',1,0],['ramp',0,10]]);assert.equal(live(f.sources,'victory').length,1);assert.equal(live(f.sources,'victory')[0].loop,false);
+ f.state.startup.phase='betting';f.audio.sync();assert.equal(live(f.sources,'victory').length,0);assert.equal(music.stopped,undefined);
+ f.context.currentTime=10;f.audio.sync();assert.ok(music.stopped);
+ f.finish();
+});
+
+test('volume sliders update independent buses, persist 0–100 values and restore preferences',async()=>{
+ const f=setup();await f.unlock();const input=f.dom.window.document.querySelector('#sound-volume');input.value='0';input.dispatchEvent(new f.dom.window.Event('input'));
+ assert.equal(f.gains[0].gain.value,0);assert.equal(f.gains[1].gain.value,.5);assert.equal(f.dom.window.document.querySelector('#sound-volume-value').value,'0%');
+ f.audio.setVolume('music',150);assert.equal(f.gains[1].gain.value,1);
+ assert.deepEqual(loadAudioSettings(f.dom.window.localStorage),{sounds:0,music:100});
+ f.audio.setVolume('music',0);assert.equal(live(f.sources,'music').length,0);
+ f.audio.setVolume('music',20);await flush();assert.equal(live(f.sources,'music').length,1);
+ f.finish();
+});
+
+test('voice limit bounds bursts; leaving combat cancels sounds still decoding',async()=>{
+ const f=setup();await f.unlock();
+ for(let i=0;i<50;i++)emitGameEvent('footstep',{robot:1});
+ f.state.startup.phase='betting';f.audio.sync();await flush();assert.equal(live(f.sources,'step').length,0);
+ f.state.startup.phase='running';f.audio.sync();
+ for(let i=0;i<50;i++)emitGameEvent('footstep',{robot:1});await flush();assert.equal(live(f.sources,'step').length,12);
+ f.finish();
+});
+
+test('runtime sound manifest resolves all files outside source references and pitch stays subtle',()=>{
+ for(const path of Object.values(ASSETS.sounds)){assert.ok(!path.includes('/_src/'));assert.ok(fs.existsSync(new URL('../public/'+path,import.meta.url)));}
+ for(let id=0;id<4;id++)assert.ok(playbackRate(id)>.9&&playbackRate(id)<1.1);
+});
+
+test('foot contact uses step_1 at 70%; legless movement loops it at 100% and stops when idle',async()=>{
+ const f=setup();await f.unlock();
+ emitGameEvent('footstep',{robot:0});await flush();
+ const step=live(f.sources,'step')[0];assert.equal(step.loop,false);assert.equal(step.gain.gain.value,.7);assert.match(step.buffer,/step_1\.mp3$/);
+ const robot=f.state.robots[1];robot.limbs=[];robot.velocity={x:3,y:0};f.audio.sync();await flush();
+ const drag=live(f.sources,'drag').find(s=>s.loop);assert.ok(drag);assert.equal(drag.gain.gain.value,1);
+ f.audio.sync();await flush();assert.equal(live(f.sources,'drag').filter(s=>s.loop).length,1);
+ robot.velocity.x=0;f.audio.sync();assert.ok(drag.stopped);
+ robot.velocity.x=3;robot.limbs=[{kind:'leg'}];f.audio.sync();await flush();assert.equal(live(f.sources,'drag').filter(s=>s.loop).length,0);
+ robot.limbs=[];f.audio.sync();await flush();const resumed=live(f.sources,'drag').find(s=>s.loop);assert.ok(resumed);
+ f.state.paused=true;f.audio.sync();assert.ok(resumed.stopped);
+ f.state.paused=false;f.state.robots[1].mobile=false;f.audio.sync();await flush();assert.equal(live(f.sources,'drag').filter(s=>s.loop).length,0);
+ assert.deepEqual(loadAudioSettings(),{sounds:50,music:50});
+ f.finish();
+});
+
+
+test('Tower combat audio falls off from the camera centre in arena metres',async()=>{
+ const f=setup();
+ try{
+  Object.assign(f.state,{mode:'tower',camera:{x:200,y:100,size:400}});
+  Object.assign(f.state.robots[0],{x:400,y:300});
+  Object.assign(f.state.robots[1],{x:800,y:300});
+  await f.unlock();
+  const near=(actual,expected)=>assert.ok(Math.abs(actual-expected)<1e-9,`${actual} != ${expected}`);
+  for(const [distance,multiplier] of [[0,1],[100,1],[175,.8],[250,.6],[400,.3],[550,.15],[700,.1],[850,.05]]){
+   // Deliberately separate the foot contact from the patient's body.
+   emitGameEvent('footstep',{robot:0,point:{x:400,y:300+distance}});
+   await flush();
+   near(live(f.sources,'step').at(-1).gain.gain.value,.7*multiplier);
+  }
+  const steps=live(f.sources,'step').length;
+  for(const distance of [1000,1400]){
+   emitGameEvent('footstep',{robot:0,point:{x:400,y:300+distance}});
+   await flush();
+   assert.equal(live(f.sources,'step').length,steps);
+  }
+  // Zoom in without moving the centre.
+  Object.assign(f.state.camera,{x:300,y:200,size:200});
+  emitGameEvent('hit',{by:0,robot:1,damage:1,point:{x:640,y:620}});
+  // The victim and the camera can move before the buffer resolves.
+  f.state.robots[1].x=400;f.state.camera.x=500;
+  await flush();
+  const hit=live(f.sources,'hit')[0];
+  near(hit.gain.gain.value,.95*.3);
+  near(hit.gain.connections[1].gain.value,.07);
+  const pain=f.sources.find(s=>s.started&&String(s.buffer).includes('/man_pain/'));
+  near(pain.gain.gain.value,.3);
+  near(live(f.sources,'music')[0].gain.gain.value,1);
+
+  f.state.mode='spectator';
+  emitGameEvent('footstep',{robot:1,point:{x:1400,y:300}});
+  await flush();
+  near(live(f.sources,'step').at(-1).gain.gain.value,.7);
+ }finally{f.finish();}
+});
+
+test('Tower movement loops smoothly track changes in camera and patient position',async()=>{
+ const f=setup();
+ try{
+  Object.assign(f.state,{mode:'tower',camera:{x:0,y:0,size:400}});
+  const robot=f.state.robots[1];
+  Object.assign(robot,{x:600,y:200,velocity:{x:3,y:0},limbs:[]});
+  f.state.combat.unarmedDeadline[1]=10;
+  await f.unlock();
+  const drag=live(f.sources,'drag')[0],crawl=live(f.sources,'crawl')[0];
+  assert.equal(drag.gain.gain.value,.3);
+  assert.equal(crawl.gain.gain.value,.55*.3);
+  f.context.currentTime=.2;
+  f.state.camera.x=150;f.audio.sync();
+  assert.deepEqual(drag.gain.gain.events,[['target',.6,.2,.08]]);
+  assert.deepEqual(crawl.gain.gain.events,[['target',.55*.6,.2,.08]]);
+  f.context.currentTime=.4;
+  robot.x=450;f.audio.sync();f.audio.sync();
+  assert.deepEqual(drag.gain.gain.events.at(-1),['target',1,.4,.08]);
+  assert.equal(drag.gain.gain.events.length,2,'an unchanged target is not rescheduled');
+  f.context.currentTime=.6;
+  robot.x=1400;f.audio.sync();
+  assert.deepEqual(drag.gain.gain.events.at(-1),['set',0,.6]);
+  assert.deepEqual(crawl.gain.gain.events.at(-1),['set',0,.6]);
+  f.context.currentTime=.8;
+  robot.x=450;f.audio.sync();
+  assert.deepEqual(drag.gain.gain.events.at(-1),['target',1,.8,.08]);
+  assert.deepEqual(live(f.sources,'drag'),[drag]);
+  assert.deepEqual(live(f.sources,'crawl'),[crawl]);
+ }finally{f.finish();}
+});
+
+test('next round resumes soundtrack at the paused offset after a complete fade',async()=>{
+ const f=setup();await f.unlock();const first=live(f.sources,'music')[0];
+ f.context.currentTime=22;f.state.combat.finished=true;f.audio.sync();
+ f.context.currentTime=32;f.audio.sync();assert.ok(first.stopped);
+ f.state.startup.phase='betting';f.audio.sync();
+ f.state.combat.finished=false;f.state.startup.phase='running';f.audio.sync();await flush();
+ const next=live(f.sources,'music')[0];assert.notEqual(next,first);assert.deepEqual(next.startArgs,[0,32]);
+ f.finish();
+});
+
+test('starting a new round during fade restores gain and resumes from current playback time',async()=>{
+ const f=setup();await f.unlock();const first=live(f.sources,'music')[0];
+ f.context.currentTime=4;f.state.combat.finished=true;f.audio.sync();
+ f.context.currentTime=7;f.state.combat.finished=false;f.audio.sync();await flush();
+ assert.ok(first.stopped);
+ const resumed=live(f.sources,'music')[0];assert.deepEqual(resumed.startArgs,[0,7]);
+ assert.equal(resumed.gain.gain.value,1);
+ f.finish();
+});
+
+test('all enabled game buttons including popup, summary and stopped-bubble clicks sound once',async()=>{
+ const f=setup();await f.unlock();
+ const root=f.state.root,button=root.querySelector('#tag7hop-pause');
+ const click=target=>target.dispatchEvent(new f.dom.window.MouseEvent('click',{bubbles:true}));
+ f.audio.setVolume('sounds',70);
+ const initial=f.sources.length;
+ button.addEventListener('click',event=>event.stopPropagation());
+ click(button);
+ assert.equal(f.sources.length,initial+1,'capturing root sees clicks before bubbling is stopped');
+ const nested=f.dom.window.document.createElement('span');button.append(nested);
+ click(nested);
+ assert.equal(f.sources.length,initial+2,'icon/label inside a button is clickable');
+ const popup=f.dom.window.document.createElement('div');
+ const action=f.dom.window.document.createElement('button');popup.append(action);root.append(popup);
+ click(action);assert.equal(f.sources.length,initial+3,'dynamically inserted popup button');
+ const summary=f.dom.window.document.createElement('summary');root.append(summary);
+ click(summary);assert.equal(f.sources.length,initial+4,'arena picker summary');
+ const disabled=f.dom.window.document.createElement('button');disabled.disabled=true;root.append(disabled);
+ click(disabled);assert.equal(f.sources.length,initial+4);
+ const ariaDisabled=f.dom.window.document.createElement('button');ariaDisabled.setAttribute('aria-disabled','true');
+ root.append(ariaDisabled);click(ariaDisabled);assert.equal(f.sources.length,initial+4);
+ const foreign=f.dom.window.document.createElement('button');f.dom.window.document.body.append(foreign);
+ click(foreign);assert.equal(f.sources.length,initial+4,'outside game stays silent');
+ f.finish();
+});
+test('the first game-button click also unlocks and produces its cue',async()=>{
+ const f=setup();const button=f.state.root.querySelector('#tag7hop-pause');
+ button.dispatchEvent(new f.dom.window.MouseEvent('click',{bubbles:true}));
+ await flush();
+ assert.equal(f.context.state,'running');
+ assert.equal(f.sources.filter(s=>s.frequency).length,1);
+ f.finish();
+});
+
+test('pain samples map A/B to men and C/D to women, with all files selectable',()=>{
+ const male=['manPain1','manPain2','manPain3'],female=['womanPain1','womanPain2','womanPain3','womanPain4','womanPain5','womanPain6','womanPain7'];
+ for(const id of [0,1])assert.deepEqual(male.map((_,i)=>painSoundKey(id,(i+.5)/male.length)),male);
+ for(const id of [2,3])assert.deepEqual(female.map((_,i)=>painSoundKey(id,(i+.5)/female.length)),female);
+ assert.equal(painSoundKey(-1),null);assert.equal(painSoundKey(4),null);
+});
+
+test('injured patient plays an additional pain clip 100 ms after hit, crit and severing',async()=>{
+ const f=setup();await f.unlock();
+ const originalRandom=Math.random;
+ try{
+  Math.random=()=>0;
+  f.context.currentTime=12;
+  emitGameEvent('hit',{by:0,robot:2,damage:1});await flush();
+  const impact=live(f.sources,'hit')[0],voice=live(f.sources,'womanPain1')[0];
+  assert.ok(impact,'existing impact remains audible');
+  assert.ok(voice,'C plays a female vocalisation');
+  assert.deepEqual(impact.startArgs,[12]);
+  assert.ok(Math.abs(voice.startArgs[0]-12.1)<1e-9);
+  assert.equal(voice.playbackRate.value,playbackRate(2,-.2));
+  f.context.currentTime=13;
+  emitGameEvent('hit',{by:3,robot:0,damage:2});await flush();
+  assert.equal(live(f.sources,'crit').length,1,'critical sound not replaced');
+  assert.equal(live(f.sources,'manPain1').length,1,'injured A plays male sample');
+  assert.ok(Math.abs(live(f.sources,'manPain1')[0].startArgs[0]-13.1)<1e-9);
+  f.context.currentTime=14;
+  emitGameEvent('segment-broken',{by:0,robot:1,damage:1});await flush();
+  assert.equal(live(f.sources,'hit').length,2);
+  assert.equal(live(f.sources,'detach1').length,1);
+  assert.equal(live(f.sources,'manPain1').length,2);
+ }finally{Math.random=originalRandom;f.finish();}
+});
+
+test('queued pain voices are cancelled on pause or next round without affecting sound buses',async()=>{
+ const f=setup();await f.unlock();
+ emitGameEvent('hit',{by:1,robot:3,damage:1});await flush();
+ const voice=f.sources.find(s=>s.started&&String(s.buffer).includes('/woman_pain/'));
+ assert.ok(voice);
+ f.state.paused=true;f.audio.sync();assert.equal(voice.stopped,true);
+ f.state.paused=false;f.state.startup.phase='betting';f.audio.sync();await flush();
+ assert.equal(live(f.sources,'womanPain1').length,0);
+ f.finish();
+});
+
+
+test('vocal RMS matching reduces library differences without destroying dynamics',()=>{
+ const fake=(level)=>({numberOfChannels:1,sampleRate:1000,length:300,getChannelData:()=>new Float32Array(300).fill(level)});
+ const loud=fake(.30),quiet=fake(.015),silent=fake(0);
+ assert.equal(painLevelGain(loud),.45,'loud voices attenuated with bounded gain');
+ assert.equal(painLevelGain(quiet),2.4,'quiet voices raised but never excessively amplified');
+ assert.equal(painLevelGain(silent),1,'silence never receives infinite gain');
+ assert.equal(painLevelGain(quiet),2.4,'same decoded buffer reuses measured level');
+});
+
+test('one shared short reverb serves combat and pain but never music, steps or clicks',async()=>{
+ const f=setup();await f.unlock();
+ assert.equal(f.convolvers.length,1,'one reverb node per arena audio instance');
+ const room=f.convolvers[0];assert.ok(room.buffer);
+ assert.equal(room.buffer.numberOfChannels,2);
+ assert.equal(room.buffer.length,26400,'0.55 s at 48 kHz');
+ const music=live(f.sources,'music')[0];
+ assert.equal(music.gain.connections.length,1,'music is dry');
+ emitGameEvent('footstep',{robot:0});await flush();
+ const step=live(f.sources,'step')[0];
+ assert.equal(step.gain.connections.length,1,'shuffling footsteps retain original sound');
+ emitGameEvent('hit',{by:0,robot:1,damage:1});await flush();
+ const hit=live(f.sources,'hit')[0],pain=f.sources.find(s=>s.started&&String(s.buffer).includes('/man_pain/'));
+ assert.equal(hit.gain.connections.length,2,'hit routes to dry mix and room');
+ assert.ok(hit.gain.connections[1].connections.includes(room));
+ assert.equal(hit.gain.connections[1].gain.value,.07);
+ assert.ok(pain,'victim vocal exists');
+ assert.equal(pain.gain.connections[1].gain.value,.14);
+ assert.equal(hit.gain.gain.value,.95);
+ emitGameEvent('hit',{by:0,robot:1,damage:2});await flush();
+ assert.equal(live(f.sources,'crit')[0].gain.gain.value,.74);
+ f.finish();
+ assert.equal(room.disconnected,true,'dispose releases convolution node');
+});
+
+test('shared room impulse has bounded size and decays with time',()=>{
+ const context={sampleRate:8000,createBuffer:(channels,length,rate)=>{
+   const arrays=Array.from({length:channels},()=>new Float32Array(length));
+   return {numberOfChannels:channels,length,sampleRate:rate,getChannelData:i=>arrays[i]};
+ }};
+ const impulse=makeRoomImpulse(context);
+ assert.equal(impulse.length,4400);
+ const samples=impulse.getChannelData(0),rms=(start,end)=>Math.sqrt(samples.slice(start,end).reduce((sum,v)=>sum+v*v,0)/(end-start));
+ assert.ok(rms(0,500)>rms(3500,4400)*15);
+});

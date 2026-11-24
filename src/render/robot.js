@@ -1,0 +1,231 @@
+import {limbKey,limbRig} from '../robot/body.js';
+import {pendingStrikes} from '../systems/strikes.js';
+import {fighterLabel} from '../game/patients.js';
+import { clamp, smooth } from '../utils/math.js';
+import { jumpHeight } from '../robot/scenes.js';
+import { ctx } from "../game/state.js";
+import { CONFIG } from "../config.js";
+import { ik, path } from "../utils/math.js";
+import { createOilDrop } from './effects.js';
+import { paintLighting } from './lighting.js';
+import { attr, dot } from "./svg.js";
+import { ROBOT_COLORS } from "../utils/colors.js";
+import { paintRobotSkin,paintHeadDecor } from './robot-skin.js';
+import { inertiaOffset } from './inertia.js';
+import { spawnAppearance } from './spawn.js';
+import { paintVictoryGlow } from './victory-glow.js';
+import { emitGameEvent } from '../game/event-bus.js';
+import { paintTorsoShadow } from './ground-spots.js';
+export function visualOffset(robotState) {
+  if (robotState.spawnVisual?.airborne) return robotState.spawnVisual;
+  if (robotState.corpseInertia) return inertiaOffset(robotState.corpseInertia);
+  if (robotState.scene && (robotState.mode === 'cover' || robotState.mode === 'eat') && robotState.attackVisual) {
+    const q = robotState.mode === 'eat' ? 1 : smooth((ctx.game.time - robotState.scene.started) / CONFIG.attack.coverApproachSec);
+    return {
+      x: robotState.attackVisual.x * q,
+      y: robotState.attackVisual.y * q
+    };
+  }
+  if (robotState.leap?.kind === 'rebound' && !robotState.leap.launched) return robotState.leap.offset;
+  return {
+    x: 0,
+    y: 0
+  };
+}
+export function visualRotation(robotState) {
+  return robotState.leap?.kind === 'rebound' && !robotState.leap.launched && robotState.leap.turnDuration ? robotState.leap.turn * smooth((ctx.game.time - robotState.leap.started) / robotState.leap.turnDuration) : 0;
+}
+export function visiblePoint(robotState, p) {
+  const o = robotState.visualOffset(),
+    a = robotState.visualRotation(),
+    dx = (p.x - robotState.x) * (robotState.spawnVisual?.scale ?? 1),
+    dy = (p.y - robotState.y) * (robotState.spawnVisual?.scale ?? 1);
+  return {
+    x: robotState.x + o.x + dx * Math.cos(a) - dy * Math.sin(a),
+    y: robotState.y + o.y + dx * Math.sin(a) + dy * Math.cos(a)
+  };
+}
+export function bodyTransform(robotState, height) {
+  if (!height) return '';
+  let factor = 1 + height * .065;
+  const center = robotState.visiblePoint({
+    x: robotState.x,
+    y: robotState.y
+  });
+  for (const capsule of robotState.api.capsules) for (const endpoint of [capsule.a, capsule.b]) {
+    const p = robotState.visiblePoint(endpoint);
+    for (const n of ctx.arenaPlanes) {
+      const delta = n.nx * (p.x - center.x) + n.ny * (p.y - center.y) + capsule.r * Math.hypot(n.nx, n.ny);
+      if (delta > 0) factor = Math.min(factor, (n.c - n.nx * center.x - n.ny * center.y) / delta);
+    }
+  }
+  factor = Math.max(1, factor);
+  return factor > 1.0001 ? `translate(${robotState.x} ${robotState.y}) scale(${factor}) translate(${-robotState.x} ${-robotState.y})` : '';
+}
+// Проверяем всю дистанцию пары прыжков до отрыва от земли.
+
+// При прерывании жеста текущая рука становится новой опорой без скачка позы.
+
+// Видимая кисть движется относительно плеча, но другие лапы остаются опорными.
+export function draw(robotState, dt) {
+  const skinned = robotState.skin?.ready;
+  paintLighting(robotState);
+  const eating = robotState.mode === 'eat',
+    chew = eating && robotState.eatTime > CONFIG.attack.eatSec * .65 / 2.6 && robotState.eatTime < CONFIG.attack.eatSec * 1.8 / 2.6 ? robotState.reduced ? 1 : (1 + Math.sin(robotState.eatTime * 24)) / 2 : 0;
+  if (robotState.tailPath) {
+    attr(robotState.tailPath, 'd', '');
+    for (let i = 0; i < CONFIG.robot.tailSegments; i++) {
+      dot(robotState.tailDots[i], robotState.tail[i + 1]);
+      attr(robotState.tailDots[i], 'display', robotState.healthy('tail-' + i) ? '' : 'none');
+    }
+    robotState.tailBones.forEach((node, i) => attr(node, 'd', robotState.healthy('tail-' + i) ? path([robotState.tail[i], robotState.tail[i + 1]]) : ''));
+  }
+  if (!skinned) {
+    attr(robotState.torso, 'd', '');
+    robotState.spineBones.forEach((node, i) => attr(node, 'd', robotState.healthy('spine-' + i) ? path([robotState.spine[i], robotState.spine[i + 1]]) : ''));
+    for (let i = 0; i < robotState.spine.length; i++) {
+      dot(robotState.spineDots[i], robotState.spine[i]);
+      attr(robotState.spineDots[i], 'opacity', i === 0 ? Number(robotState.healthy('spine-0')) : Number(robotState.healthy('spine-' + Math.min((robotState.spineSegmentTotal??4)-1, i - 1))));
+    }
+    const bar=(frame,kind)=>{
+      const [x,y]=limbRig(robotState.body,{kind}).root;
+      return path([robotState.local(frame,x,-y),robotState.local(frame,x,y)]);
+    };
+    attr(robotState.pelvicBar,'d',robotState.healthy(robotState.pelvisKey??'spine-3')?bar(robotState.pelvis,'leg'):'');
+    attr(robotState.shoulderBar,'d',bar(robotState.chest,'arm'));
+  }
+  attr(robotState.neck, 'd', path([robotState.local(robotState.chest, 3, 0), robotState.local(robotState.headFrame, 18 + robotState.headMotion, 0)]));
+  robotState.headCenter = robotState.local(robotState.headFrame, 25 + robotState.headMotion, 0);
+  robotState.mouthPoint = robotState.local(robotState.headFrame, 34 + robotState.headMotion, 0);
+  const strikePoses=pendingStrikes(robotState.id).map(p=>robotState.attackPose(p)).filter(Boolean);
+  const strikePose=strikePoses.find(p=>p.kind==='head');
+  attr(robotState.neck, 'display', robotState.hasHead() ? '' : 'none');
+  if (!skinned) {
+    robotState.horns.forEach((node, i) => attr(node, 'd', path(robotState.hornPoints(i === 0 ? -1 : 1))));
+    if (robotState.spheres.length) robotState.sphereCenters().forEach((p, i) => {
+      dot(robotState.spheres[i], p, CONFIG.robot.sphereRadiusCm);
+      attr(robotState.spheres[i], 'display', robotState.healthy('spine-0') ? '' : 'none');
+    });
+    attr(robotState.head, 'display', robotState.hasHead() ? '' : 'none');
+    attr(robotState.nose, 'display', robotState.hasHead() ? '' : 'none');
+    attr(robotState.mouth, 'display', robotState.hasHead() ? '' : 'none');
+    for (const horn of robotState.horns) attr(horn, 'display', robotState.hasHead() ? '' : 'none');
+    attr(robotState.head, 'cx', robotState.headCenter.x);
+    attr(robotState.head, 'cy', robotState.headCenter.y);
+    attr(robotState.head, 'rx', (robotState.mode === 'caught' ? 10 - 3 * robotState.sceneEnvelope() : 10) * (robotState.scale??ctx.scale));
+    attr(robotState.head, 'ry', 10 * (robotState.scale??ctx.scale));
+    attr(robotState.head, 'transform', `rotate(${robotState.headFrame.angle * 180 / Math.PI} ${robotState.headCenter.x} ${robotState.headCenter.y})`);
+    attr(robotState.nose, 'd', path([robotState.local(robotState.headFrame, 30 + robotState.headMotion, 0), robotState.local(robotState.headFrame, 38 + robotState.headMotion, 0)]));
+    attr(robotState.mouth, 'cx', robotState.mouthPoint.x);
+    attr(robotState.mouth, 'cy', robotState.mouthPoint.y);
+    attr(robotState.mouth, 'rx', (1 + chew * 3) * (robotState.scale??ctx.scale));
+    attr(robotState.mouth, 'ry', (1 + chew * 2) * (robotState.scale??ctx.scale));
+    if (strikePose?.kind === 'head') {
+      const ox = strikePose.tip.x - strikePose.base.x,
+        oy = strikePose.tip.y - strikePose.base.y;
+      const transform = `translate(${ox} ${oy})`;
+      for (const node of [robotState.head, robotState.nose, robotState.mouth, ...robotState.horns]) attr(node, 'transform', transform);
+      // Эллипс сам использует rotate(), который дополняем смещением.
+      attr(robotState.head, 'transform', `${transform} rotate(${robotState.headFrame.angle * 180 / Math.PI} ${robotState.headCenter.x} ${robotState.headCenter.y})`);
+    } else {
+      for (const node of [robotState.head, robotState.nose, robotState.mouth, ...robotState.horns]) attr(node, 'transform', '');
+      attr(robotState.head, 'transform', `rotate(${robotState.headFrame.angle * 180 / Math.PI} ${robotState.headCenter.x} ${robotState.headCenter.y})`);
+    }
+  }
+  if (!skinned && robotState.body.headSizeFactor !== undefined) {
+    const {x,y}=robotState.headCenter,factor=robotState.body.headSizeFactor;
+    // Keep the attack translation outside scaling, so headbutt motion is unchanged.
+    for(const node of [robotState.head,robotState.nose,robotState.mouth,...robotState.horns])
+      attr(node,'transform',`${node.getAttribute('transform')||''} translate(${x} ${y}) scale(${factor}) translate(${-x} ${-y})`);
+  }
+  for (const l of [...robotState.arms, ...robotState.legs]) {
+    const strikePose=strikePoses.find(p=>p.limb===l);
+    const a=robotState.origin(l),
+      solved=strikePose?{joint:strikePose.joint,end:strikePose.tip}
+        :ik(a,robotState.handEnd(l),...robotState.lengths(l),l.kind==='arm'?l.side:-l.side);
+    const prefix = `${limbKey(l)}-`;
+    if (!skinned || l.kind === 'extra') {
+      attr(l.upper, 'd', robotState.healthy(prefix + 'upper') ? path([a, solved.joint]) : '');
+      attr(l.lower, 'd', robotState.healthy(prefix + 'lower') ? path([solved.joint, solved.end]) : '');
+      attr(l.joint, 'display', robotState.healthy(prefix + 'upper') || robotState.healthy(prefix + 'lower') ? '' : 'none');
+      attr(l.endShape, 'display', robotState.healthy(prefix + 'lower') ? '' : 'none');
+      dot(l.joint, solved.joint);
+      dot(l.endShape, solved.end);
+    }
+    l.pose = [a, solved.joint, solved.end];
+  }
+  paintRobotSkin(robotState,strikePoses);
+  paintHeadDecor(robotState,strikePose);
+  paintTorsoShadow(robotState);
+}
+
+// Действия прогулки используют тот же IK; угроза прерывает их сразу.
+
+// Проверяем весь манёвр: сначала вперёд, затем варианты с разворотом.
+export function visionAngle(robotState) {
+  return robotState.hasHead() ? CONFIG.vision.runnerAngleDeg * Math.PI / 180 : 0;
+}
+export function robotPaint(robotState) {
+  if (!robotState.visible) return;
+  const spawn = robotState.spawnVisual = spawnAppearance(robotState);
+  attr(robotState.actor,'opacity',spawn.opacity.toFixed(3));
+  attr(robotState.floor,'opacity',spawn.opacity.toFixed(3));
+  const victorious = ctx.combat.finished && ctx.combat.winner === robotState.id;
+  paintVictoryGlow(robotState,victorious);
+  attr(robotState.actor, 'style', '--robot-color:#b7ada1;filter:none');
+  attr(robotState.label, 'style', 'fill:'+ROBOT_COLORS[robotState.id%4]);
+  const offset = robotState.visualOffset();
+  const elapsedHit = robotState.hitReaction ? ctx.game.time - robotState.hitReaction.start : Infinity;
+  const hitPhase = clamp(elapsedHit / (robotState.hitReaction?.duration || 1), 0, 1);
+  const recoilTilt = robotState.hitReaction && hitPhase < 1 ? robotState.hitReaction.twist * Math.sin(Math.PI * hitPhase) * (1 - hitPhase) : 0;
+  attr(robotState.actor, 'transform', `translate(${robotState.x + offset.x} ${robotState.y + offset.y}) rotate(${robotState.visualRotation() * 180 / Math.PI + recoilTilt}) scale(${spawn.scale}) translate(${-robotState.x} ${-robotState.y})`);
+  const height = robotState.scene && robotState.mode === 'cover' ? robotState.coverHeightStart * (1 - smooth((ctx.game.time - robotState.scene.started) / CONFIG.attack.coverApproachSec)) + (1 - robotState.coverHeightStart) * .7 * Math.sin(Math.PI * clamp((ctx.game.time - robotState.scene.started) / CONFIG.attack.coverApproachSec, 0, 1)) : robotState.scene && robotState.mode === 'hops' ? robotState.hopHeight() : robotState.leap ? jumpHeight(robotState) : robotState.mode === 'startle' && robotState.scene ? Math.sin(Math.PI * clamp((ctx.game.time - robotState.scene.started) / CONFIG.attack.startleSec, 0, 1)) * .55 : 0;
+  attr(robotState.limbG, 'transform', robotState.bodyTransform(height));
+  attr(robotState.bodyG, 'transform', robotState.bodyTransform(height));
+  attr(robotState.actor, 'class', 'robot');
+  robotState.draw(0);
+  robotState.body?.paint?.(robotState);
+  if(robotState.corpsePuddlePending&&inertiaOffset(robotState.corpseInertia).settled) {
+    const center=robotState.visiblePoint(robotState.api.center);
+    createOilDrop(robotState.id,center.x,center.y,CONFIG.oil.settledPuddleRadiusCm);
+    robotState.corpsePuddlePending=false;
+  }
+  // Отпечаток появляется только при постановке конечности на землю.
+  for (const l of robotState.allLimbs()) {
+    const grounded = !spawn.airborne && l.phase >= 1 && !robotState.lifted(l),
+      previous = robotState.lastFootTouches.get(l);
+    const p = robotState.visiblePoint(robotState.handEnd(l));
+    if(grounded&&!previous?.grounded&&l.kind==='leg'&&robotState.mobile()){
+      emitGameEvent('footstep',{robot:robotState.id,point:p,time:ctx.game.time});
+    }
+    if (grounded && !previous?.grounded && (!previous?.point || Math.hypot(p.x - previous.point.x, p.y - previous.point.y) > .25)) {
+      robotState.trail.push({
+        x: p.x,
+        y: p.y,
+        time: ctx.game.time
+      });
+      if (robotState.trail.length > CONFIG.trails.limit) robotState.trail.shift();
+    }
+    robotState.lastFootTouches.set(l, {
+      grounded,
+      point: grounded ? {
+        ...p
+      } : previous?.point
+    });
+  }
+  for (let i = 0; i < CONFIG.trails.limit; i++) {
+    const sample = robotState.trail[i],
+      age = sample ? ctx.game.time - sample.time : Infinity;
+    const opacity = sample ? clamp(CONFIG.trails.opacity,0,1) * Math.max(0, 1 - age / CONFIG.trails.fadeSec) : 0;
+    attr(robotState.trailNodes[i], 'opacity', opacity.toFixed(3));
+    attr(robotState.trailNodes[i], 'fill', 'var(--night-trail)');
+    if (sample) dot(robotState.trailNodes[i], sample);
+  }
+  const name = robotState.body?.arenaLabel??fighterLabel(robotState.id);
+  if (robotState.label.textContent !== name) robotState.label.textContent = name;
+  attr(robotState.label, 'x', robotState.spine[2].x);
+  attr(robotState.label, 'y', robotState.spine[2].y - 18);
+  attr(robotState.label, 'opacity', '1');
+  attr(robotState.label, 'display', ctx.mode==='tower'?'none':'');
+}
+
