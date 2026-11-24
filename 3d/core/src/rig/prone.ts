@@ -3,6 +3,7 @@ import type { RigPose } from './gait.js';
 import type { Mobility } from './mobility.js';
 import { LAB_SEGMENTS } from './anatomy.js';
 import { solveTwoBone } from './two-bone.js';
+import { constrainRig } from './rig-constraints.js';
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 const scale=(a:Vec3,n:number):Vec3=>[a[0]*n,a[1]*n,a[2]*n];
@@ -51,7 +52,7 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
  * Sample endpoints and midpoint; this is approximate on steep terrain. */
 export function blendGroundPose(standing:readonly RigPose[],prone:readonly RigPose[],amount:number,active:readonly string[],ground:(x:number,z:number)=>number):readonly RigPose[]{
  const t=amount*amount*(3-2*amount);
- const result=standing.map((p,i)=>{const q=prone[i]!;return {...p,a:mix(p.a,q.a,t),b:mix(p.b,q.b,t)};});
+ const result=constrainRig(standing.map((p,i)=>{const q=prone[i]!;return {...p,a:mix(p.a,q.a,t),b:mix(p.b,q.b,t)};}));
  let correction=-Infinity;
  for(const p of result)if(active.includes(p.id))for(const point of [p.a,p.b,mix(p.a,p.b,.5)])correction=Math.max(correction,ground(point[0],point[2])+p.radius-point[1]);
  const lift=Number.isFinite(correction)?(amount>=1?correction:Math.max(0,correction)):0;

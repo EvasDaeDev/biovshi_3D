@@ -21,6 +21,8 @@ jobs:
           node-version: '22'
       - run: npm install --prefix 3d/core --no-audit --no-fund
       - run: npm --prefix 3d/core test
+      - name: Record core CPU benchmark (informational)
+        run: node 3d/core/scripts/benchmark-core.mjs
       - run: npm --prefix 3d/core run preview:stage
       - run: npx --prefix 3d/core playwright install --with-deps chromium
       - run: npm --prefix 3d/core run preview:smoke

@@ -1,0 +1,5 @@
+# P1 — fixed-length pose reconstruction
+
+Standing and blended ground poses now rebuild girdles, central torso/neck and limb chains from desired directions using nominal capsule lengths. The leg/arm origins are exact endpoints of pelvis/chest; joints remain connected and spheres follow their distal endpoints. The old endpoint blend could shorten limbs during falling. Ground correction is applied after reconstruction. Fixed torso attachment offsets (.10/.14 m) and head offset (.10 m) are provisional native 3D dimensions; chest/head positions and upright arm reach can change slightly. This is a positional constraint pass, not a physical balance solver; foot contact may drift, especially on slopes. No friction-driven propulsion yet. Tests cover all capsule lengths and attachments during movement and falling.
+
+CI additionally logs p50/p95/p99 CPU durations for step and snapshot separately, 8 intact patients, 3600 ticks after warm-up. Informational only: hosted runner results do not replace same-device comparative or GPU profiling. No performance claim before measurement.

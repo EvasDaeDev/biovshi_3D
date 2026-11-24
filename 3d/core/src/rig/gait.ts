@@ -5,6 +5,7 @@ import { mobilityFor, type Mobility } from './mobility.js';
 import { pronePose, blendGroundPose } from './prone.js';
 import { MOVEMENT,stepLead } from './movement-timing.js';
 import { HopCycle, type HopSample } from './hop-cycle.js';
+import { constrainRig } from './rig-constraints.js';
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
@@ -114,7 +115,7 @@ export class PatientGait {
       put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,hand);put(key+'hand',hand);
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
-    if(this.proneAmount===0){const lift=this.hopSample.lift;return lift===0?standing:standing.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));}
+    if(this.proneAmount===0){const fixed=constrainRig(standing),lift=this.hopSample.lift;return lift===0?fixed:fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));}
     return blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
   }
 }
