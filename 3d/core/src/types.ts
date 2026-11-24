@@ -1,3 +1,4 @@
+import type { ResidualTraction } from './rig/residual-traction.js';
 import type { CrawlAnchor } from './rig/crawl-anchors.js';
 import type { SupportState } from './rig/support.js';
 /** World units: metres; orientation: radians; Y is vertical. */
@@ -37,6 +38,7 @@ export interface WorldConfig {
 export interface WorldSnapshot {
   /** Optional lab locomotion modes, in fighterIds order. */
   readonly mobilityModes?: readonly ('biped'|'single-support'|'arm-crawl'|'head-crawl'|'torso-crawl'|'unsupported')[];
+  readonly residualTraction?: readonly (ResidualTraction|null)[];
   readonly crawlAnchors?: readonly (readonly CrawlAnchor[])[];
   readonly supports?: readonly SupportState[];
   readonly hopHeights?: readonly number[];

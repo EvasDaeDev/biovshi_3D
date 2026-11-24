@@ -18,9 +18,14 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
  const chest:Vec3=[-w*.065,.22+Math.abs(w)*.025,-.49+(headDriven?w*.07:torsoOnly?w*.05:0)];
  const roll=torsoOnly?w*.19:w*.055;
  const across=(center:Vec3,half:number,side:number):Vec3=>add(center,[side*half*Math.cos(roll),side*half*Math.sin(roll),0]);
- const hipAt=(side:number)=>across(hip,.17,side),shoulderAt=(side:number)=>across(chest,.34,side);
+ const hipAt=(side:number)=>across(hip,.17,side),shoulderAt=(side:number)=>torsoOnly?add(chest,[side*.34*Math.cos(roll),-side*.34*Math.sin(roll),0]):across(chest,.34,side);
  const headZ=chest[2]-.31+(headDriven?w*.08:0);
- const head:Vec3=[chest[0]+(headDriven?w*.045:0),Math.max(.195,floorAt(chest[0],headZ)+.19)+(headDriven?Math.max(0,-w)*.055:.025),headZ];
+ // During the driving half-cycle pitch the connected neck toward the floor;
+ // during recovery lift the head. The fixed-length reconstruction and
+ // terrain envelope below still determine the final capsule position.
+ const push=Math.cos(phase);
+ const headY=headDriven?chest[1]-.07-effort*.13*Math.max(0,push)+effort*.11*Math.max(0,-push):Math.max(.195,floorAt(chest[0],headZ)+.19)+.025;
+ const head:Vec3=[chest[0]+(headDriven?w*.045:0),headY,headZ];
  const points=new Map<string,readonly [Vec3,Vec3]>();
  const put=(id:string,a:Vec3,b:Vec3=a)=>points.set(id,[world(a),world(b)]);
  put('pelvis',hipAt(-1),hipAt(1));put('abdomen',hip,chest);put('chest',shoulderAt(-1),shoulderAt(1));
@@ -38,7 +43,7 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
   const height=arm===1?.10:.083;
   const target:Vec3=[x,Math.max(height,floorAt(x,z)+height)+effort*recovery*.095,z];
   if(arm===1){
-   const delta:Vec3=[target[0]-shoulder[0],target[1]-shoulder[1],target[2]-shoulder[2]],len=Math.hypot(...delta);
+   const delta:Vec3=[side*.12,-.25-effort*.08*Math.max(0,Math.cos(phase+offset))+effort*.10*Math.max(0,-Math.cos(phase+offset)),-.17-direction*effort*stroke*.09],len=Math.hypot(...delta);
    const elbow=add(shoulder,len>1e-8?scale(delta,.36/len):[0,-.36,0]);
    put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,add(elbow,[0,0,-.32]));put(key+'hand',add(elbow,[0,0,-.32]));
   }else{

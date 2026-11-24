@@ -8,6 +8,7 @@ import { HopCycle, type HopSample } from './hop-cycle.js';
 import { constrainRig } from './rig-constraints.js';
 import { balanceStandingPose } from './balance.js';
 import { CrawlAnchors, type CrawlAnchor } from './crawl-anchors.js';
+import { residualMode,residualTraction,type ResidualTraction } from './residual-traction.js';
 const FOOT_RADIUS=LAB_SEGMENTS.find(p=>p.id==='L.foot')!.radius;
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -24,6 +25,7 @@ export class PatientGait {
   private anchors=new CrawlAnchors();
   private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
+  residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
   travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number):number{
     if(this.anchored(mobility)&&this.proneAmount===1){
       const before=this.pose(id,root,yaw,t);
@@ -34,20 +36,16 @@ export class PatientGait {
     this.anchors.reset();
     if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,speed);return this.hopSample.distance;}
     this.hop.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
-    return speed*this.driveScale(mobility)*dt;
+    if(!mobility.prone)return speed*dt;
+    if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
+    const traction=residualTraction(this.pose(id,root,yaw,t),mobility,this.crawlPhase,ground);
+    return speed*dt*(traction?.scale??0);
   }
   private proneAmount=0;private crawlPhase=0;private crawlEffort=0;private crawlDirection=1;
   private mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id));
   private active:readonly string[]=LAB_SEGMENTS.map(s=>s.id);
   private ground:(x:number,z:number)=>number=()=>0;
   get posture(): 'upright'|'falling'|'prone' {return this.proneAmount===0?'upright':this.proneAmount===1?'prone':'falling';}
-  /** Pulse root translation in the same cycle as the visible crawl strokes. */
-  driveScale(mobility:Mobility):number{
-    if(!mobility.prone)return 1;
-    if(this.proneAmount<1||mobility.mode==='unsupported')return 0;
-    const stroke=Math.cos(this.crawlPhase),both=mobility.arms[0]>0&&mobility.arms[1]>0;
-    return both?.2+1.2*Math.abs(stroke):.08+2.1*Math.max(0,stroke);
-  }
   private feet:[Foot,Foot];
   constructor(root:Vec3,yaw=0){
     const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,FOOT_RADIUS,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false};};

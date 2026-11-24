@@ -44,7 +44,7 @@ try{
  try{await page.waitForFunction(start=>Number(document.getElementById('stats')?.dataset.z)<start-.06,z,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  assert.equal(await page.locator('#stats').getAttribute('data-mode'),'arm-crawl');
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.planted)>0,{},{timeout:30000});
- for(const [scenario,mode] of [['one-arm','arm-crawl'],['head','head-crawl'],['torso','torso-crawl'],['normal','biped']]){
+ for(const [scenario,mode] of [['one-arm','arm-crawl'],['stump','arm-crawl'],['head','head-crawl'],['torso','torso-crawl'],['normal','biped']]){
   await page.locator('#scenario').selectOption(scenario);
   await page.waitForFunction(({mode,scenario})=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode===mode&&d.posture===(scenario==='normal'?'upright':'prone')&&Number(d.tick)>3;},{mode,scenario},{timeout:30000});
   if(scenario!=='normal'){

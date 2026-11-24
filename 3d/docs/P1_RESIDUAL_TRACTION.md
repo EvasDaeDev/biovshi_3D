@@ -1,0 +1,5 @@
+# P1 — residual ground traction
+
+The previously phase-only shoulder stump, head and torso movement now requires a sampled ground contact of its designated driving segment(s). The working half-cycle has a bounded commanded speed gain; recovery and absent contacts yield zero self-propelled translation. Head/neck pitch changes between the working and recovery phases; the shoulder stump aims down during the push and torso girdles counter-roll. Fixed lengths and terrain correction remain authoritative. Existing full-arm/forearm anchors and one-leg hops are unchanged. Added isolated shoulder-stump scenario, diagnostic drive phase/gain, and tests for absent contacts, motion gating and ground clearance. The diagnostic sample is the current pose; travel uses the preceding fixed-tick pose, before collision corrections.
+
+This is contact-gated kinematic traction, not a friction/force solver or fixed world anchoring of head/torso/stump. The drive parameters are provisional adaptations because v1 has no matching 3D movement. Dynamic balance, exact propulsion and Rapier incapacitated bodies are still open. CI and visual acceptance pending.
