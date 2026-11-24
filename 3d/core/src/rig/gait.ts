@@ -7,6 +7,7 @@ import { MOVEMENT,stepLead } from './movement-timing.js';
 import { HopCycle, type HopSample } from './hop-cycle.js';
 import { constrainRig } from './rig-constraints.js';
 import { balanceStandingPose } from './balance.js';
+import { CrawlAnchors, type CrawlAnchor } from './crawl-anchors.js';
 const FOOT_RADIUS=LAB_SEGMENTS.find(p=>p.id==='L.foot')!.radius;
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -20,7 +21,17 @@ export class PatientGait {
   private hop=new HopCycle();private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
   get hopHeight():number{return this.hopSample.lift;}
   get hopPhase():HopSample['phase']{return this.hopSample.phase;}
-  travel(dt:number,speed:number,mobility:Mobility):number{
+  private anchors=new CrawlAnchors();
+  private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
+  crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
+  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number):number{
+    if(this.anchored(mobility)&&this.proneAmount===1){
+      const before=this.pose(id,root,yaw,t);
+      this.anchors.advance(dt,speed,yaw,before,mobility,ground);
+      const planted=this.anchors.snapshot(this.anchors.apply(before,mobility,ground),mobility,ground).some(a=>a.valid);
+      return planted?speed*dt*(mobility.arms.filter(n=>n>=2).length===1?1.35:1):0;
+    }
+    this.anchors.reset();
     if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,speed);return this.hopSample.distance;}
     this.hop.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
     return speed*this.driveScale(mobility)*dt;
@@ -123,6 +134,7 @@ export class PatientGait {
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
       return balanceStandingPose(fixed,this.active,stance,this.ground);
     }
-    return blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
+    const prone=blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
+    return this.proneAmount===1&&this.anchored(this.mobility)?this.anchors.apply(prone,this.mobility,this.ground):prone;
   }
 }
