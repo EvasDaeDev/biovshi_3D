@@ -1,0 +1,15 @@
+{
+  "name": "@eccepry/simulation-core-contract",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Typed simulation boundary and tiny deterministic reference core. Not the live 3D laboratory engine.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
