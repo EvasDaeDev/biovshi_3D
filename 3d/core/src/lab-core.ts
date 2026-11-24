@@ -1,3 +1,5 @@
+import { expandLegacyTorso } from './rig/anatomy.js';
+import { terrainHeight, type Mound } from './collision/terrain.js';
 import { ContactEpisodes, type SegmentContact } from './collision/contact-episodes.js';
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
 import { PatientGait } from './rig/gait.js';
@@ -9,7 +11,7 @@ const wrap = (v: number) => Math.atan2(Math.sin(v), Math.cos(v));
 const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k * FIXED_DT));
 
 interface Actor {
-  id: number; x: number; y: number; z: number; yaw: number;
+  id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
   segments: string[]; gait: PatientGait;
 }
@@ -23,6 +25,13 @@ export class LabSimulationCore implements SimulationCore {
   private tick = 0;
   private rng = 0;
   private ready = false;
+  private mounds:readonly Mound[]=[];
+  /** Copy plain terrain data from the external physics adapter. */
+  setTerrainMounds(mounds:readonly Mound[]):void{
+    this.requireReady();
+    if(mounds.some(m=>![m.x,m.z,m.radius,m.height].every(Number.isFinite)||m.radius<=0||m.height<0||m.height>.30))throw new RangeError('Invalid mound');
+    this.mounds=mounds.map(m=>({...m}));
+  }
   private episodes = new ContactEpisodes();
   private events: SimulationEvent[] = [];
   private fracture = false;
@@ -43,10 +52,11 @@ export class LabSimulationCore implements SimulationCore {
         throw new RangeError('Invalid transform');
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
-      return {id:f.id,x,y,z,yaw:f.yawRad,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:[...f.segmentIds],gait:new PatientGait(f.origin)};
+      return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad)};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
+    this.mounds=[];
     this.tick = 0;
     this.rng = config.seed;
     this.fracture = config.labContactFracture === true;
@@ -95,7 +105,9 @@ export class LabSimulationCore implements SimulationCore {
       a.speed = damp(a.speed,target,3);
       a.x = clamp(a.x+Math.sin(a.yaw)*a.speed*dt,-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*a.speed*dt,-5.65,5.65);
-      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt);
+      const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
+      a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
+      a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt,ground);
     }
     this.tick++;
     const hits:SegmentContact[] = [];
@@ -122,9 +134,9 @@ export class LabSimulationCore implements SimulationCore {
     });
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
-      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:1, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
+      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
-  dispose(): void { this.ready=false; this.actors=[]; this.tick=0; this.rng=0;this.events=[];this.episodes.reset(); }
+  dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0; this.rng=0;this.events=[];this.episodes.reset(); }
   private requireReady(): void { if (!this.ready) throw new Error('Simulation core is not initialized'); }
 }

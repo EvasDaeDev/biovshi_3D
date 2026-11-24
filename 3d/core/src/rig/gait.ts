@@ -10,21 +10,22 @@ export interface RigPose { readonly id:string; readonly a:Vec3; readonly b:Vec3;
 export class PatientGait {
   private walkTime=0; private moveAmount=0; private next=0;
   private feet:[Foot,Foot];
-  constructor(root:Vec3){
-    const foot=(side:number):Foot=>{const p=add(root,[side*.18,.055,0]);return {plant:p,start:p,target:p,phase:0,moving:false};};
+  constructor(root:Vec3,yaw=0){
+    const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,.055,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false};};
     this.feet=[foot(-1),foot(1)];
   }
-  advance(root:Vec3,yaw:number,speed:number,dt:number):void{
+  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1]):void{
     const sprint=Math.abs(speed)>1.4;
     this.moveAmount+=(clamp(Math.abs(speed)/1.9)-this.moveAmount)*(1-Math.exp(-4*dt));
     this.walkTime+=dt*Math.abs(speed)*5.2;
-    for(const f of this.feet)if(f.moving){
+    for(const f of this.feet){
+      if(!f.moving){f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+.055,f.plant[2]];continue;}
       f.phase=Math.min(1,f.phase+dt*(sprint?3.8:2.8));
       const t=f.phase*f.phase*(3-2*f.phase),p=mix(f.start,f.target,t);
-      f.plant=[p[0],p[1]+Math.sin(Math.PI*f.phase)*(sprint?.19:.13),p[2]];
-      if(f.phase===1){f.moving=false;f.plant=f.target;}
+      f.plant=[p[0],Math.max(ground(p[0],p[2])+.055,p[1]+Math.sin(Math.PI*f.phase)*(sprint?.19:.13)),p[2]];
+      if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+.055,f.target[2]];}
     }
-    const ideal=(side:number,lead:number):Vec3=>add(root,[Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,.055,Math.sin(yaw)*side*.18-Math.cos(yaw)*lead]);
+    const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+.055,z];};
     if(Math.abs(speed)>.09&&!this.feet.some(f=>f.moving)){
       const f=this.feet[this.next]!;const target=ideal(this.next===0?-1:1,Math.sign(speed)*(sprint?.35:.23));
       if(dist(f.plant,target)>.23){f.start=f.plant;f.target=target;f.phase=0;f.moving=true;this.next=1-this.next;}
@@ -43,10 +44,12 @@ export class PatientGait {
     const local=(p:Vec3):Vec3=>{const x=p[0]-root[0],z=p[2]-root[2];return [c*x+s*z,p[1]-root[1],-s*x+c*z];};
     const points=new Map<string,readonly [Vec3,Vec3]>();
     const put=(key:string,a:Vec3,b:Vec3=a)=>points.set(key,[world(a),world(b)]);
-    put('torso',hip,chestPose);put('neck',chestPose,add(head,[0,-.14,0]));put('head',head);
+    put('pelvis',add(hip,[-.17,-.055,0]),add(hip,[.17,-.055,0]));
+    put('abdomen',add(hip,[0,.035,0]),add(chestPose,[0,-.095,0]));
+    put('chest',add(chestPose,[-.34,.05,0]),add(chestPose,[.34,.05,0]));put('neck',chestPose,add(head,[0,-.14,0]));put('head',head);
     for(let i=0;i<2;i++){
-      const side=i===0?-1:1,key=i===0?'L.':'R.',hipRoot=add(hip,[side*.17,-.055,0]),shoulder=add(chest,[side*.34,.05,0]);
-      const f=local(this.feet[i]!.plant),foot:Vec3=[f[0],Math.max(.045,f[1]),f[2]];
+      const side=i===0?-1:1,key=i===0?'L.':'R.',hipRoot=add(hip,[side*.17,-.055,0]),shoulder=add(chestPose,[side*.34,.05,0]);
+      const foot=local(this.feet[i]!.plant);
       const ankle=add(foot,[0,.04,.055]),ik=solveTwoBone(hipRoot,ankle,.49,.50,[0,.02,-1]);
       put(key+'upperLeg',hipRoot,ik.joint);put(key+'lowerLeg',ik.joint,ik.end);put(key+'foot',add(ik.end,[0,-.04,-.055]));
       const swing=moving*Math.sin(this.walkTime+(side===1?Math.PI:0));

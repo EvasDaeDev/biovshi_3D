@@ -1,4 +1,4 @@
-import { severingChain } from '../rig/anatomy.js';
+import { severingChain, isProtectedSegment } from '../rig/anatomy.js';
 export interface SegmentContact { readonly fighterId:number; readonly segmentId:string; readonly otherId:number }
 interface Episode { lastSeen:number; lastHit:number }
 export interface LabHit extends SegmentContact { readonly count:number }
@@ -9,7 +9,7 @@ export class ContactEpisodes {
  advance(tick:number,contacts:readonly SegmentContact[],active:(fighterId:number,segmentId:string)=>boolean,onHit:(hit:LabHit,chain:readonly string[])=>void):void{
   const seen=new Set<string>();
   for(const hit of contacts){
-   if(hit.segmentId==='torso'||!active(hit.fighterId,hit.segmentId))continue;
+   if(isProtectedSegment(hit.segmentId)||!active(hit.fighterId,hit.segmentId))continue;
    const part=JSON.stringify([hit.fighterId,hit.segmentId]),key=JSON.stringify([hit.fighterId,hit.segmentId,hit.otherId]);
    if(seen.has(key))continue;seen.add(key);
    const rec=this.episodes.get(key);

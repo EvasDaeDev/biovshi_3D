@@ -9,11 +9,11 @@ const run=(seed,hz=60)=>{
   for(let i=0;i<hz*10;i++) clock.advance(1/hz,dt=>c.step(dt,command(1,.2)));
   return c.getSnapshot();
 };
-test('eight patients and 15 stable segment IDs each',()=>{
+test('eight patients and 17 stable segment IDs each',()=>{
   const c=new LabSimulationCore(); c.initialize(createLabConfig(0));
   const s=c.getSnapshot();
   assert.deepEqual([...s.fighterIds],[0,1,2,3,4,5,6,7]);
-  assert.ok(s.segmentIds.every(a=>a.length===15&&new Set(a).size===15));
+  assert.ok(s.segmentIds.every(a=>a.length===17&&new Set(a).size===17));
   assert.ok(Math.abs(s.roots[2]-1.4)<1e-6);
 });
 test('seeded NPC trajectories independent of display frequency',()=>{

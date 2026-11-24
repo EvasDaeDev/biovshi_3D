@@ -36,7 +36,7 @@ export interface WorldSnapshot {
   readonly damageStats?: Readonly<{hits:number; detached:number}>;
   readonly collisionStats?: Readonly<{tests:number; contacts:number; wallContacts:number}>;
   /** Optional procedural rig snapshot; world-space capsule endpoints, metres. */
-  readonly rigVersion?: 1;
+  readonly rigVersion?: 1 | 2;
   readonly rigSegments?: readonly (readonly {readonly id: SegmentId; readonly a: Vec3; readonly b: Vec3; readonly radius: number}[])[];
   readonly tick: number;
   readonly elapsedSeconds: number;

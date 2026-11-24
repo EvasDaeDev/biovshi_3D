@@ -22,7 +22,7 @@ const input=()=>({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS
 document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};document.getElementById('reset').onclick=reset;
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4();
-function frame(now){const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{core.step(t,input());for(const e of core.drainEvents())debris.accept(e);debris.step(t);},paused||document.hidden);const s=core.getSnapshot();
+function frame(now){const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{core.setTerrainMounds(debris.moundSnapshot());core.step(t,input());for(const e of core.drainEvents())debris.accept(e);debris.step(t);},paused||document.hidden);const s=core.getSnapshot();
  for(const mesh of meshes.values())mesh.visible=false;
  s.rigSegments.forEach((parts,i)=>parts.forEach(p=>{const key=s.fighterIds[i]+':'+p.id;const f=boneFrame(p.a,p.b,[Math.sin(s.roots[i*4+3]),0,-Math.cos(s.roots[i*4+3])]);let m=meshes.get(key);if(!m){m=new THREE.Mesh(f.length>1e-8?cylinder:sphere,materials[i===0?0:1]);meshes.set(key,m);scene.add(m);}m.visible=true;m.position.copy(v(f.center));if(f.length>1e-8){basis.makeBasis(v(f.x),v(f.y),v(f.z));m.quaternion.setFromRotationMatrix(basis);m.scale.set(p.radius,f.length,p.radius);}else m.scale.setScalar(p.radius);}));
  const falling=debris.snapshot(),active=new Set(falling.map(d=>d.id));

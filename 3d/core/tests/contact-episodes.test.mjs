@@ -19,3 +19,7 @@ test('torso, inactive parts and reset',()=>{
  e.advance(2,[contact],()=>true,h=>hits.push(h.count));e.reset();
  e.advance(3,[contact],()=>true,h=>hits.push(h.count));assert.deepEqual(hits,[1,1]);
 });
+
+test('all three torso segments ignore lab fracture contacts',()=>{
+ const e=new ContactEpisodes(),hits=[];for(const tick of [1,27,53])e.advance(tick,['pelvis','abdomen','chest'].map(segmentId=>({...contact,segmentId})),()=>true,h=>hits.push(h));assert.equal(hits.length,0);
+});

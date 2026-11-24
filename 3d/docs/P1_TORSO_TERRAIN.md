@@ -1,0 +1,5 @@
+# P1 — three-part torso and terrain sampling
+
+Lab Next rig v2 replaces the old single torso with pelvis, abdomen, and chest (shoulder girdle). The transverse pelvis and chest capsules attach at the leg and arm roots; abdomen connects the two. All three are protected in the lab fracture mode, maintaining the former torso protection. Original head height and limb lengths are unchanged; radii and exact proportions are provisional. Old torso configuration IDs expand to the three new IDs, snapshots expose v2 IDs only. Eight intact patients now have 136 segments (17 each). This is not yet a full migration of the original 2D anatomy.
+
+The external Rapier adapter supplies plain mound snapshots at fixed ticks. Core samples conical terrain at root and foot coordinates; root height changes at up to .9 m/s, foot targets use absolute ground height and swing is constrained above sampled terrain. IK still clamps unreachable targets, so steep steps or collision correction can cause foot drift. No new gait modes after limb loss. Original 04.1 remains untouched. Browser visual acceptance and comparative performance are pending.
