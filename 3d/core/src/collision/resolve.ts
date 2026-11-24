@@ -1,3 +1,4 @@
+import type { SegmentContact } from './contact-episodes.js';
 import type { Vec3 } from '../types.js';
 import { capsuleContact, type Capsule } from './capsule-contact.js';
 import type { RigPose } from '../rig/gait.js';
@@ -7,11 +8,11 @@ const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
 const point=(p:Vec3)=>({x:p[0],y:p[1],z:p[2]});
 function prepare(p:RigPose){
  const cap:Capsule={a:point(p.a),b:point(p.b),r:p.radius};
- return {cap,x:(p.a[0]+p.b[0])*.5,z:(p.a[2]+p.b[2])*.5,r:Math.hypot(p.a[0]-p.b[0],p.a[1]-p.b[1],p.a[2]-p.b[2])*.5+p.radius};
+ return {id:p.id,cap,x:(p.a[0]+p.b[0])*.5,z:(p.a[2]+p.b[2])*.5,r:Math.hypot(p.a[0]-p.b[0],p.a[1]-p.b[1],p.a[2]-p.b[2])*.5+p.radius};
 }
 /** Three bounded passes. Pose callback must be pure; never advances gait.
  * Rebuild after root corrections; planted feet stay in world coordinates. */
-export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[]):CollisionStats{
+export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[],hits?:SegmentContact[]):CollisionStats{
  const stats:CollisionStats={tests:0,contacts:0,wallContacts:0};
  const move=(a:T,x:number,z:number)=>{a.x=clamp(a.x+clamp(x,-.10,.10),-5.65,5.65);a.z=clamp(a.z+clamp(z,-.10,.10),-5.65,5.65);};
  for(let iteration=0;iteration<3;iteration++){
@@ -34,6 +35,7 @@ export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],
    for(const ac of shapes[i]!)for(const bc of shapes[j]!){
     if((ac.x-bc.x)**2+(ac.z-bc.z)**2>(ac.r+bc.r)**2)continue;
     stats.tests++;const c=capsuleContact(ac.cap,bc.cap);if(!c)continue;stats.contacts++;
+    if(iteration===0&&hits){hits.push({fighterId:a.id,segmentId:ac.id,otherId:b.id},{fighterId:b.id,segmentId:bc.id,otherId:a.id});}
     let nx=c.dx,nz=c.dz,len=Math.hypot(nx,nz);
     if(c.dist>1e-5&&len/c.dist<.23)continue;
     if(len<1e-5){nx=a.x-b.x;nz=a.z-b.z;len=Math.hypot(nx,nz);}

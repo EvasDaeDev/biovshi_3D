@@ -1,0 +1,3 @@
+# P1 — lab contact episodes
+
+The original roadmap explicitly prohibits turning the three-contact stress trick into product balance. Lab contact fracture is opt-in (WorldConfig.labContactFracture), enabled only in the 3D rig preview. First-pass contacts deduplicate by victim, segment and other fighter. Release >=8 ticks, cooldown >=26 ticks, three episodes, protected torso and descendant removal. Detachment events carry final world-space capsule pose for future debris integration. Missing segments are excluded from collision and rendering; no debris or locomotion adaptation yet. The default core remains non-destructive. CI must pass before publication.

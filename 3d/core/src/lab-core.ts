@@ -1,3 +1,4 @@
+import { ContactEpisodes, type SegmentContact } from './collision/contact-episodes.js';
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
 import { PatientGait } from './rig/gait.js';
 import { FIXED_DT } from './fixed-clock.js';
@@ -13,7 +14,7 @@ interface Actor {
   segments: string[]; gait: PatientGait;
 }
 
-/** Root locomotion and procedural rig. Includes kinematic collision correction; no damage or debris yet.
+/** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
  * Public yaw is positive right (towards +X from -Z).
  * Lab Three.js heading is the negative of this yaw.
  */
@@ -22,6 +23,11 @@ export class LabSimulationCore implements SimulationCore {
   private tick = 0;
   private rng = 0;
   private ready = false;
+  private episodes = new ContactEpisodes();
+  private events: SimulationEvent[] = [];
+  private fracture = false;
+  private hitCount = 0;
+  private detachedCount = 0;
   private collisionStats: CollisionStats = {tests:0,contacts:0,wallContacts:0};
 
   initialize(config: WorldConfig): void {
@@ -43,6 +49,8 @@ export class LabSimulationCore implements SimulationCore {
     this.actors = actors;
     this.tick = 0;
     this.rng = config.seed;
+    this.fracture = config.labContactFracture === true;
+    this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
     this.collisionStats = {tests:0,contacts:0,wallContacts:0};
     this.ready = true;
   }
@@ -90,7 +98,18 @@ export class LabSimulationCore implements SimulationCore {
       a.gait.advance([a.x,a.y,a.z],a.yaw,a.speed,dt);
     }
     this.tick++;
-    this.collisionStats = resolveCollisions(this.actors,a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)));
+    const hits:SegmentContact[] = [];
+    this.collisionStats = resolveCollisions(this.actors,a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)),this.fracture?hits:undefined);
+    if(this.fracture)this.episodes.advance(this.tick,hits,(id,part)=>this.actors.some(a=>a.id===id&&a.segments.includes(part)),(hit,chain)=>{
+      this.hitCount++;
+      this.events.push({tick:this.tick,type:'lab-hit',fighterId:hit.fighterId,segmentId:hit.segmentId});
+      const actor=this.actors.find(a=>a.id===hit.fighterId)!;
+      for(const id of chain)if(actor.segments.includes(id)){
+        const pose=actor.gait.pose(actor.id,[actor.x,actor.y,actor.z],actor.yaw,this.tick*FIXED_DT).find(p=>p.id===id);
+        actor.segments=actor.segments.filter(s=>s!==id);this.detachedCount++;
+        this.events.push({tick:this.tick,type:'segment-detached',fighterId:actor.id,segmentId:id,detachedPose:pose});
+      }
+    });
   }
 
   getSnapshot(): WorldSnapshot {
@@ -103,9 +122,9 @@ export class LabSimulationCore implements SimulationCore {
     });
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
-      collisionStats:{...this.collisionStats}, rigVersion:1, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
+      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:1, rigSegments:this.actors.map(a=>a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id)))};
   }
-  drainEvents(): readonly SimulationEvent[] { this.requireReady(); return []; }
-  dispose(): void { this.ready=false; this.actors=[]; this.tick=0; this.rng=0; }
+  drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
+  dispose(): void { this.ready=false; this.actors=[]; this.tick=0; this.rng=0;this.events=[];this.episodes.reset(); }
   private requireReady(): void { if (!this.ready) throw new Error('Simulation core is not initialized'); }
 }

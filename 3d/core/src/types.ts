@@ -27,10 +27,13 @@ export interface FighterDefinition {
 export interface WorldConfig {
   readonly fighters: readonly FighterDefinition[];
   readonly seed: number;
+  /** Lab stress-test only, not product combat balance. */
+  readonly labContactFracture?: boolean;
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
 export interface WorldSnapshot {
+  readonly damageStats?: Readonly<{hits:number; detached:number}>;
   readonly collisionStats?: Readonly<{tests:number; contacts:number; wallContacts:number}>;
   /** Optional procedural rig snapshot; world-space capsule endpoints, metres. */
   readonly rigVersion?: 1;
@@ -49,6 +52,7 @@ export interface SimulationEvent {
   readonly type: string;
   readonly fighterId: FighterId;
   readonly segmentId?: SegmentId;
+  readonly detachedPose?: {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number};
 }
 
 /** No DOM, Three.js, Rapier, or Rust-specific types cross this boundary. */
