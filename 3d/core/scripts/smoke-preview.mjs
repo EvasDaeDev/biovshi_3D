@@ -20,9 +20,9 @@ let browser;
 try{
  browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  const page=await browser.newPage({viewport:{width:1000,height:720}});
- const errors=[],external=[];
+ const errors=[],external=[],modules=[];
  page.on('pageerror',e=>errors.push(String(e)));
- await page.route('**/*',route=>{if(route.request().url().startsWith(base+'/'))return route.continue();external.push(route.request().url());return route.abort();});
+ await page.route('**/*',route=>{if(route.request().url().startsWith(base+'/')){if(route.request().resourceType()==='script')modules.push(route.request().url());return route.continue();}external.push(route.request().url());return route.abort();});
  await page.goto(base+'/3d/lab-next/rig.html',{waitUntil:'domcontentloaded'});
  try{
   await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&Number(document.getElementById('stats')?.dataset.tick)>2,{},{timeout:45000});
@@ -40,6 +40,20 @@ try{
  await page.keyboard.down('KeyW');
  try{await page.waitForFunction(start=>Number(document.getElementById('stats')?.dataset.z)<start-.06,z,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  assert.equal(await page.locator('#stats').getAttribute('data-mode'),'arm-crawl');
+ for(const [scenario,mode] of [['one-arm','arm-crawl'],['head','head-crawl'],['torso','torso-crawl'],['normal','biped']]){
+  await page.locator('#scenario').selectOption(scenario);
+  await page.waitForFunction(({mode,scenario})=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode===mode&&d.posture===(scenario==='normal'?'upright':'prone')&&Number(d.tick)>3;},{mode,scenario},{timeout:30000});
+  if(scenario!=='normal'){
+   const start=Number(await page.locator('#stats').getAttribute('data-z'));
+   await page.keyboard.down('KeyW');
+   try{await page.waitForFunction(z=>Number(document.getElementById('stats')?.dataset.z)<z-.015,start,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
+  }
+ }
+ await page.goto(base+'/3d/lab-next/rig.html?scenario=one-arm',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
+ const release=await page.locator('#stats').getAttribute('data-build');
+ assert.match(release,/^[a-f0-9]{20}$/);
+ assert.ok(modules.length>0);assert.ok(modules.every(url=>url.includes('/releases/'+release+'/')),JSON.stringify(modules));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Browser smoke passed: offline modules, WebGL first frame, fixed ticks, pause and reset.');
 }finally{await browser?.close();await new Promise(ok=>server.close(ok));}
