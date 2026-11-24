@@ -1,9 +1,10 @@
+import type { Vec3 } from '../types.js';
 import { capsuleContact, type Capsule } from './capsule-contact.js';
 import type { RigPose } from '../rig/gait.js';
 export interface CollisionActor { readonly id:number; x:number; y:number; z:number }
 export interface CollisionStats { tests:number; contacts:number; wallContacts:number }
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
-const point=(p:readonly number[])=>({x:p[0],y:p[1],z:p[2]});
+const point=(p:Vec3)=>({x:p[0],y:p[1],z:p[2]});
 function prepare(p:RigPose){
  const cap:Capsule={a:point(p.a),b:point(p.b),r:p.radius};
  return {cap,x:(p.a[0]+p.b[0])*.5,z:(p.a[2]+p.b[2])*.5,r:Math.hypot(p.a[0]-p.b[0],p.a[1]-p.b[1],p.a[2]-p.b[2])*.5+p.radius};
@@ -27,10 +28,10 @@ export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],
    return parts.map(prepare);
   });
   for(let i=0;i<actors.length;i++)for(let j=i+1;j<actors.length;j++){
-   const a=actors[i],b=actors[j];
+   const a=actors[i]!,b=actors[j]!;
    if((a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2>4.7**2)continue;
    let cx=0,cz=0,count=0;
-   for(const ac of shapes[i])for(const bc of shapes[j]){
+   for(const ac of shapes[i]!)for(const bc of shapes[j]!){
     if((ac.x-bc.x)**2+(ac.z-bc.z)**2>(ac.r+bc.r)**2)continue;
     stats.tests++;const c=capsuleContact(ac.cap,bc.cap);if(!c)continue;stats.contacts++;
     let nx=c.dx,nz=c.dz,len=Math.hypot(nx,nz);
