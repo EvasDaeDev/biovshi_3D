@@ -4,7 +4,10 @@ const q=(values,p)=>values[Math.floor((values.length-1)*p)];
 const summarize=a=>{a.sort((x,y)=>x-y);return {p50:q(a,.5),p95:q(a,.95),p99:q(a,.99)};};
 const base=createLabConfig(7);
 for(const damaged of [false,true]){
- const cfg=damaged?{...base,fighters:base.fighters.map(f=>({...f,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s)))}))}:base;
+ const fighters=damaged
+  ?base.fighters.map(f=>({...f,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}))
+  :base.fighters;
+ const cfg={...base,fighters};
  const core=new LabSimulationCore();core.initialize({...cfg,labContactFracture:false});
  const run=i=>core.step(FIXED_DT,{commands:[{fighterId:0,forward:1,turn:Math.sin(i*.005)*.5,sprint:false}]});
  for(let i=0;i<300;i++)run(i);
