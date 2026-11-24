@@ -19,5 +19,5 @@ addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updat
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4();
 function frame(now){const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>core.step(t,input()),paused||document.hidden);const s=core.getSnapshot();
  s.rigSegments.forEach((parts,i)=>parts.forEach(p=>{const key=s.fighterIds[i]+':'+p.id;const f=boneFrame(p.a,p.b,[Math.sin(s.roots[i*4+3]),0,-Math.cos(s.roots[i*4+3])]);let m=meshes.get(key);if(!m){m=new THREE.Mesh(f.length>1e-8?cylinder:sphere,materials[i===0?0:1]);meshes.set(key,m);scene.add(m);}m.position.copy(v(f.center));if(f.length>1e-8){basis.makeBasis(v(f.x),v(f.y),v(f.z));m.quaternion.setFromRotationMatrix(basis);m.scale.set(p.radius,f.length,p.radius);}else m.scale.setScalar(p.radius);}));
- document.getElementById('stats').textContent=`Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | no collision / Rapier`;renderer.render(scene,camera);requestAnimationFrame(frame);}
+ document.getElementById('stats').textContent=`Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | no damage / Rapier`;renderer.render(scene,camera);requestAnimationFrame(frame);}
 reset();requestAnimationFrame(frame);
