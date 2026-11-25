@@ -2,8 +2,8 @@ import type {ArenaWall} from './navigation.js';
 import type {Vec3} from '../types.js';
 /** Native metric adapter for validated v1 location-geometry.js data.
  * No DOM, browser fetch or 2D game state crosses into SimulationCore.
- * The first P4 pass keeps an AABB *conservative* navigation proxy; Rapier and
- * Three use the original convex polygon parts and perimeter segments. */
+ * Preserves legacy AABB proxies for backward-compatible scenarios while
+ * PolygonNavigation uses original convex pieces and perimeter directly. */
 export type FloorPoint=readonly [number,number];
 export interface LegacyLocationInput{
  readonly location:{readonly id:string;readonly name:string;readonly capacity:number;
@@ -56,8 +56,8 @@ export function adaptLegacyLocation(data:LegacyLocationInput):NativeLocation{
    throw new RangeError('Invalid convex location parts');
   return {kind:o.kind,points:o.points.map(p),convexParts:parts.map(part=>part.map(p)),height:HEIGHT};
  });
- // P3 has only slab/AABB pathfinding; keep the proxy explicit, NOT polygon
- // collision. Exact shapes remain in the renderer and static Rapier world.
+ // Preserve the AABB proxy for existing P3 scenarios and tools. Native P4
+ // combat, perception and roots now use the exact convex polygons instead.
  const walls=objects.flatMap(o=>o.convexParts.map(box));
  const halfX=w/2,halfZ=d/2,t=BORDER;
  walls.push(
