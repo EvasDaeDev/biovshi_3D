@@ -397,7 +397,7 @@ export class LabSimulationCore implements SimulationCore {
           // Against a low victim, preview while approaching. If the real kick
           // is reachable, brake and let the current step finish before windup.
           if(needsPlant&&(!lowVictim||command))continue;
-          const best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim);
+          const best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim);
           if(best&&needsPlant){
             preparingLowKick=true;
             commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});

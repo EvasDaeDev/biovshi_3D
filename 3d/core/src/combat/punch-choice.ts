@@ -12,7 +12,7 @@ export function closestAim(origin:Vec3,part:PhysicsSegmentPose):Vec3{
 /** Select from attacks whose actual fixed-length IK can contact a live
  * damageable capsule in a static preview. The preview does not deal damage;
  * real moving geometry is still tested during thrust. */
-export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,sequence:number,motion?:AuthoredMotion):PunchChoice|null{
+export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,sequence:number,motion?:AuthoredMotion,ground:(x:number,z:number)=>number=()=>0):PunchChoice|null{
  const choices:PunchChoice[]=[];
  const order=['chest','L.lowerArm','R.lowerArm','head','abdomen','L.upperArm','R.upperArm','neck','pelvis','L.hand','R.hand','L.upperLeg','R.upperLeg'];
  for(const id of order){
@@ -24,9 +24,9 @@ export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly stri
    const distance=Math.hypot(shoulder[0]-aim[0],shoulder[1]-aim[1],shoulder[2]-aim[2]);
    if(distance>.68+part.radius+.083-.015+(motion?.16:0))continue;
    const punch:Punch={side,targetId:0,aim,start:0,yaw};
-   let before=punchPose(pose,punch,19,undefined,motion),contactId:string|null=null;
+   let before=punchPose(pose,punch,19,ground,motion),contactId:string|null=null;
    for(const age of [23,27,31]){
-    const after=punchPose(pose,punch,age,undefined,motion);
+    const after=punchPose(pose,punch,age,ground,motion);
     contactId=firstStrikeContact(before,after,victim,victim,side);
     if(contactId)break;
     before=after;
