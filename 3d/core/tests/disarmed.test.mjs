@@ -30,14 +30,14 @@ test('v1 disarmed escape increases the gap to all armed threats, never picks an 
  assert.equal(DISARMED.commitTicks,108);
 });
 
-test('armless/headless but mobile biped flees a dangerous patient instead of chasing',()=>{
+test('armless/headless one-leg survivor flees a dangerous patient instead of chasing',()=>{
  const c=new LabSimulationCore();
  const fighters=[
   {...base.fighters[0],origin:[0,0,1],yawRad:0,segmentIds:defenseless.filter(s=>s!=='R.foot')},
   {...base.fighters[1],origin:[0,0,0],yawRad:Math.PI}
  ];
- // With one leg the patient still has usable arms? No; single-support remains
- // mobile but has no arm/head/two-leg kick source.
+ // Single-support still permits locomotion, but there is no arm,
+ // head, or two-leg kick source.
  try{
   c.initialize({seed:7,fighters,combatEnabled:true,expandedStrikes:true,tacticalCombat:true});
   const stationary={fighterId:1,forward:0,turn:0,sprint:false};
