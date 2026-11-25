@@ -66,7 +66,8 @@ export class EscapeState{
   // the four-second manoeuvre running toward a stale goal.
   // A goal can become occupied after the manoeuvre begins. Recheck moving
   // patients each tick; static wall reachability remains checked at creation.
-  const blockedGoal=this.plan&&occupied.some(o=>distance(o,this.plan!.goal)<metres(this.plan!.mode==='pincer'?26:35));
+  const plan=this.plan;
+  const blockedGoal=plan!==null&&occupied.some(o=>distance(o,plan.goal)<metres(plan.mode==='pincer'?26:35));
   if(this.plan&&(tick>=this.plan.until||distance(a,this.plan.goal)<ESCAPE.arrival||blockedGoal||
    (this.plan.mode==='relocate'&&this.relocationTarget!==foe.id)||
    (this.plan.mode==='pincer'&&(threatIds.length!==this.pincerTargets.length||
