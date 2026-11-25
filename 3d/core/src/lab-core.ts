@@ -224,7 +224,11 @@ export class LabSimulationCore implements SimulationCore {
       // waypoint briefly; without armed threats use the existing patrol.
       if(this.tacticalCombat&&!command&&!hasAttackSource(a.segments,this.expandedStrikes)){
         a.escape.clear();
-        const threats=opponents.filter(b=>hasAttackSource(b.segments,this.expandedStrikes));
+        // Preserve the P3 vision contract: no awareness through opaque walls.
+        // A previously visible armed foe may remain in short-term memory.
+        const recalled=sensing?a.perception.recalled(this.tick,a,opponents.map(b=>b.id)):null;
+        const threats=opponents.filter(b=>hasAttackSource(b.segments,this.expandedStrikes)&&
+          (!sensing||visibleIds.includes(b.id)||recalled?.id===b.id));
         const occupied=this.actors.filter(b=>b!==a&&!b.terrainOnly).map(b=>({x:b.x,z:b.z}));
         if(threats.length){
           const ids=threats.map(b=>b.id).join(','),goal=a.disarmedGoal;
@@ -244,7 +248,8 @@ export class LabSimulationCore implements SimulationCore {
               turn:clamp(heading*2,-1,1),sprint:mobility.canSprint});
             if(sensing){
               const danger=threats.reduce((best,b)=>distanceTo(b)<distanceTo(best)?b:best,threats[0]!);
-              a.perception.advanceLook(a.yaw,a,visibleIds.includes(danger.id)?danger:null);
+              if(visibleIds.includes(danger.id))a.perception.remember(danger.id,danger,this.tick);
+              a.perception.advanceLook(a.yaw,a,visibleIds.includes(danger.id)?danger:recalled?.point??null);
             }
             continue;
           }
