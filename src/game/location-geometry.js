@@ -193,6 +193,15 @@ function clearanceTest(location,margin){
   return sides.every(([a,b])=>distance(p,closestPoint(p,a,b))>margin);
  });
 }
+/** Non-breaking build-time accessor for the exact v1 deterministic spawn selector.
+ * The legacy gameplay API stays unchanged; P4 uses all authored capacity
+ * slots, rather than independently inventing a second point generator. */
+export function locationSpawnSlots(location,spawnMargin=60){
+ const needed=Math.max(location.capacity,4),clear=clearanceTest(location,spawnMargin);
+ const slots=automaticSpawns(location,clear,needed,location.spawns);
+ if(slots.length<needed)throw Error('Для указанной вместимости не хватает безопасных стартовых точек.');
+ return slots.slice(0,needed).map(p=>[...p]);
+}
 function automaticSpawns(location,clear,needed,existing=[]){
  const positions=[...existing];
  const {width,height}=locationDimensions(location);
