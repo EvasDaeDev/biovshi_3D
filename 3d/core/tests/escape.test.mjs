@@ -88,3 +88,16 @@ test('pincer escape preserves threat-set identity across sorting and drops a sta
  assert.equal(e.choose(2,a,pair[0],switched,switched,true),null);
  assert.equal(e.snapshot().plan,null);
 });
+
+test('tactical escape skips a clear but unreachable point behind a separating wall',()=>{
+ const nav=new ArenaNavigation([{minX:-.25,maxX:.25,minZ:-6,maxZ:6,height:2.8}]);
+ const actor={id:0,x:-1,z:0,yaw:0};
+ const opponent={id:1,x:-2,z:0,yaw:0,visible:true,armed:true,attacking:false};
+ const endpointOnly=tacticalEscape(actor,opponent,1,[],goal=>nav.clear(goal,goal,.50));
+ assert.ok(endpointOnly&&nav.clear(endpointOnly,endpointOnly,.50),'legacy goal looked safe');
+ assert.equal(nav.reachable(actor,endpointOnly),false,'separating wall blocks that goal');
+ const corrected=tacticalEscape(actor,opponent,1,[],goal=>nav.reachable(actor,goal));
+ assert.ok(corrected&&nav.reachable(actor,corrected),'fallback is actually routable');
+ assert.ok(corrected.x<-.9,'do not cross partition');
+ assert.notDeepEqual(corrected,endpointOnly);
+});
