@@ -134,7 +134,7 @@ export class PolygonNavigation extends ArenaNavigation{
     const delta=(clearance-gap)/gap;
     q.x+=(q.x-point.x)*delta;q.z+=(q.z-point.z)*delta;changed=true;
    }
-   if(this.pointClear(q,pad)&&this.clear(goal,q,.03))return {...q};
+   if(this.pointClear(q,pad)&&this.clear(goal,q,Math.min(.49,pad)))return {...q};
    if(!changed)break;
   }
   return null;
@@ -148,12 +148,13 @@ export class PolygonNavigation extends ArenaNavigation{
  }
  override plan(start:PointXZ,end:PointXZ,pad=.65):readonly NativePoint[]{
   if(this.clear(start,end,pad))return [{...end}];
-  const finish=this.approachGoal(end,pad);
-  if(!finish)return [{...start}];
+  const finish=this.approachGoal(end,pad),entry=this.approachGoal(start,pad);
+  if(!finish||!entry)return [{...start}];
   const {nodes:corners,edges}=this.polygonGraph(pad);
-  const nodes=[start,finish,...corners],cost=nodes.map(()=>Infinity),previous=nodes.map(()=>-1),used=new Set<number>();
-  const link=(a:PointXZ,b:PointXZ)=>this.clear(a,b,pad)||
-   (a===start&&!this.pointClear(a,pad)&&this.clear(a,b,.03)&&this.pointClear(b,pad));
+  const nodes=[entry,finish,...corners],cost=nodes.map(()=>Infinity),previous=nodes.map(()=>-1),used=new Set<number>();
+  // Never use the old 3cm shortcut from a root touching a wall; this would
+  // cut through the real 50cm footprint while the graph expects 65cm.
+  const link=(a:PointXZ,b:PointXZ)=>this.clear(a,b,pad);
   cost[0]=0;
   for(let k=0;k<nodes.length;k++){
    let u=-1;for(let i=0;i<nodes.length;i++)if(!used.has(i)&&(u<0||cost[i]!<cost[u]!))u=i;
@@ -168,6 +169,7 @@ export class PolygonNavigation extends ArenaNavigation{
   if(!Number.isFinite(cost[1]))return [{...start}];
   const result:NativePoint[]=[];
   for(let i=1;i>0;i=previous[i]!)result.unshift({...nodes[i]!});
+  if(dist(start,entry)>.01)result.unshift(entry);
   return result;
  }
  override reachable(start:PointXZ,end:PointXZ,pad=.65):boolean{
