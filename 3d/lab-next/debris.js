@@ -8,7 +8,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 /** Physics adapter owns Rapier bodies; renderer consumes plain snapshots. */
 export class DebrisWorld {
  constructor(RAPIER){this.R=RAPIER;this.reset();}
- reset(walls=[],previousFloor=null,arenaId='lab'){
+ reset(walls=[],previousFloor=null,arenaId='lab',location=null){
   // Validate BEFORE freeing an active physics world: a corrupt/mismatched
   // saved arena must never wipe the current round.
   const archive=previousFloor===null?null:readFloorHistory(previousFloor,arenaId);
@@ -23,7 +23,32 @@ export class DebrisWorld {
    const wall=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x,2.1,z));
    this.world.createCollider(R.ColliderDesc.cuboid(w,2.1,d),wall);
   }
-  for(const w of walls){
+  if(location){
+   // Product authored polygons: preserve the actual convex silhouettes in
+   // Rapier, not the intentionally conservative AABB guards used by P3 AI.
+   for(const object of location.objects)for(const polygon of object.convexParts){
+    const h=object.height,vertices=new Float32Array(polygon.length*6);
+    for(let i=0;i<polygon.length;i++){
+     const p=polygon[i],offset=i*6;
+     vertices.set([p.x,0,p.z,p.x,h,p.z],offset);
+    }
+    const shape=R.ColliderDesc.convexHull(vertices);
+    if(!shape)throw Error('Invalid authored polygon collider');
+    const body=this.world.createRigidBody(R.RigidBodyDesc.fixed());
+    this.world.createCollider(shape.setFriction(.95),body);
+   }
+   // The local 2D boundary is a closed, convex polygon. Preserve diagonal
+   // cuts exactly for Rapier (unlike the first AABB root navigation proxy).
+   const boundary=location.boundary;
+   for(let i=0;i<boundary.length;i++){
+    const a=boundary[i],b=boundary[(i+1)%boundary.length];
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),yaw=-Math.atan2(dz,dx);
+    const body=this.world.createRigidBody(R.RigidBodyDesc.fixed()
+     .setTranslation((a.x+b.x)/2,1.4,(a.z+b.z)/2)
+     .setRotation({x:0,y:Math.sin(yaw/2),z:0,w:Math.cos(yaw/2)}));
+    this.world.createCollider(R.ColliderDesc.cuboid(len/2,1.4,.10).setFriction(.95),body);
+   }
+  }else for(const w of walls){
    const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2));
    this.world.createCollider(R.ColliderDesc.cuboid((w.maxX-w.minX)/2,w.height/2,(w.maxZ-w.minZ)/2),body);
   }
