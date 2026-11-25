@@ -47,6 +47,8 @@ export class ArenaNavigation{
  readonly walls:readonly ArenaWall[];
  private cache=new Map<number,Graph>();
  constructor(walls:readonly ArenaWall[]=[]){this.walls=validateWalls(walls);}
+ /** Lab AABB rays; P4 authored arenas override with exact convex polygons. */
+ sightClear(a:Vec3,b:Vec3):boolean{return sightClear(a,b,this.walls);}
  clear(a:PointXZ,b:PointXZ,pad=0):boolean{return this.walls.every(w=>rectHit(a,b,w,pad)===null);}
  private graph(pad:number):Graph{
   const found=this.cache.get(pad);if(found)return found;
