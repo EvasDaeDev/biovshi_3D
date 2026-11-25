@@ -4,7 +4,7 @@ import {loadFloorHistory,saveFloorHistory,clearFloorHistory} from './floor-stora
 import RAPIER from '@rapier';
 import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
-import {LabSimulationCore,createLabConfig,createArenaCombatConfig,createNavigationCombatConfig,FixedClock} from '../core/dist/index.js';
+import {LabSimulationCore,createLabConfig,createArenaCombatConfig,createNavigationCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
@@ -22,6 +22,7 @@ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerW
 scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);scene.add(lamp);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,new THREE.GridHelper(14,28,0x5d7265,0x34483c));
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
+const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
 const routeDebug=document.getElementById('route-debug'),routeLines=[];
 const visionDebug=document.getElementById('vision-debug'),visionArrows=[];
 const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),cylinder=new THREE.CylinderGeometry(1,1,1,12),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
@@ -58,6 +59,7 @@ if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario)
 function selectedLocation(){return scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
 function floorArenaId(){return selectedLocation()?.id??scenario.value;}
 function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;
+ if(mode==='terrain-hill')return {...cfg,labDynamicBalance:true,gradedSurface:lowHill(),fighters:[{...cfg.fighters[0],origin:[0,0,1.7],yawRad:0}]};
  if(mode.startsWith('location-')){
   const location=selectedLocation();if(!location)throw Error('Неизвестная авторская 3D арена');
   const base=createArenaCombatConfig(7,true,true);
@@ -68,7 +70,14 @@ function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;
   return {...base,fighters,walls:location.walls,location};
  }
 if(mode==='arena-navigation')return createNavigationCombatConfig(7);if(mode.startsWith('arena'))return createArenaCombatConfig(7,mode!=='arena',mode==='arena-vision');if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
-function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();debris.reset(config.walls??[],savedFloor,floorArenaId(),selectedLocation());oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;const location=selectedLocation();
+function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();debris.reset(config.walls??[],savedFloor,floorArenaId(),selectedLocation(),config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
+ for(const tri of config.gradedSurface??[]){
+  const geo=new THREE.BufferGeometry(),p=new Float32Array(tri.flatMap(v=>v));
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));geo.computeVertexNormals();
+  const surface=new THREE.Mesh(geo,gradedMaterial);surface.receiveShadow=true;
+  scene.add(surface);wallMeshes.push(surface);
+ }
+ const location=selectedLocation();
  if(location){
   for(const object of location.objects){
    const shape=new THREE.Shape();
@@ -86,6 +95,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
  }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize(config);pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
+  stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.location=selectedLocation()?.id??'';
   stats.dataset.authoredObjects=String(selectedLocation()?.objects.length??0);
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
