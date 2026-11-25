@@ -203,6 +203,14 @@ export class LabSimulationCore implements SimulationCore {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  /** Preserve P3 procedural roaming; native authored maps reuse original
+   * validated patrol points and reject routes blocked by real polygons. */
+  private patrolGoal(a:Actor):PointXZ{
+    const nav=this.navigation;
+    return nav instanceof PolygonNavigation
+      ?a.perception.patrol(this.tick,a,nav.location.patrol,p=>nav.reachable(a,p,nav.routePad))
+      :a.perception.patrol(this.tick,a);
+  }
   private routeHeading(a:Actor,goal:PointXZ):number{
     const p=this.navigation.walls.length?a.route.waypoint(this.navigation,a,goal,this.tick):goal;
     return wrap(Math.atan2(p.x-a.x,-(p.z-a.z))-a.yaw);
@@ -263,7 +271,7 @@ export class LabSimulationCore implements SimulationCore {
           }
         }
         if(!threats.length){a.disarmedGoal=null;a.disarmedThreatIds='';a.disarmedUntil=0;}
-        const goal=a.perception.patrol(this.tick,a),heading=this.routeHeading(a,goal);
+        const goal=this.patrolGoal(a),heading=this.routeHeading(a,goal);
         a.tactics.setMode('search');
         commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*a.behavior.traits.pursuit,
           turn:clamp(heading*2,-1,1),sprint:false});
@@ -280,7 +288,7 @@ export class LabSimulationCore implements SimulationCore {
       if(!target){
         a.escape.clear();
         if(sensing&&!this.fightEnded&&opponents.length&&!a.strike.punch){
-          const remembered=a.perception.recalled(this.tick,a,opponents.map(b=>b.id)),goal=remembered?.point??a.perception.patrol(this.tick,a);
+          const remembered=a.perception.recalled(this.tick,a,opponents.map(b=>b.id)),goal=remembered?.point??this.patrolGoal(a);
           a.perception.advanceLook(a.yaw,a,remembered?.point??null);
           a.tactics.setMode(remembered?'memory':'search');
           const heading=this.routeHeading(a,goal);
