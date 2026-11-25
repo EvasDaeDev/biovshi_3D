@@ -1,4 +1,5 @@
-import { ArenaNavigation,RouteState,sightClear } from './arena/navigation.js';
+import { ArenaNavigation,RouteState } from './arena/navigation.js';
+import { PolygonNavigation } from './arena/polygon-navigation.js';
 import type { PointXZ } from './combat/escape.js';
 import { PatientPerception,notices,type VisionBody } from './combat/perception.js';
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
@@ -80,7 +81,7 @@ export class LabSimulationCore implements SimulationCore {
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
         wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
-    const navigation=new ArenaNavigation(config.walls);
+    const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
     this.navigation=navigation;
     this.actors = actors;
@@ -216,7 +217,7 @@ export class LabSimulationCore implements SimulationCore {
       const distanceTo=(b:Actor)=>Math.hypot(b.x-a.x,b.z-a.z);
       const previousTarget=a.tactics.snapshot().targetId;
       const sensing=vision!==null&&!command;
-      const visible=sensing?opponents.filter(b=>notices(vision!.get(a.id)!,vision!.get(b.id)!,a.perception.gaze(a.yaw),(from,to)=>sightClear(from,to,this.navigation.walls))):opponents;
+      const visible=sensing?opponents.filter(b=>notices(vision!.get(a.id)!,vision!.get(b.id)!,a.perception.gaze(a.yaw),(from,to)=>this.navigation.sightClear(from,to))):opponents;
       const visibleIds=visible.map(b=>b.id);
       if(sensing)a.perception.setVisible(visibleIds);
       // v1 src/systems/ai.js: a mobile but disarmed patient does not
