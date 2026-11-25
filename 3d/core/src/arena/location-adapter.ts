@@ -12,6 +12,7 @@ export interface LegacyLocationInput{
  readonly boundary:readonly FloorPoint[];
  readonly parts:readonly (readonly (readonly FloorPoint[])[])[];
  readonly spawns:readonly FloorPoint[];
+ readonly spawnSlots:readonly FloorPoint[];
  readonly patrol:readonly FloorPoint[];
 }
 export interface NativePoint{readonly x:number;readonly z:number}
@@ -28,6 +29,8 @@ export interface NativeLocation{
  readonly objects:readonly NativePolygon[];
  readonly walls:readonly ArenaWall[];
  readonly spawns:readonly Vec3[];
+ /** All original validator slots, up to authored capacity (including 10). */
+ readonly spawnSlots:readonly Vec3[];
  readonly patrol:readonly NativePoint[];
 }
 const CM=.01,HEIGHT=2.8,BORDER=.20;
@@ -44,7 +47,7 @@ export function adaptLegacyLocation(data:LegacyLocationInput):NativeLocation{
  if(!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(l.id)||!finite(w)||!finite(d)||w<3||d<3||
   w>11||d>11||!Number.isInteger(l.capacity)||l.capacity<2||l.capacity>10||
   l.objects.length!==data.parts.length||data.boundary.length<3||
-  data.spawns.length<2||!l.name)throw new RangeError('Unsupported native location');
+  data.spawns.length!==4||data.spawnSlots.length<l.capacity||!l.name)throw new RangeError('Unsupported native location');
  const p=([x,z]:FloorPoint):NativePoint=>{
   if(!finite(x)||!finite(z)||x<0||z<0||x>w/CM||z>d/CM)throw new RangeError('Invalid native location point');
   return {x:x*CM-w/2,z:z*CM-d/2};
@@ -68,5 +71,6 @@ export function adaptLegacyLocation(data:LegacyLocationInput):NativeLocation{
  );
  return {id:l.id,name:l.name,capacity:l.capacity,width:w,depth:d,boundary,objects,walls,
   spawns:data.spawns.map(pt=>{const v=p(pt);return [v.x,0,v.z] as const;}),
+  spawnSlots:data.spawnSlots.slice(0,l.capacity).map(pt=>{const v=p(pt);return [v.x,0,v.z] as const;}),
   patrol:data.patrol.map(p)};
 }
