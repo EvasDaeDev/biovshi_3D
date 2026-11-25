@@ -4,6 +4,7 @@ import { PatientPerception,notices,type VisionBody } from './combat/perception.j
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
 import { usableStrike } from './combat/strike.js';
 import { CombatTactics } from './combat/tactics.js';
+import { pursuitForward,CLOSE_STANDOFF } from './combat/engagement.js';
 import { PatientBehavior } from './combat/patient-profile.js';
 import { chooseProneStrike } from './combat/prone-choice.js';
 import { chooseExtra } from './combat/extra-choice.js';
@@ -246,7 +247,7 @@ export class LabSimulationCore implements SimulationCore {
       const unobstructed=this.navigation.clear(a,target,.0),heading=(!command&&this.navigation.walls.length&&!a.strike.punch)?this.routeHeading(a,target):turn;
       const retreat=this.tacticalCombat&&!command&&!a.strike.punch&&!mobility.prone&&mobility.mode==='biped'&&a.tactics.retreating(this.tick)&&unobstructed&&distance<1.6&&Math.abs(a.x)<5.1&&Math.abs(a.z)<5.1;
       a.tactics.setMode(retreat?'retreat':'pursuit');
-      if(!command)commands.set(a.id,{fighterId:a.id,forward:retreat?(Math.abs(turn)<.8?-.65:0):distance>.46?Math.max(0,Math.cos(heading))*a.behavior.traits.pursuit:0,turn:clamp((retreat?turn:heading)*2,-1,1),sprint:false});
+      if(!command)commands.set(a.id,{fighterId:a.id,forward:retreat?(Math.abs(turn)<.8?-.65:0):pursuitForward(distance,heading,a.behavior.traits.pursuit),turn:clamp((retreat?turn:heading)*2,-1,1),sprint:false});
       // Port of v1 anti-stuck and pincer behavior, opt-in for arena.
       // Pincer uses a body-heading approximation of the original vision;
       // full head scanning and occlusion belong to the perception step.
@@ -270,7 +271,9 @@ export class LabSimulationCore implements SimulationCore {
       // This is only a broad phase; each source still has to pass IK/contact.
       const groundedPair=this.expandedStrikes&&(prone||target.gait.posture==='prone');
       const previewRange=groundedPair?2.65:this.expandedStrikes?1.05:.82;
+      let checkedStrikeGeometry=false;
       if(unobstructed&&seen&&allowed&&!retreat&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
+        checkedStrikeGeometry=true;
         const pose=this.actorPose(a),victim=this.actorPose(target),eligible=(id:string)=>target.health.canDamage(id,this.tick);
         const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
         const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];
@@ -283,6 +286,14 @@ export class LabSimulationCore implements SimulationCore {
             this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side),strikeKind:kind,proneStrike:prone});break;
           }
         }
+      }
+      // v1 close-range fallback: a root gap below standoff does not mean
+      // an actual healthy capsule is reachable by any usable strike.
+      // Move a little closer only after the existing IK/swept preview failed;
+      // blocked roots can then participate in the anti-stuck logic.
+      if(!command&&checkedStrikeGeometry&&!a.strike.punch&&!mobility.prone&&distance<=CLOSE_STANDOFF){
+        const old=commands.get(a.id)!;
+        commands.set(a.id,{...old,forward:pursuitForward(distance,heading,a.behavior.traits.pursuit,true)});
       }
       const punch=a.strike.punch;
       if(punch){
