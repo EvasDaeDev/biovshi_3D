@@ -96,17 +96,36 @@ export class ArenaNavigation{
   const path=this.plan(start,end,pad),last=path[path.length-1];
   return !!last&&dist(last,end)<1e-6;
  }
- /** Kinematic root guard: swept expanded footprint, allowing a patient
-  * already in clearance to leave it. Not articulated capsule-wall IK. */
- move(start:PointXZ,end:PointXZ,pad=.50):PointXZ{
+ /** Sweep the root footprint against static boxes, preserving exits from
+  * a clearance zone; tangential contact is not a wall penetration. */
+ private sweep(start:PointXZ,end:PointXZ,pad:number):PointXZ{
   const goal=within(end);let limit=1;
   for(const w of this.walls){
    const box=expand(w,pad);
    if(inside(start,box)&&outward(start,goal,w)&&rectHit(start,goal,w)===null)continue;
    const hit=rectHit(start,goal,box);
-   if(hit!==null)limit=Math.min(limit,Math.max(0,hit-1e-5));
+   if(hit===null)continue;
+   // The v1 surface-contact solver distinguishes overlap from harmless
+   // touching. Preserve along-face movement without allowing penetration.
+   const inset=EPS*4,inner={minX:box.minX+inset,maxX:box.maxX-inset,minZ:box.minZ+inset,maxZ:box.maxZ-inset};
+   if(inner.minX<inner.maxX&&inner.minZ<inner.maxZ&&rectHit(start,goal,inner)===null)continue;
+   limit=Math.min(limit,Math.max(0,hit-1e-5));
   }
   return {x:start.x+(goal.x-start.x)*limit,z:start.z+(goal.z-start.z)*limit};
+ }
+ /** Kinematic root guard: preserve requested travel along the wall tangent
+  * after a blocked sweep. Independently sweep each axis; an unobstructed
+  * tangent can move, but no candidate can tunnel through a second obstacle. */
+ move(start:PointXZ,end:PointXZ,pad=.50):PointXZ{
+  const goal=within(end);
+  if(!this.walls.length)return goal;
+  const first=this.sweep(start,goal,pad);
+  if(Math.abs(first.x-goal.x)+Math.abs(first.z-goal.z)<1e-9)return first;
+  if(Math.abs(first.x-goal.x)<1e-9)return this.sweep(first,{x:first.x,z:goal.z},pad);
+  if(Math.abs(first.z-goal.z)<1e-9)return this.sweep(first,{x:goal.x,z:first.z},pad);
+  const x=this.sweep(first,{x:goal.x,z:first.z},pad);
+  const z=this.sweep(first,{x:first.x,z:goal.z},pad);
+  return (x.x-goal.x)**2+(x.z-goal.z)**2<=(z.x-goal.x)**2+(z.z-goal.z)**2?x:z;
  }
 }
 export class RouteState{
