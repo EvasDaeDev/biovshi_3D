@@ -242,7 +242,10 @@ export class LabSimulationCore implements SimulationCore {
             a.tactics.setMode('retreat');
             commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*ESCAPE.fleeSpeed/MOVEMENT.sprintSpeed,
               turn:clamp(heading*2,-1,1),sprint:mobility.canSprint});
-            if(sensing)a.perception.advanceLook(a.yaw,a,visible.find(b=>b.id===threats[0]!.id)??null);
+            if(sensing){
+              const danger=threats.reduce((best,b)=>distanceTo(b)<distanceTo(best)?b:best,threats[0]!);
+              a.perception.advanceLook(a.yaw,a,visibleIds.includes(danger.id)?danger:null);
+            }
             continue;
           }
         }
