@@ -39,3 +39,6 @@ export {adaptLegacyLocation} from './arena/location-adapter.js';
 export type {LegacyLocationInput,NativeLocation,NativePolygon,NativePoint} from './arena/location-adapter.js';
 
 export {PolygonNavigation} from './arena/polygon-navigation.js';
+
+export {validateGradeSurface,gradeHeight,lowHill} from './arena/graded-surface.js';
+export type {GradeTriangle,GradeSurface} from './arena/graded-surface.js';
