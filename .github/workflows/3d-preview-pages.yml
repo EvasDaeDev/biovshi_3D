@@ -49,6 +49,13 @@ jobs:
       - run: npm --prefix 3d/core run preview:stage
       - run: npx --prefix 3d/core playwright install --with-deps chromium
       - run: npm --prefix 3d/core run preview:smoke
+      - name: Upload tested Lab Next preview for manual debugging
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-next-preview
+          path: _site
+          if-no-files-found: error
+          include-hidden-files: true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

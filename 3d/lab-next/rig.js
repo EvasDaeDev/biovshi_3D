@@ -60,7 +60,10 @@ document.getElementById('damage-hit').onclick=()=>queueDamage(1);document.getEle
 const requestedScenario=new URLSearchParams(location.search).get('scenario');
 if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario))scenario.value=requestedScenario;
 function selectedLocation(){return scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
-function floorArenaId(){return selectedLocation()?.id??scenario.value;}
+function floorArenaId(){
+ const location=selectedLocation();
+ return location?.terrain?location.id+'@'+location.terrain.revision:location?.id??scenario.value;
+}
 function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;
  if(mode==='terrain-hill')return {...cfg,labDynamicBalance:true,gradedSurface:lowHill(),fighters:[{...cfg.fighters[0],origin:[0,0,1.7],yawRad:0}]};
  if(mode.startsWith('location-')){

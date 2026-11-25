@@ -33,7 +33,7 @@ for(const location of Object.values(catalog)){
  let longestStationarySeconds=0,stationaryPatientId=null;
  try{
   core.initialize(config);
-  world.reset(location.walls,null,location.id,location);
+  world.reset(location.walls,null,location.id,location,config.gradedSurface);
   assert.equal(core.getSnapshot().fighterIds.length,location.capacity);
   for(let tick=1;tick<=seconds*60;tick++){
    const t=performance.now();

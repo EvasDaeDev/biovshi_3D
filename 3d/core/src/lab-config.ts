@@ -33,5 +33,6 @@ export function createAuthoredCombatConfig(seed:number,location:NativeLocation,p
   return {...exemplar,id,origin,
    yawRad:Math.atan2(-origin[0],origin[2])};
  });
- return {...base,location,walls:location.walls,fighters};
+ return {...base,location,walls:location.walls,fighters,
+  ...(location.terrain?{gradedSurface:location.terrain.triangles}:{})};
 }

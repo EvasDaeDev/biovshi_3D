@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
-import {gradeHeight,validateGradeSurface,lowHill,LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
+import {gradeHeight,validateGradeSurface,lowHill,LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
+import {createGradeContact} from '../dist/collision/grade-contact.js';
+import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {applyLocationTerrain} from '../scripts/location-terrain.mjs';
 import {DebrisWorld} from '../../lab-next/debris.js';
 const near=(actual,expected,tolerance=1e-9)=>assert.ok(Math.abs(actual-expected)<=tolerance,`${actual} != ${expected}`);
 const segmentFoot=segments=>segments.find(p=>p.id==='L.foot');
@@ -91,4 +94,52 @@ test('P4 Rapier hill geometry is backed by four real fixed hulls and resets clea
   assert.equal(debris.world.colliders.len(),5);
   assert.equal(debris.grades.length,0);
  }finally{debris.dispose();}
+});
+
+test('P4 capsule radius contacts the incline even when the axis samples clear the floor',()=>{
+ const ramp=[[[0,0,0],[1,.5,0],[0,0,1]]];
+ const raise=createGradeContact(ramp);
+ const part={id:'L.lowerArm',a:[.4,.301,.2],b:[.4,.301,.4],radius:.1};
+ const [corrected]=raise([part],0);
+ near(corrected.a[1],.2+.1*Math.hypot(1,.5));
+ near(corrected.b[1],corrected.a[1]);
+ near(corrected.b[2]-corrected.a[2],.2);
+ const outside={...part,a:[2,.1,0],b:[2,.1,.2]};
+ assert.equal(raise([outside],0)[0],outside);
+});
+
+test('P4 clips a long capsule axis at the terrain footprint, between the old three samples',()=>{
+ const grade=[[[.44,.30,-.2],[.44,.30,.2],[.65,.30,0]]];
+ const part={id:'abdomen',a:[0,.30,0],b:[2,.35,0],radius:.05};
+ const [corrected]=createGradeContact(grade)([part],0);
+ assert.ok(corrected.a[1]>.33);
+ near(corrected.b[1]-corrected.a[1],.05);
+});
+
+test('P4 native terrain is versioned, rejects invalid geometry and reaches authored core and Rapier',async()=>{
+ const catalog=await buildLocationCatalog();
+ const ring=catalog.ring, [x,,z]=ring.spawnSlots[0];
+ const grades=lowHill(x,z,.35,.15),manifest={schemaVersion:1,locations:{ring:grades}};
+ const reviewed=applyLocationTerrain({...catalog},manifest);
+ assert.equal(reviewed.ward,catalog.ward);
+ assert.match(reviewed.ring.terrain.revision,/^[a-f0-9]{64}$/);
+ assert.equal(applyLocationTerrain({...catalog},manifest).ring.terrain.revision,reviewed.ring.terrain.revision);
+ const changed={...manifest,locations:{ring:lowHill(x,z,.35,.14)}};
+ assert.notEqual(applyLocationTerrain({...catalog},changed).ring.terrain.revision,reviewed.ring.terrain.revision);
+ assert.throws(()=>applyLocationTerrain({...catalog},{...manifest,schemaVersion:2}),/manifest/);
+ assert.throws(()=>applyLocationTerrain({...catalog},{...manifest,locations:{missing:grades}}),/location/);
+ assert.throws(()=>applyLocationTerrain({...catalog},{...manifest,locations:{ward:lowHill()}}),/arena geometry/);
+ assert.throws(()=>applyLocationTerrain({...catalog},{...manifest,locations:{ring:[grades[0]]}}),/raised edge/);
+ assert.throws(()=>applyLocationTerrain({...catalog},{...manifest,locations:{ring:[grades[0],grades[0]]}}),/duplicate seam/);
+
+ await RAPIER.init();
+ const config=createAuthoredCombatConfig(7,reviewed.ring);
+ const core=new LabSimulationCore(),debris=new DebrisWorld(RAPIER);
+ try{
+  core.initialize(config);
+  debris.reset(config.walls,null,ring.id,reviewed.ring,config.gradedSurface);
+  near(core.getSnapshot().roots[1],.15,1e-6);
+  assert.equal(debris.world.colliders.len(),5+ring.boundary.length+grades.length);
+  assert.equal(debris.grades.length,grades.length);
+ }finally{core.dispose();debris.dispose();}
 });

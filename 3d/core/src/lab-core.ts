@@ -22,6 +22,7 @@ import { MOVEMENT } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
 import { expandLegacyTorso } from './rig/anatomy.js';
 import { terrainHeight, type Mound } from './collision/terrain.js';
+import { createGradeContact } from './collision/grade-contact.js';
 import { gradeHeight,validateGradeSurface,type GradeSurface } from './arena/graded-surface.js';
 import { ContactEpisodes, type SegmentContact } from './collision/contact-episodes.js';
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
@@ -51,6 +52,7 @@ export class LabSimulationCore implements SimulationCore {
   private ready = false;
   private mounds:readonly Mound[]=[];
   private grade:GradeSurface=[];
+  private gradeContact:ReturnType<typeof createGradeContact>|null=null;
   private ground(a:Actor,x:number,z:number):number{return a.baseY+gradeHeight(x,z,this.grade)+terrainHeight(x,z,this.mounds);}
   private navigation=new ArenaNavigation();
   /** Copy plain terrain data from the external physics adapter. */
@@ -89,6 +91,7 @@ export class LabSimulationCore implements SimulationCore {
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
     this.navigation=navigation;
     this.grade=graded;
+    this.gradeContact=graded.length?createGradeContact(graded):null;
     this.actors = actors;
     this.mounds=[];
     this.tick = 0;
@@ -106,7 +109,9 @@ export class LabSimulationCore implements SimulationCore {
   private actorPose(a:Actor):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const pose=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
-    const strike=a.strike.punch;return strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick,(x,z)=>this.ground(a,x,z)):pose;
+    const strike=a.strike.punch;
+    const posed=strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick,(x,z)=>this.ground(a,x,z)):pose;
+    return this.gradeContact?.(posed,a.baseY)??posed;
   }
   private copyPose(parts:readonly PhysicsSegmentPose[]):readonly RigPose[]{
     return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius}));
@@ -460,7 +465,7 @@ export class LabSimulationCore implements SimulationCore {
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
       const parts=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
-      const support=analyzeSupport(parts,(x,z)=>this.ground(a,x,z));
+      const support=analyzeSupport(this.gradeContact?.(parts,a.baseY)??parts,(x,z)=>this.ground(a,x,z));
       if(a.knockdown.observe(displacement,support.margin,true)){
         a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
       }

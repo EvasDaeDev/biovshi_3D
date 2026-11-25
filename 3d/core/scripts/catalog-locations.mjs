@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseLocation,convexParts,locationBoundary,locationSpawnSlots} from '../../../src/game/location-geometry.js';
+import {applyLocationTerrain} from './location-terrain.mjs';
 import {adaptLegacyLocation} from '../dist/arena/location-adapter.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
@@ -19,5 +20,6 @@ export async function buildLocationCatalog(){
   const parts=location.objects.map(o=>convexParts(o.points));
   result[id]=adaptLegacyLocation({location,boundary:locationBoundary(location),parts,spawns,spawnSlots:locationSpawnSlots(location,60),patrol});
  }
- return result;
+ const terrain=JSON.parse(await readFile(resolve(root,'3d/locations/terrain.json'),'utf8'));
+ return applyLocationTerrain(result,terrain);
 }

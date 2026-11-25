@@ -1,4 +1,5 @@
 import type {ArenaWall} from './navigation.js';
+import type {GradeSurface} from './graded-surface.js';
 import type {Vec3} from '../types.js';
 /** Native metric adapter for validated v1 location-geometry.js data.
  * No DOM, browser fetch or 2D game state crosses into SimulationCore.
@@ -28,6 +29,7 @@ export interface NativeLocation{
  readonly boundary:readonly NativePoint[];
  readonly objects:readonly NativePolygon[];
  readonly walls:readonly ArenaWall[];
+ readonly terrain?:{readonly revision:string;readonly triangles:GradeSurface};
  readonly spawns:readonly Vec3[];
  /** All original validator slots, up to authored capacity (including 10). */
  readonly spawnSlots:readonly Vec3[];
