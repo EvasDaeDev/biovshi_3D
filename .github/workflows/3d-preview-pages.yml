@@ -25,7 +25,10 @@ jobs:
         run: node 3d/core/scripts/benchmark-core.mjs
       - name: Record Rapier ragdoll CPU benchmark (informational)
         run: node 3d/core/scripts/benchmark-ragdoll.mjs
-      - name: Audit P4 authored arenas with actual 3-10 patient capacity (informational)
+      - name: Audit P4 authored arenas for 60 simulated seconds at full capacity
+        timeout-minutes: 15
+        env:
+          P4_AUDIT_SECONDS: '60'
         run: node 3d/core/scripts/audit-authored-arenas.mjs
       - name: Upload P4 capacity and Rapier performance audit
         if: always()
