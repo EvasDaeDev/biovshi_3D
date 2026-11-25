@@ -4,6 +4,7 @@ import { PatientPerception,notices,type VisionBody } from './combat/perception.j
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
 import { usableStrike } from './combat/strike.js';
 import { CombatTactics } from './combat/tactics.js';
+import { DISARMED,hasAttackSource,fleeAllAttackers } from './combat/disarmed.js';
 import { pursuitForward,CLOSE_STANDOFF } from './combat/engagement.js';
 import { PatientBehavior } from './combat/patient-profile.js';
 import { chooseProneStrike } from './combat/prone-choice.js';
@@ -33,7 +34,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; behavior:PatientBehavior; tactics:CombatTactics; escape:EscapeState; perception:PatientPerception; route:RouteState; lastHitTick:number; terrainOnly:boolean; physicsPose:readonly RigPose[];
+  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; behavior:PatientBehavior; tactics:CombatTactics; escape:EscapeState; perception:PatientPerception; route:RouteState; disarmedGoal:PointXZ|null; disarmedUntil:number; disarmedThreatIds:string; lastHitTick:number; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -77,7 +78,7 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),lastHitTick:0,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
@@ -111,7 +112,7 @@ export class LabSimulationCore implements SimulationCore {
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed||this.fightEnded)return false;
     const pose=this.copyPose(this.actorPose(a));
-    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.tactics.setMode('inactive');a.escape.clear();a.perception.clear();a.route.clear();a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
+    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.tactics.setMode('inactive');a.escape.clear();a.perception.clear();a.route.clear();a.disarmedGoal=null;a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
     const source=this.actors.find(b=>b.id===attackerId&&b.id!==a.id);
     let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
     if(Math.hypot(dx,dz)<1e-6){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
@@ -210,7 +211,7 @@ export class LabSimulationCore implements SimulationCore {
       a.strike.advance(this.tick,allowed&&compatible,a.segments);
       if(a.fixed){a.tactics.setMode('inactive');continue;}
       const command=commands.get(a.id);
-      if(this.fightEnded){a.tactics.setMode('inactive');a.perception.clear();a.route.clear();commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
+      if(this.fightEnded){a.tactics.setMode('inactive');a.perception.clear();a.route.clear();a.disarmedGoal=null;commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
       const opponents=this.actors.filter(b=>b!==a&&!b.fixed);
       const distanceTo=(b:Actor)=>Math.hypot(b.x-a.x,b.z-a.z);
       const previousTarget=a.tactics.snapshot().targetId;
@@ -218,6 +219,42 @@ export class LabSimulationCore implements SimulationCore {
       const visible=sensing?opponents.filter(b=>notices(vision!.get(a.id)!,vision!.get(b.id)!,a.perception.gaze(a.yaw),(from,to)=>sightClear(from,to,this.navigation.walls))):opponents;
       const visibleIds=visible.map(b=>b.id);
       if(sensing)a.perception.setVisible(visibleIds);
+      // v1 src/systems/ai.js: a mobile but disarmed patient does not
+      // endlessly chase an armed foe it cannot hurt. Commit a safe escape
+      // waypoint briefly; without armed threats use the existing patrol.
+      if(this.tacticalCombat&&!command&&!hasAttackSource(a.segments,this.expandedStrikes)){
+        a.escape.clear();
+        const threats=opponents.filter(b=>hasAttackSource(b.segments,this.expandedStrikes));
+        const occupied=this.actors.filter(b=>b!==a&&!b.terrainOnly).map(b=>({x:b.x,z:b.z}));
+        if(threats.length){
+          const ids=threats.map(b=>b.id).join(','),goal=a.disarmedGoal;
+          if(!goal||this.tick>=a.disarmedUntil||ids!==a.disarmedThreatIds||
+             Math.hypot(goal.x-a.x,goal.z-a.z)<DISARMED.arrival||
+             !this.navigation.reachable(a,goal)||
+             occupied.some(o=>Math.hypot(goal.x-o.x,goal.z-o.z)<DISARMED.occupiedRadius)){
+            a.disarmedGoal=fleeAllAttackers(a,threats,occupied,
+              p=>this.navigation.reachable(a,p),p=>this.navigation.clear(a,p,.15));
+            a.disarmedUntil=this.tick+DISARMED.commitTicks;
+            a.disarmedThreatIds=ids;
+          }
+          if(a.disarmedGoal){
+            const heading=this.routeHeading(a,a.disarmedGoal);
+            a.tactics.setMode('retreat');
+            commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*ESCAPE.fleeSpeed/MOVEMENT.sprintSpeed,
+              turn:clamp(heading*2,-1,1),sprint:mobility.canSprint});
+            if(sensing)a.perception.advanceLook(a.yaw,a,visible.find(b=>b.id===threats[0]!.id)??null);
+            continue;
+          }
+        }
+        a.disarmedGoal=null;a.disarmedThreatIds='';
+        const goal=a.perception.patrol(this.tick,a),heading=this.routeHeading(a,goal);
+        a.tactics.setMode('search');
+        commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*a.behavior.traits.pursuit,
+          turn:clamp(heading*2,-1,1),sprint:false});
+        if(sensing)a.perception.advanceLook(a.yaw,a,null);
+        continue;
+      }
+      a.disarmedGoal=null;a.disarmedThreatIds='';
       const locked=a.strike.punch?.targetId;
       const candidates=sensing?opponents.filter(b=>visibleIds.includes(b.id)||b.id===locked):opponents;
       const chosen=this.tacticalCombat&&!command?a.tactics.choose(this.tick,candidates.map(b=>({id:b.id,distance:distanceTo(b)})),locked,opponents.map(b=>b.id)):null;
