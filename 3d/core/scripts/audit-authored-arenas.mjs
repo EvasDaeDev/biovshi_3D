@@ -77,6 +77,9 @@ for(const location of Object.values(catalog)){
     if(state.lifeStates[i]!=='active'){stationarySeconds.delete(id);lastPositions.delete(id);continue;}
     const p={x:state.roots[i*4],z:state.roots[i*4+2]};
     assert.equal(nav.clear(p,p,.35),true,location.id+' active patient crossed authored polygon: '+JSON.stringify(p));
+    // A legitimate winner becomes stationary *after* the fight ends.
+    // Only measure potentially stuck patients while combat is ongoing.
+    if(state.fight.ended){stationarySeconds.delete(id);lastPositions.delete(id);continue;}
     const old=lastPositions.get(id);
     // Diagnostic only: wall contact, disabled limbs or indecision can all
     // produce stationary roots. Don't fake a defeat or loosen geometry checks.
