@@ -4,24 +4,38 @@ import {IncapacitatedBodies} from './incapacitated.js';
 import {moundDimensions,terrainHeight,capsuleVerticalHalfExtent} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 import {createFloorHistory,readFloorHistory} from '../core/dist/arena/floor-history.js';
+import {gradeHeight,validateGradeSurface} from '../core/dist/arena/graded-surface.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 /** Physics adapter owns Rapier bodies; renderer consumes plain snapshots. */
 export class DebrisWorld {
  constructor(RAPIER){this.R=RAPIER;this.reset();}
- reset(walls=[],previousFloor=null,arenaId='lab',location=null){
+ reset(walls=[],previousFloor=null,arenaId='lab',location=null,gradedSurface=[]){
   // Validate BEFORE freeing an active physics world: a corrupt/mismatched
   // saved arena must never wipe the current round.
   const archive=previousFloor===null?null:readFloorHistory(previousFloor,arenaId);
+  const grades=validateGradeSurface(gradedSurface);
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
-  this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
+  this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.nextId=0;
+  this.grades=grades;this.baseHeight=(x,z)=>gradeHeight(x,z,this.grades);
+  this.incapacitated=new IncapacitatedBodies(R,this.world,this.baseHeight);
   this.archiveFloor=archive;
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
   this.world.createCollider(R.ColliderDesc.cuboid(7,.19,7).setFriction(.95),floor);
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
    const wall=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x,2.1,z));
    this.world.createCollider(R.ColliderDesc.cuboid(w,2.1,d),wall);
+  }
+  // The exact inclined top triangles become closed, static Rapier prisms.
+  // Floor/render/IK share the same triangle vertices; no fake height map.
+  for(const tri of grades){
+   const vertices=new Float32Array(18);
+   tri.forEach((p,i)=>{vertices.set(p,i*3);vertices.set([p[0],-.06,p[2]],9+i*3);});
+   const shape=R.ColliderDesc.convexHull(vertices);
+   if(!shape)throw Error('Invalid P4 walkable surface hull');
+   const body=this.world.createRigidBody(R.RigidBodyDesc.fixed());
+   this.world.createCollider(shape.setFriction(1.1),body);
   }
   if(location){
    // Product authored polygons: preserve the actual convex silhouettes in
@@ -55,7 +69,7 @@ export class DebrisWorld {
   // Previous-round remains have no dynamic Rapier ownership. New bodies
   // collide with their low, walkable cones; meshes keep exact old anatomy.
   for(const mound of archive?.mounds??[]){
-   const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(mound.x,mound.height/2,mound.z));
+   const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(mound.x,this.baseHeight(mound.x,mound.z)+mound.height/2,mound.z));
    this.world.createCollider(R.ColliderDesc.cone(mound.height/2,mound.radius).setFriction(1.1).setCollisionGroups(0x00010006),body);
   }
  }
@@ -91,13 +105,13 @@ export class DebrisWorld {
   for(const b of this.branches){
    if(b.settled)continue;
    const parts=compoundPose(b),v=b.rb.linvel(),w=b.rb.angvel();
-   const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=terrainHeight(q[0],q[2],this.moundSnapshot())+.06));
+   const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],this.moundSnapshot())+.06));
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.4;
    b.age++;b.still=near&&(b.rb.isSleeping()||speed<.16)?b.still+1:0;
    if(b.still<60&&!(b.age>720&&near))continue;
    b.settled=parts;this.world.removeRigidBody(b.rb);b.rb=null;
-   for(const [i,m] of bodyTerrain(parts).entries()){
-    const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
+   for(const [i,m] of bodyTerrain(parts,this.baseHeight).entries()){
+    const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,this.baseHeight(m.x,m.z)+m.height/2,m.z));
     this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
     this.mounds.push({id:'branch:'+b.id+':'+i,source:'branch',...m});
    }
@@ -106,14 +120,14 @@ export class DebrisWorld {
    const d=this.items[i],t=d.rb.translation(),q=d.rb.rotation(),v=d.rb.linvel(),w=d.rb.angvel();
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.12;
    const bottom=t.y-(capsuleVerticalHalfExtent(d.length,d.radius,q));
-   const nearGround=bottom<=terrainHeight(t.x,t.z,this.moundSnapshot())+.045;
+   const nearGround=bottom<=this.baseHeight(t.x,t.z)+terrainHeight(t.x,t.z,this.moundSnapshot())+.045;
    d.age++;d.still=(speed<.20&&(nearGround||d.rb.isSleeping()))?d.still+1:0;
    if(d.still>=60||(d.age>720&&nearGround)){
-    const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y,q),R=this.R;
+    const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y-this.baseHeight(t.x,t.z),q),R=this.R;
     // Keep the exact visible segment pose independently of its collider.
     this.settledSingles.push({id:d.id,length:d.length,radius:d.radius,segmentId:d.segmentId,fighterId:d.fighterId,settled:true,position:{...t},rotation:{...q}});
     this.world.removeRigidBody(d.rb);
-    const rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
+    const rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,this.baseHeight(m.x,m.z)+m.height/2,m.z));
     this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
     this.mounds.push({id:d.id,source:'segment',...m});this.items.splice(i,1);
    }
@@ -144,5 +158,5 @@ export class DebrisWorld {
   const fresh=singles.concat(this.settledSingles.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}})),branches);
   return (this.archiveFloor?.visuals.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}}))??[]).concat(fresh);
  }
- dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.incapacitated=null;this.archiveFloor=null;}
+ dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.incapacitated=null;this.archiveFloor=null;this.grades=[];this.baseHeight=()=>0;}
 }
