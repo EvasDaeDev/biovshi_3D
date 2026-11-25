@@ -143,3 +143,30 @@ test('P4 native terrain is versioned, rejects invalid geometry and reaches autho
   assert.equal(debris.grades.length,grades.length);
  }finally{core.dispose();debris.dispose();}
 });
+
+test('P4 finite terrain corners do not lift a capsule outside its radius',()=>{
+ const grade=[[[0,.2,0],[.7,.2,0],[0,.2,.7]]];
+ const sphere={id:'L.foot',a:[-.08,.25,-.08],b:[-.08,.25,-.08],radius:.1};
+ const raise=createGradeContact(grade);
+ assert.equal(raise([sphere],0)[0],sphere);
+ const nearCorner={...sphere,a:[-.04,.25,-.04],b:[-.04,.25,-.04]};
+ near(raise([nearCorner],0)[0].a[1],.2+Math.sqrt(.1**2-2*.04**2));
+});
+
+test('P4 hill traversal keeps a real support through the triangle seams',()=>{
+ const cfg=createLabConfig(7),core=new LabSimulationCore();
+ const fighter={...cfg.fighters[0],origin:[0,0,1.7],yawRad:0};
+ core.initialize({...cfg,labDynamicBalance:true,fighters:[fighter],gradedSurface:lowHill()});
+ try{
+  let seamTicks=0;
+  for(let i=0;i<220;i++){
+   core.step(FIXED_DT,{commands:[{fighterId:fighter.id,forward:1,turn:0,sprint:false}]});
+   const s=core.getSnapshot();
+   if(s.roots[1]<=.15)continue;
+   seamTicks++;
+   assert.ok(s.supports[0].contacts.length,'no support at tick '+s.tick);
+  }
+  assert.ok(seamTicks>25);
+  near(core.getSnapshot().roots[1],0);
+ }finally{core.dispose();}
+});
