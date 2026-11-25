@@ -89,11 +89,14 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
  };
  scenario.onchange=()=>{void restoreScenario();};
  document.getElementById('next-round').onclick=async()=>{
-  const operation=++floorOperation,arena=scenario.value;
+  // A premature click must not invalidate an in-flight load or clear.
+  if(stats.dataset.state!=='running'){floorStatus.textContent='Дождитесь загрузки арены.';return;}
+  const arena=scenario.value;
   try{
    const state=core.getSnapshot();
    if(!state.fight.ended)throw new Error('Сначала необходимо завершить бой.');
    const saved=debris.exportSettledFloor(arena,state.oilMarks);
+   const operation=++floorOperation;
    suspendRound('Сохранение пола перед следующим раундом…');
    let warning='';
    try{await saveFloorHistory(floorSession,arena,saved);}
@@ -102,7 +105,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
    reset(saved);
    if(warning)floorStatus.textContent=warning;
    else floorStatus.textContent+=' Сохранено в IndexedDB ('+floorSession+').';
-  }catch(error){if(operation===floorOperation)floorStatus.textContent=error.message;}
+  }catch(error){if(arena===scenario.value)floorStatus.textContent=error.message;}
  };
 
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
