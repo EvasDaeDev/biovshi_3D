@@ -1,3 +1,4 @@
+import type { TacticalSnapshot } from './combat/tactics.js';
 import type { PatientProfile,PatientTraits } from './combat/patient-profile.js';
 import type { StrikeSnapshot,StrikeKind } from './combat/strike.js';
 import type { OilMark,OilSnapshot } from './combat/oil.js';
@@ -49,6 +50,8 @@ export interface WorldConfig {
   readonly combatEnabled?: boolean;
   /** Opt-in extended source selection, retaining the arm-only regression mode. */
   readonly expandedStrikes?: boolean;
+  /** Opt-in persistent targets and reactive behavior in group combat. */
+  readonly tacticalCombat?: boolean;
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
@@ -63,6 +66,7 @@ export interface WorldSnapshot {
   readonly oil?: readonly OilSnapshot[];
   readonly oilMarks?: readonly OilMark[];
   readonly impacts?: readonly {readonly active:boolean;readonly remainingSeconds:number;readonly slow:number}[];
+  readonly tactics?: readonly TacticalSnapshot[];
   readonly patientTraits?: readonly (PatientTraits & {readonly targetId:number|null;readonly noticedAt:number;readonly nextAttack:number})[];
   readonly strikes?: readonly StrikeSnapshot[];
   readonly fight?: Readonly<{ended:boolean;winnerId:number|null}>;

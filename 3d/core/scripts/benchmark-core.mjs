@@ -1,16 +1,16 @@
 import {bodyTerrain} from '../dist/collision/body-terrain.js';
 import {performance} from 'node:perf_hooks';
-import {LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
+import {LabSimulationCore,createLabConfig,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
 const q=(values,p)=>values[Math.floor((values.length-1)*p)];
 const summarize=a=>{a.sort((x,y)=>x-y);return {p50:q(a,.5),p95:q(a,.95),p99:q(a,.99)};};
 const base=createLabConfig(7);
-for(const scenario of ['intact','legless','balance','settled','single-support','combat','combat-mixed','combat-prone','combat-traits']){
+for(const scenario of ['intact','legless','balance','settled','single-support','combat','combat-mixed','combat-prone','combat-traits','combat-arena']){
  const damaged=scenario==='legless'||scenario==='combat-prone';
  const fighters=damaged
   ?base.fighters.map(f=>({...f,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}))
   :scenario==='single-support'?base.fighters.map(f=>({...f,segmentIds:f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s))})):base.fighters;
  const cfg={...base,fighters:scenario==='combat-traits'?fighters.map(f=>({...f,profile:f.id%2?{movement:2,critical:4,turning:3,temperament:'hesitant'}:{movement:4,critical:2,turning:3,temperament:'impulsive'}})):fighters};
- const core=new LabSimulationCore();core.initialize({...cfg,labContactFracture:false,labDynamicBalance:scenario==='balance',combatEnabled:scenario.startsWith('combat'),expandedStrikes:scenario==='combat-mixed'||scenario==='combat-prone'||scenario==='combat-traits'});
+ const core=new LabSimulationCore();core.initialize(scenario==='combat-arena'?createArenaCombatConfig(7):{...cfg,labContactFracture:false,labDynamicBalance:scenario==='balance',combatEnabled:scenario.startsWith('combat'),expandedStrikes:scenario==='combat-mixed'||scenario==='combat-prone'||scenario==='combat-traits'});
  if(scenario==='settled'){
   const mounds=[];for(const f of fighters.slice(4)){core.incapacitate(f.id);const s=core.getSnapshot(),i=Array.from(s.fighterIds).indexOf(f.id),parts=s.rigSegments[i].map(p=>({...p,a:[p.a[0],.2+p.a[2]-f.origin[2],f.origin[2]-p.a[1]+1],b:[p.b[0],.2+p.b[2]-f.origin[2],f.origin[2]-p.b[1]+1]}));core.setIncapacitatedPose(f.id,parts,true);mounds.push(...bodyTerrain(parts));}core.setTerrainMounds(mounds);
  }

@@ -43,6 +43,8 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('duel-prone');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.posture==='prone'&&Number(d.hits)>0;},{},{timeout:45000});
+ await page.locator('#scenario').selectOption('arena');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0&&d.targets?.split('/').length===8;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('damage');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='3';});
  await page.locator('#damage-crit').click();

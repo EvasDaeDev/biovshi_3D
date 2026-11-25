@@ -1,6 +1,6 @@
 export { ReferenceCore } from './reference-core.js';
 export { LabSimulationCore } from './lab-core.js';
-export { createLabConfig } from './lab-config.js';
+export { createLabConfig,createArenaCombatConfig } from './lab-config.js';
 export { FixedClock, FIXED_DT } from './fixed-clock.js';
 export type {
   FighterId, SegmentId, Vec3, FighterCommand, InputFrame, FighterDefinition,
@@ -20,3 +20,6 @@ export type {Punch,StrikePhase,StrikeSnapshot,StrikeKind} from './combat/strike.
 
 export {PatientBehavior,patientTraits,statMultiplier,critChance} from './combat/patient-profile.js';
 export type {PatientProfile,PatientTraits} from './combat/patient-profile.js';
+
+export {CombatTactics} from './combat/tactics.js';
+export type {TacticalSnapshot,Opponent} from './combat/tactics.js';
