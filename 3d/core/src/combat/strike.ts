@@ -1,5 +1,6 @@
 import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import { FIXED_DT } from '../fixed-clock.js';
+import { proneStrikePose } from './prone-strike.js';
 import { extraStrikePose } from './extra-strikes.js';
 import { solveTwoBone } from '../rig/two-bone.js';
 export const STRIKE=Object.freeze({windup:.32,thrust:.20,recover:.26,cooldown:.90});
@@ -9,8 +10,8 @@ const smooth=(t:number)=>{const v=Math.max(0,Math.min(1,t));return v*v*(3-2*v);}
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 export type StrikePhase='idle'|'windup'|'thrust'|'recover';
 export type StrikeKind='arm'|'leg'|'head';
-export interface Punch {readonly kind?:StrikeKind;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string}
-export interface StrikeSnapshot {readonly phase:StrikePhase;readonly kind?:StrikeKind;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean}
+export interface Punch {readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string}
+export interface StrikeSnapshot {readonly phase:StrikePhase;readonly kind?:StrikeKind;readonly prone?:boolean;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean}
 export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
 }
@@ -34,9 +35,9 @@ export class StrikeState{
  advance(tick:number,allowed:boolean,ids:readonly string[]):void{
   if(this.current&&(!allowed||!usableStrike(ids,this.current.kind??'arm',this.current.side)||this.phase(tick)==='idle'))this.current=null;
  }
- start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm'):boolean{
+ start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm',prone=false):boolean{
   if(this.current||tick-this.last<C)return false;
-  this.current={side,kind,targetId,aim:[...aim],start:tick,yaw,...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.sequence++;return true;
+  this.current={side,kind,prone,targetId,aim:[...aim],start:tick,yaw,...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.sequence++;return true;
  }
  /** Track the target only during preparation; commit the aim for thrust. */
  track(tick:number,aim:Vec3):void{
@@ -44,12 +45,13 @@ export class StrikeState{
  }
  get resolved():boolean{return this.done;}
  resolve():void{this.done=true;}
- snapshot(tick:number):StrikeSnapshot{return {phase:this.phase(tick),kind:this.current?.kind??'arm',source:this.current?strikeSource(this.current.kind??'arm',this.current.side):null,targetId:this.current?.targetId??null,resolved:this.current!==null&&this.done};}
+ snapshot(tick:number):StrikeSnapshot{return {phase:this.phase(tick),kind:this.current?.kind??'arm',prone:this.current?.prone??false,source:this.current?strikeSource(this.current.kind??'arm',this.current.side):null,targetId:this.current?.targetId??null,resolved:this.current!==null&&this.done};}
 }
 /** The actual rendered forearm and hand are the attacking geometry.
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
 export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0):readonly PhysicsSegmentPose[]{
  const age=tick-punch.start;if(age<0||age>=W+T+R||age===0)return pose;
+ if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
  if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');
  if(!u||!l)return pose;
