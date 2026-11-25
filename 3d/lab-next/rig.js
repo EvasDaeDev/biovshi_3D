@@ -1,3 +1,4 @@
+import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
 import {OilMarks} from './oil.js';
@@ -27,7 +28,10 @@ const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,
 const scaleMaterial=new THREE.LineBasicMaterial({color:0x617368});
 const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
 const routeDebug=document.getElementById('route-debug'),routeLines=[];
-const visionDebug=document.getElementById('vision-debug'),visionArrows=[];
+const visionDebug=document.getElementById('vision-debug'),visionArrows=[],visionFields=[];
+const visionGeometry=new THREE.CircleGeometry(VISION.range,32,-Math.PI/2-VISION.fov/2,VISION.fov);
+visionGeometry.rotateX(Math.PI/2);
+const visionMaterial=new THREE.MeshBasicMaterial({color:0xffca62,transparent:true,opacity:.12,side:THREE.DoubleSide,depthWrite:false});
 const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),cylinder=new THREE.CylinderGeometry(1,1,1,12),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
 const supportDebug=document.getElementById('support-debug'),supportGroup=new THREE.Group();scene.add(supportGroup);supportGroup.visible=false;
 const contactMaterial=new THREE.MeshBasicMaterial({color:0x72df9c}),massMaterial=new THREE.MeshBasicMaterial({color:0xffca62});
@@ -203,18 +207,27 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
   stats.dataset.floorVisuals=String(debris.archiveFloor?.visuals.length??0);
   stats.dataset.floorMounds=String(debris.archiveFloor?.mounds.length??0);stats.dataset.wounds=String(s.oil[0].wounds.length);stats.dataset.impact=String(s.impacts[0].active);const health=s.health[0],selected=health.segments.find(p=>p.id===damageSegment.value);damageHP.textContent=selected?selected.hp+'/'+selected.maxHp+(selected.attached?'':' — отделён'):'';stats.dataset.health=String(selected?.hp??0);stats.dataset.trauma=String(health.trauma);stats.dataset.cause=health.cause??'';
  for(let i=0;i<visionArrows.length;i++)visionArrows[i].visible=false;
- if(visionDebug.checked&&['arena-vision','arena-navigation'].includes(scenario.value))s.rigSegments.forEach((parts,i)=>{
+ for(const field of visionFields)if(field)field.visible=false;
+ if(visionDebug.checked&&selectedLocation())s.rigSegments.forEach((parts,i)=>{
   const h=parts.find(p=>p.id==='head');if(!h||s.lifeStates[i]!=='active')return;
   let arrow=visionArrows[i];if(!arrow){arrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),new THREE.Vector3(),.72,0xffca62,.16,.10);visionArrows[i]=arrow;scene.add(arrow);}
   const yaw=s.perception[i].gazeYaw,dir=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+  let field=visionFields[i];
+  if(!field){field=new THREE.Mesh(visionGeometry,visionMaterial);visionFields[i]=field;scene.add(field);}
+  field.position.set(h.a[0],.013+i*.001,h.a[2]);field.rotation.y=-yaw;field.visible=true;
   arrow.position.set(...h.a);arrow.position.addScaledVector(dir,h.radius);arrow.setDirection(dir);arrow.visible=true;
  });
  for(const l of routeLines)if(l)l.visible=false;
- if(routeDebug.checked&&scenario.value==='arena-navigation')s.routes.forEach((points,i)=>{
+ if(routeDebug.checked&&selectedLocation())s.routes.forEach((points,i)=>{
   if(!points.length||s.lifeStates[i]!=='active')return;
   let l=routeLines[i];if(!l){l=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffca62}));routeLines[i]=l;scene.add(l);}
-  l.geometry.setFromPoints([new THREE.Vector3(s.roots[i*4],.06,s.roots[i*4+2]),...points.map(p=>new THREE.Vector3(p.x,.06,p.z))]);l.visible=true;
+  const path=[new THREE.Vector3(s.roots[i*4],.06,s.roots[i*4+2]),...points.map(p=>new THREE.Vector3(p.x,.06,p.z))];
+  if(l.geometry.getAttribute('position')?.count!==path.length){l.geometry.dispose();l.geometry=new THREE.BufferGeometry();}
+  l.geometry.setFromPoints(path);
+  l.geometry.computeBoundingSphere();l.visible=true;
  });
+ stats.dataset.drawnRoutes=String(routeLines.filter(l=>l?.visible).length);
+ stats.dataset.drawnVision=String(visionFields.filter(f=>f?.visible).length);
  stats.dataset.routes=String(s.routes.filter(r=>r.length).length);stats.dataset.visible=s.perception.map(p=>p.visibleIds.length).join('/');stats.dataset.active=String(s.lifeStates.filter(v=>v==='active').length);stats.dataset.targets=s.tactics.map(t=>t.targetId===null?'-':t.targetId).join('/');stats.dataset.tactics=s.tactics.map(t=>t.mode).join('/');stats.dataset.escapes=String(s.escapes.filter(e=>e.plan).length);
  stats.dataset.traits=s.patientTraits.map(t=>t.temperament+':'+Math.round(t.criticalChance*100)+'%').join('/');stats.dataset.strike=s.strikes.map(v=>v.phase==='idle'?'idle':(v.prone?'prone:':'')+v.kind+':'+v.phase).join('/');stats.dataset.hits=String(s.damageStats.hits);stats.dataset.fight=s.fight.ended?'ended':'running';stats.dataset.winner=s.fight.winnerId===null?'':String(s.fight.winnerId);
  stats.dataset.settledSingles=String(falling.filter(d=>d.branchId===undefined&&d.settled).length);stats.dataset.visibleCones=String([...moundMeshes.values()].filter(m=>m.visible).length);stats.dataset.ragdollBodies=String(debris.bodySnapshot().reduce((n,b)=>n+b.dynamicBodies,0));stats.dataset.ragdollJoints=String(debris.bodySnapshot().reduce((n,b)=>n+b.joints,0));

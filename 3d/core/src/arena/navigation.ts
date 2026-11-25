@@ -133,15 +133,17 @@ export class ArenaNavigation{
  }
 }
 export class RouteState{
+ private direct:PointXZ|null=null;
  private goal:PointXZ|null=null;private route:PointXZ[]=[];private next=0;private retry=0;
- clear():void{this.goal=null;this.route=[];this.next=0;this.retry=0;}
- waypoint(nav:ArenaNavigation,start:PointXZ,goal:PointXZ,tick:number):PointXZ{
-  if(nav.clear(start,goal,nav.routePad)){this.clear();return goal;}
+ clear():void{this.direct=null;this.goal=null;this.route=[];this.next=0;this.retry=0;}
+ waypoint(nav:ArenaNavigation,start:PointXZ,goal:PointXZ,tick:number,recordDirect=false):PointXZ{
+  if(nav.clear(start,goal,nav.routePad)){this.clear();if(recordDirect)this.direct={x:goal.x,z:goal.z};return goal;}
+  this.direct=null;
   if(!this.goal||dist(goal,this.goal)>.35||this.next>=this.route.length||tick>=this.retry){
    this.goal={...goal};this.route=[...nav.plan(start,goal,nav.routePad)];this.next=0;this.retry=tick+30;
   }
   while(this.next+1<this.route.length&&dist(start,this.route[this.next]!)<.14&&nav.clear(start,this.route[this.next+1]!,.50))this.next++;
   return this.route[this.next]??start;
  }
- snapshot():readonly PointXZ[]{return this.route.slice(this.next).map(p=>({...p}));}
+ snapshot():readonly PointXZ[]{if(this.direct)return [{...this.direct}];return this.route.slice(this.next).map(p=>({...p}));}
 }

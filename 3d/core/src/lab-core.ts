@@ -55,6 +55,7 @@ export class LabSimulationCore implements SimulationCore {
   private grade:GradeSurface=[];
   private gradeContact:ReturnType<typeof createGradeContact>|null=null;
   private patientScale=1;
+  private ringCombat=false;
   private gaitPoint(point:Vec3):Vec3{
     return this.patientScale===1?point:this.scalePoint(point,1/this.patientScale);
   }
@@ -97,11 +98,12 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad,scale!==1),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
     this.patientScale=scale;
+    this.ringCombat=config.location?.shape==='circle'&&config.tacticalCombat===true;
     this.navigation=navigation;
     this.grade=graded;
     this.gradeContact=graded.length?createGradeContact(graded):null;
@@ -231,7 +233,7 @@ export class LabSimulationCore implements SimulationCore {
       :a.perception.patrol(this.tick,a);
   }
   private routeHeading(a:Actor,goal:PointXZ):number{
-    const p=this.navigation.walls.length?a.route.waypoint(this.navigation,a,goal,this.tick):goal;
+    const p=(this.ringCombat||this.navigation.walls.length)?a.route.waypoint(this.navigation,a,goal,this.tick,this.ringCombat):goal;
     return wrap(Math.atan2(p.x-a.x,-(p.z-a.z))-a.yaw);
   }
   private planCombat(commands:Map<number,FighterCommand>):void{
@@ -324,10 +326,13 @@ export class LabSimulationCore implements SimulationCore {
       if(this.tacticalCombat&&!command&&previousTarget!==target.id)this.events.push({tick:this.tick,type:'combat-target',fighterId:a.id,targetId:target.id});
       a.behavior.notice(target.id,this.tick);
       const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
-      const unobstructed=this.navigation.clear(a,target,.0),heading=(!command&&this.navigation.walls.length&&!a.strike.punch)?this.routeHeading(a,target):turn;
+      const unobstructed=this.navigation.clear(a,target,.0),heading=(!command&&(this.ringCombat||this.navigation.walls.length)&&!a.strike.punch)?this.routeHeading(a,target):turn;
       const retreat=this.tacticalCombat&&!command&&!a.strike.punch&&!mobility.prone&&mobility.mode==='biped'&&a.tactics.retreating(this.tick)&&unobstructed&&distance<1.6&&Math.abs(a.x)<5.1&&Math.abs(a.z)<5.1;
       a.tactics.setMode(retreat?'retreat':'pursuit');
-      if(!command)commands.set(a.id,{fighterId:a.id,forward:retreat?(Math.abs(turn)<.8?-.65:0):pursuitForward(distance,heading,a.behavior.traits.pursuit),turn:clamp((retreat?turn:heading)*2,-1,1),sprint:false});
+      const ringFootwork=this.ringCombat&&!prone&&mobility.mode==='biped';
+      const standoff=ringFootwork?.62:CLOSE_STANDOFF;
+      const approach=ringFootwork?clamp((distance-standoff)/.42,0,1):1;
+      if(!command)commands.set(a.id,{fighterId:a.id,forward:retreat?(Math.abs(turn)<.8?-.65:0):pursuitForward(distance,heading,a.behavior.traits.pursuit)*approach,turn:clamp((retreat?turn:heading)*2,-1,1),sprint:false});
       // Port of v1 anti-stuck and pincer behavior, opt-in for arena.
       // Pincer uses a body-heading approximation of the original vision;
       // full head scanning and occlusion belong to the perception step.
@@ -354,14 +359,15 @@ export class LabSimulationCore implements SimulationCore {
       let checkedStrikeGeometry=false;
       if(unobstructed&&seen&&allowed&&!retreat&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         checkedStrikeGeometry=true;
-        const pose=this.actorPose(a),victim=this.actorPose(target),eligible=(id:string)=>target.health.canDamage(id,this.tick);
-        const ground=(x:number,z:number)=>this.ground(a,x,z);
+        const pose=this.worldPose(this.actorPose(a),1/this.patientScale),victim=this.worldPose(this.actorPose(target),1/this.patientScale),eligible=(id:string)=>target.health.canDamage(id,this.tick);
+        const ground=this.gaitGround(a);
         const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];
-        if(this.expandedStrikes&&!command&&order.length>1){const shift=(a.strike.attempts+a.id)%order.length;order.push(...order.splice(0,shift));}
+        if(this.expandedStrikes&&!this.ringCombat&&!command&&order.length>1){const shift=(a.strike.attempts+a.id)%order.length;order.push(...order.splice(0,shift));}
         for(const kind of order){
+          if(ringFootwork&&!command&&kind==='head'&&distance>.49)continue;
           if(kind==='leg'&&(prone||a.gait.footStates.some(f=>f.moving)||Math.abs(a.speed)>.10))continue;
           const best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground);
-          if(best&&a.strike.start(this.tick,best.side,target.id,best.aim,a.yaw,best.id,kind,prone)){
+          if(best&&a.strike.start(this.tick,best.side,target.id,this.scalePoint(best.aim,this.patientScale),a.yaw,best.id,kind,prone)){
             a.behavior.started(this.tick,Math.ceil(STRIKE.cooldown/FIXED_DT-1e-9));
             this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side),strikeKind:kind,proneStrike:prone});break;
           }
@@ -371,12 +377,13 @@ export class LabSimulationCore implements SimulationCore {
       // an actual healthy capsule is reachable by any usable strike.
       // Move a little closer only after the existing IK/swept preview failed;
       // blocked roots can then participate in the anti-stuck logic.
-      if(!command&&checkedStrikeGeometry&&!a.strike.punch&&!mobility.prone&&distance<=CLOSE_STANDOFF){
+      if(!command&&checkedStrikeGeometry&&!a.strike.punch&&!mobility.prone&&distance<=standoff){
         const old=commands.get(a.id)!;
-        commands.set(a.id,{...old,forward:pursuitForward(distance,heading,a.behavior.traits.pursuit,true)});
+        commands.set(a.id,{...old,forward:pursuitForward(distance,heading,a.behavior.traits.pursuit,true)*(ringFootwork?.55:1)});
       }
       const punch=a.strike.punch;
       if(punch){
+        if(this.ringCombat)a.route.clear();
         a.tactics.setMode('strike');
         const victim=this.actors.find(b=>b.id===punch.targetId&&!b.fixed);
         const windup=a.strike.phase(this.tick)==='windup';
@@ -386,7 +393,7 @@ export class LabSimulationCore implements SimulationCore {
           if(part&&shoulder)a.strike.track(this.tick,closestAim(shoulder.a,part));
         }
         const gap=victim?Math.hypot(victim.x-a.x,victim.z-a.z):0;
-        commands.set(a.id,{fighterId:a.id,forward:!punch.prone&&windup&&!command&&(!sensing||visibleIds.includes(punch.targetId))&&gap>.60&&(punch.kind??'arm')==='arm'?.55:0,turn:0,sprint:false});
+        commands.set(a.id,{fighterId:a.id,forward:!punch.prone&&windup&&!command&&(!sensing||visibleIds.includes(punch.targetId))&&gap>(this.ringCombat?.75:.60)&&(punch.kind??'arm')==='arm'?.55:0,turn:0,sprint:false});
       }
     }
   }

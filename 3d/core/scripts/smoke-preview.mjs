@@ -46,12 +46,18 @@ try{
  assert.deepEqual(await page.locator('#scenario option[value^="location-"]').evaluateAll(options=>options.map(o=>o.value)),['location-ring']);
  await page.locator('#scenario').selectOption('location-ring');
  await page.locator('#vision-debug').check();
+ await page.locator('#route-debug').check();
+ await page.waitForFunction(()=>{
+  const d=document.getElementById('stats')?.dataset;
+  return d?.location==='ring'&&Number(d.drawnVision)>0&&Number(d.drawnRoutes)>0;
+ });
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
   return d?.state==='running'&&d.location==='ring'&&d.patients==='3'&&Number(d.hits)>0;},{},{timeout:45000});
  await page.locator('#patient-count').selectOption('2');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='ring'&&d.patients==='2'&&Number(d.tick)>3;});
  await page.locator('#patient-count').selectOption('full');
  await page.locator('#vision-debug').uncheck();
+ await page.locator('#route-debug').uncheck();
  await page.locator('#scenario').selectOption('damage');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='3';});
  await page.locator('#damage-crit').click();

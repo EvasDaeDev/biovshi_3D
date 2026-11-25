@@ -39,7 +39,16 @@ export class PatientGait {
     this.anchors.reset();
     if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,speed);return this.hopSample.distance;}
     this.hop.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
-    if(!mobility.prone)return speed*dt;
+    if(!mobility.prone){
+      if(!this.groundedStride||mobility.mode!=='biped')return speed*dt;
+      const direction=Math.sign(speed);
+      const stance=this.feet.filter(foot=>!foot.moving);
+      const reach=Math.min(...stance.map(({plant})=>{
+        const behind=((root[0]-plant[0])*Math.sin(yaw)-(root[2]-plant[2])*Math.cos(yaw))*direction;
+        return .48-behind;
+      }));
+      return direction*Math.min(Math.abs(speed)*dt,Math.max(0,reach));
+    }
     if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
     const traction=residualTraction(this.pose(id,root,yaw,t),mobility,this.crawlPhase,ground);
     return speed*dt*(traction?.scale??0);
@@ -50,7 +59,7 @@ export class PatientGait {
   private ground:(x:number,z:number)=>number=()=>0;
   get posture(): 'upright'|'falling'|'prone' {return this.proneAmount===0?'upright':this.proneAmount===1?'prone':'falling';}
   private feet:[Foot,Foot];
-  constructor(root:Vec3,yaw=0){
+  constructor(root:Vec3,yaw=0,private readonly groundedStride=false){
     const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,FOOT_RADIUS,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false,duration:.32,lift:.085};};
     this.feet=[foot(-1),foot(1)];
   }
@@ -123,11 +132,12 @@ export class PatientGait {
     const forwardZ=(p:Vec3)=>-Math.sin(yaw)*(p[0]-root[0])+Math.cos(yaw)*(p[2]-root[2]);
     const gaitPhase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
     const lean=Math.sign(this.signedSpeed)*moving*(.045+this.runAmount*.055)+Math.sin(t*.72+id)*.012,bob=moving*.012*(1-Math.abs(gaitPhase))+breathing*.006;
-    const stanceDrop=this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0;
+    const stanceDrop=this.groundedStride?moving*(.012+.018*this.runAmount):this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0;
     const hip:Vec3=[lateral,1.02+bob-this.supportDrop-stanceDrop,0],chest:Vec3=[-lateral*.35,1.51+bob-this.supportDrop-stanceDrop,-.035-lean*.5];
     const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id),1.89+bob-this.supportDrop-stanceDrop,-.045-lean*.24];
-    const chestPose=add(chest,[-roll*.12,0,lean*.18]);
-    const hipTwist=.11*moving*gaitPhase, chestTwist=-.16*moving*gaitPhase;
+    const spineSway=this.groundedStride?moving*gaitPhase:0;
+    const chestPose=add(chest,[-roll*.12-spineSway*.045,spineSway*.018,lean*.18-.035*spineSway]);
+    const hipTwist=.11*moving*gaitPhase, chestTwist=-(this.groundedStride?.29:.16)*moving*gaitPhase;
     const hipRoll=.025*sway+.035*moving*gaitPhase,chestRoll=-roll;
     const across=(center:Vec3,half:number,twist:number,tilt:number,side:number):Vec3=>add(center,[side*half*Math.cos(twist)*Math.cos(tilt),side*half*Math.sin(tilt),side*half*Math.sin(twist)*Math.cos(tilt)]);
     const pelvisCenter=add(hip,[0,-.055,0]),shoulderCenter=add(chestPose,[0,.05,0]);
