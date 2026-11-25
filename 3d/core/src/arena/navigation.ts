@@ -87,6 +87,15 @@ export class ArenaNavigation{
   const result:PointXZ[]=[];for(let i=1;i>0;i=prev[i]!)result.unshift({...nodes[i]!});
   return result;
  }
+ /** Cheap direct sight check, then the already cached v1 visibility graph.
+  * A free endpoint across a separating wall is not a usable escape goal.
+  * This checks static root reachability, not limb IK or dynamic crowds. */
+ reachable(start:PointXZ,end:PointXZ,pad=.65):boolean{
+  if(!bounded(end)||!this.clear(end,end,pad))return false;
+  if(this.clear(start,end,pad))return true;
+  const path=this.plan(start,end,pad),last=path[path.length-1];
+  return !!last&&dist(last,end)<1e-6;
+ }
  /** Kinematic root guard: swept expanded footprint, allowing a patient
   * already in clearance to leave it. Not articulated capsule-wall IK. */
  move(start:PointXZ,end:PointXZ,pad=.50):PointXZ{
