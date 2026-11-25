@@ -232,10 +232,12 @@ export class LabSimulationCore implements SimulationCore {
         const occupied=this.actors.filter(b=>b!==a&&!b.terrainOnly).map(b=>({x:b.x,z:b.z}));
         if(threats.length){
           const ids=threats.map(b=>b.id).join(','),goal=a.disarmedGoal;
-          if(!goal||this.tick>=a.disarmedUntil||ids!==a.disarmedThreatIds||
-             Math.hypot(goal.x-a.x,goal.z-a.z)<DISARMED.arrival||
-             !this.navigation.reachable(a,goal)||
-             occupied.some(o=>Math.hypot(goal.x-o.x,goal.z-o.z)<DISARMED.occupiedRadius)){
+          // Cache failed searches as well. An unreachable ward must not run
+          // the 72-candidate v1 scorer every tick for a motionless patient.
+          if(this.tick>=a.disarmedUntil||ids!==a.disarmedThreatIds||
+             (goal!==null&&(Math.hypot(goal.x-a.x,goal.z-a.z)<DISARMED.arrival||
+              !this.navigation.reachable(a,goal)||
+              occupied.some(o=>Math.hypot(goal.x-o.x,goal.z-o.z)<DISARMED.occupiedRadius)))){
             a.disarmedGoal=fleeAllAttackers(a,threats,occupied,
               p=>this.navigation.reachable(a,p),p=>this.navigation.clear(a,p,.15));
             a.disarmedUntil=this.tick+DISARMED.commitTicks;
@@ -254,7 +256,7 @@ export class LabSimulationCore implements SimulationCore {
             continue;
           }
         }
-        a.disarmedGoal=null;a.disarmedThreatIds='';
+        if(!threats.length){a.disarmedGoal=null;a.disarmedThreatIds='';a.disarmedUntil=0;}
         const goal=a.perception.patrol(this.tick,a),heading=this.routeHeading(a,goal);
         a.tactics.setMode('search');
         commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*a.behavior.traits.pursuit,
@@ -262,7 +264,7 @@ export class LabSimulationCore implements SimulationCore {
         if(sensing)a.perception.advanceLook(a.yaw,a,null);
         continue;
       }
-      a.disarmedGoal=null;a.disarmedThreatIds='';
+      a.disarmedGoal=null;a.disarmedThreatIds='';a.disarmedUntil=0;
       const locked=a.strike.punch?.targetId;
       const candidates=sensing?opponents.filter(b=>visibleIds.includes(b.id)||b.id===locked):opponents;
       const chosen=this.tacticalCombat&&!command?a.tactics.choose(this.tick,candidates.map(b=>({id:b.id,distance:distanceTo(b)})),locked,opponents.map(b=>b.id)):null;
