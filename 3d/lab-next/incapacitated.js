@@ -1,6 +1,6 @@
 import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {terrainHeight} from '../core/dist/collision/terrain.js';
-import {createRagdoll,ragdollPose,ragdollMotion,removeRagdoll,relaxRagdoll,RAGDOLL_SLOTS} from './ragdoll.js';
+import {createRagdoll,ragdollPose,ragdollMotion,removeRagdoll,relaxRagdoll,nudgeCollapse,RAGDOLL_SLOTS} from './ragdoll.js';
 /** Physics-driven articulated fall, followed by static visible anatomy
  * and a small number of invisible walkable cone colliders. */
 export class IncapacitatedBodies{
@@ -11,7 +11,7 @@ export class IncapacitatedBodies{
   const occupied=new Set([...this.bodies.values()].filter(b=>b.rag).map(b=>b.rag.slot));
   const slot=Array.from({length:RAGDOLL_SLOTS},(_,i)=>i).find(i=>!occupied.has(i))??-1;
   const rag=createRagdoll(this.R,this.world,event.bodyPose,direction,slot);
-  this.bodies.set(event.fighterId,{rag,still:0,age:0,quiet:0,reference:null,motion:null,settled:null,mounds:[]});
+  this.bodies.set(event.fighterId,{rag,still:0,age:0,attempts:0,quiet:0,reference:null,motion:null,settled:null,mounds:[]});
  }
  worldPose(b){return b.settled??ragdollPose(b.rag);}
  settle(terrain){
@@ -25,19 +25,21 @@ export class IncapacitatedBodies{
    const axis=pelvis&&chest?chest.a.map((v,i)=>(v+chest.b[i]-pelvis.a[i]-pelvis.b[i])*.5):null;
    const lying=axis?Math.abs(axis[1])<Math.hypot(...axis)*.45:top-bottom<.90;
    b.age++;
-   // If held upright by the wall or another casualty, try a bounded
-   // outward impulse on the torso; never rotate/teleport a frozen pose.
-   if(!lying&&b.age<=480&&b.age%120===0){
-    const rb=rag.torso.rb;
-    rb.setLinvel({x:rag.dx*.52,y:0,z:rag.dz*.52},true);
-    rb.setAngvel({x:rag.dz*2.5,y:0,z:-rag.dx*2.5},true);
-    b.still=0;b.quiet=0;b.reference=null;continue;
-   }
-   // Initial fall keeps self-collisions. After six seconds, a lingering
-   // ragdoll gets relaxed self-contact constraints, never a pose teleport.
+   // First relax own contacts, then let the body roll off its support.
+   // The original last-hit direction is only the fallback for a vertical torso.
    if(b.age===360)relaxRagdoll(rag);
-   if(b.age===600)for(const node of rag.nodes){node.rb.setLinearDamping(6);node.rb.setAngularDamping(8);}
-   const supported=(near||sleeping)&&(lying||b.age>480);
+   if(!lying&&near&&b.age>=120&&(b.age-120)%90===0){
+    nudgeCollapse(rag,axis,b.attempts++);
+    b.still=0;b.quiet=0;b.reference=null;
+    b.motion={age:b.age,near,lying,speed,sleeping,still:0,quiet:0,bottom,top,attempts:b.attempts};
+    continue;
+   }
+   // Increase damping only once lying; strong damping while tipped can
+   // stabilize the same unwanted perched pose.
+   if(lying&&b.age>=360)for(const node of rag.nodes){
+    node.rb.setLinearDamping(b.age>=600?6:3);node.rb.setAngularDamping(b.age>=600?8:4);
+   }
+   const supported=(near||sleeping)&&lying;
    b.still=supported&&(sleeping||speed<.20)?b.still+1:0;
    // A constrained resting limb may have nonzero solver angular velocity.
    // Require the WHOLE visible pose to remain within 3 cm of one fixed
@@ -47,7 +49,7 @@ export class IncapacitatedBodies{
     const drift=b.reference?Math.max(...parts.flatMap((p,i)=>['a','b'].map(k=>Math.hypot(...p[k].map((v,j)=>v-b.reference[i][k][j]))))):Infinity;
     if(drift>.03){b.reference=parts;b.quiet=0;}else b.quiet++;
    }
-   b.motion={age:b.age,near,lying,speed,sleeping,still:b.still,quiet:b.quiet,bottom,top};
+   b.motion={age:b.age,near,lying,speed,sleeping,still:b.still,quiet:b.quiet,bottom,top,attempts:b.attempts};
    if(b.still<60&&!(b.age>=360&&b.quiet>=60))continue;
    b.settled=parts;b.mounds=bodyTerrain(parts).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
    removeRagdoll(this.world,rag);b.rag=null;

@@ -72,6 +72,33 @@ export function createRagdoll(R,world,pose,direction,slot=-1){
  }
  return {nodes,joints,torso,order,dx,dz,slot};
 }
+/** Follow the CURRENT torso inclination. A constant last-hit direction
+ * can restore an already tilted torso to vertical instead of toppling it.
+ * omega cross axis must reduce the absolute vertical component. */
+export function collapseDirection(axis,dx,dz,attempt=0){
+ const h=axis?Math.hypot(axis[0],axis[2]):0;
+ let x=h>.04?axis[0]/h:dx,z=h>.04?axis[2]/h:dz;
+ // A nearly unchanged support configuration needs a slightly different
+ // direction on successive attempts to roll off the supporting limb.
+ const angle=attempt%3===1?.45:attempt%3===2?-.45:0;
+ const c=Math.cos(angle),s=Math.sin(angle),sign=axis&&axis[1]<0?-1:1;
+ return {x:(x*c-z*s)*sign,z:(x*s+z*c)*sign};
+}
+export function nudgeCollapse(rag,axis,attempt){
+ const d=collapseDirection(axis,rag.dx,rag.dz,attempt);
+ const origin=center(rag.torso.rb),rate=Math.min(4.8,2.8+.45*attempt);
+ const omega=[d.z*rate,0,-d.x*rate],drive=Math.min(1.1,.48+.12*attempt);
+ // A short coherent velocity pulse keeps joint anchors compatible.
+ // Every segment remains an independent simulated body. No position or
+ // rotation is assigned here, so gravity and contact still decide the fall.
+ for(const node of rag.nodes){
+  const offset=sub(center(node.rb),origin),v=cross(omega,offset);
+  node.rb.setLinearDamping(1.2);node.rb.setAngularDamping(1.8);
+  if(attempt>=2)for(const c of node.colliders)c.setFriction(.25);
+  node.rb.setLinvel({x:d.x*drive+v[0],y:v[1]-.12,z:d.z*drive+v[2]},true);
+  node.rb.setAngvel(vec(omega),true);
+ }
+}
 export function ragdollPose(rag){
  const parts=new Map(rag.nodes.flatMap(compoundPose).map(p=>[p.id,p]));
  return rag.order.map(id=>parts.get(id));
