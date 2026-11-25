@@ -77,6 +77,9 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.balance==='standing'&&Number(d.tick)>100;},{},{timeout:30000});
  await page.locator('#scenario').selectOption('walk');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&document.getElementById('stats')?.dataset.mode==='biped');
+ await page.locator('#next-round').click();
+ assert.match(await page.locator('#floor-status').innerText(),/Сначала необходимо завершить бой/,'cannot archive an unfinished or noncombat round');
+ assert.equal(await page.locator('#stats').getAttribute('data-floor-visuals'),'0');
  await page.keyboard.down('KeyW');
  try{await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.steps)>=3,{},{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  await page.locator('#scenario').selectOption('arms');
