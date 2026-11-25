@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {writeCombatAuditArtifacts} from './combat-audit-report.mjs';
 import {performance} from 'node:perf_hooks';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {LabSimulationCore,createArenaCombatConfig,createNavigationCombatConfig,FIXED_DT} from '../dist/index.js';
@@ -69,6 +70,7 @@ for(const mode of ['vision','navigation'])for(const seed of seeds){
   reports.push(report);console.log('COMBAT_AUDIT '+JSON.stringify(report));
  }finally{w.dispose();c.dispose();}
 }
-console.log('COMBAT_AUDIT_SUMMARY '+JSON.stringify({cases:reports.length,complete:reports.filter(r=>r.status==='complete').length,combatOpen:reports.filter(r=>r.status==='combat-open').length,physicsOpen:reports.filter(r=>r.status==='physics-open').length}));
+const summary=await writeCombatAuditArtifacts(reports);
+console.log('COMBAT_AUDIT_SUMMARY '+JSON.stringify(summary));
 // Open cases are diagnostic, not manufactured wins or relaxed regression
 // tests. Geometry, accounting and result invariants above are hard gates.
