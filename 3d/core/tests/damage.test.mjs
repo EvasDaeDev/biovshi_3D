@@ -16,7 +16,7 @@ test('native segment HP, critical hit, fixed-tick invulnerability and independen
  const ev=c.drainEvents();assert.equal(ev.filter(e=>e.type==='fighter-damaged').length,3);assert.equal(ev[0].critical,true);
  assert.equal(c.getSnapshot().health[0].trauma,4);
  assert.ok(['R.upperArm','R.lowerArm','R.hand'].every(id=>!health(c,id).attached&&health(c,id).hp===0));
- assert.equal(ev.filter(e=>e.type==='segment-detached').length,3);
+ const cuts=ev.filter(e=>e.type==='segment-detached');assert.equal(cuts.length,1);assert.deepEqual(cuts[0].detachedParts.map(p=>p.id),['R.upperArm','R.lowerArm','R.hand']);assert.equal(c.getSnapshot().damageStats.detached,3);
  assert.equal(hit(c,'R.hand'),false);
 });
 test('head loss and torso failure trigger terminal physics after detachment',()=>{

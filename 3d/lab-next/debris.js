@@ -1,3 +1,5 @@
+import {createCompound,compoundPose,capsuleOrientation} from './compound.js';
+import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {IncapacitatedBodies} from './incapacitated.js';
 import {moundDimensions,terrainHeight,capsuleVerticalHalfExtent} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
@@ -9,7 +11,7 @@ export class DebrisWorld {
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
-  this.items=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
+  this.items=[];this.branches=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
   this.world.createCollider(R.ColliderDesc.cuboid(7,.19,7).setFriction(.95),floor);
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
@@ -19,8 +21,17 @@ export class DebrisWorld {
  }
  accept(event){
   if(event.type==='fighter-incapacitated'){this.incapacitated.accept(event);return;}
-  if(event.type!=='segment-detached'||!event.detachedPose)return;
-  const p=event.detachedPose,f=boneFrame(p.a,p.b),R=this.R;
+  if(event.type!=='segment-detached')return;
+  const poses=event.detachedParts??(event.detachedPose?[event.detachedPose]:[]);
+  if(!poses.length)return;
+  if(poses.length>1){
+   const branch=createCompound(this.R,this.world,poses,{groups:0x00020005,linearDamping:.6,angularDamping:1.25,friction:.8});
+   const id=this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
+   branch.rb.setLinvel({x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
+   branch.rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
+   this.branches.push({...branch,id,fighterId:event.fighterId,age:0,still:0,settled:null});return;
+  }
+  const p=poses[0],f=boneFrame(p.a,p.b),R=this.R;
   // Quaternion rotating +Y onto the segment axis; sphere orientation is immaterial.
   const [x,y,z]=f.y,n=Math.hypot(z,1+y,x);
   const q=n>1e-8?{x:z/n,y:0,z:-x/n,w:(1+y)/n}:{x:1,y:0,z:0,w:0};
@@ -37,6 +48,20 @@ export class DebrisWorld {
   if(dt!==1/60)throw new RangeError('Debris requires fixed 60 Hz');
   this.world.step();
   this.incapacitated.settle(this.moundSnapshot());
+  for(const b of this.branches){
+   if(b.settled)continue;
+   const parts=compoundPose(b),v=b.rb.linvel(),w=b.rb.angvel();
+   const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=terrainHeight(q[0],q[2],this.moundSnapshot())+.06));
+   const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.4;
+   b.age++;b.still=near&&(b.rb.isSleeping()||speed<.16)?b.still+1:0;
+   if(b.still<60&&!(b.age>720&&near))continue;
+   b.settled=parts;this.world.removeRigidBody(b.rb);b.rb=null;
+   for(const [i,m] of bodyTerrain(parts).entries()){
+    const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
+    this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
+    this.mounds.push({id:'branch:'+b.id+':'+i,source:'branch',...m});
+   }
+  }
   for(let i=this.items.length-1;i>=0;i--){
    const d=this.items[i],t=d.rb.translation(),q=d.rb.rotation(),v=d.rb.linvel(),w=d.rb.angvel();
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.12;
@@ -54,6 +79,11 @@ export class DebrisWorld {
  }
  bodySnapshot(){return this.incapacitated.snapshot();}
  moundSnapshot(){return [...this.mounds.map(m=>({...m})),...this.incapacitated.moundSnapshot()];}
- snapshot(){return this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,fighterId:d.fighterId,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));}
- dispose(){this.world?.free();this.world=null;this.items=[];this.mounds=[];this.incapacitated=null;}
+ branchSnapshot(){return this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))}));}
+ snapshot(){
+  const singles=this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,fighterId:d.fighterId,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));
+  const branches=this.branchSnapshot().flatMap(b=>b.parts.map(p=>{const f=boneFrame(p.a,p.b);return {id:'branch:'+b.id+':'+p.id,branchId:b.id,segmentId:p.id,settled:b.settled,length:f.length,radius:p.radius,fighterId:b.fighterId,position:{x:f.center[0],y:f.center[1],z:f.center[2]},rotation:capsuleOrientation(f.y)};}));
+  return singles.concat(branches);
+ }
+ dispose(){this.world?.free();this.world=null;this.items=[];this.branches=[];this.mounds=[];this.incapacitated=null;}
 }

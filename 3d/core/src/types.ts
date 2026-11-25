@@ -84,6 +84,8 @@ export interface SimulationEvent {
   readonly critical?: boolean;
   readonly cause?: IncapacitationCause;
   readonly bodyPose?: readonly PhysicsSegmentPose[];
+  /** One severed connected branch, root first; geometry captured before removal. */
+  readonly detachedParts?: readonly PhysicsSegmentPose[];
   readonly detachedPose?: {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number};
 }
 

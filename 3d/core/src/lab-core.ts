@@ -91,12 +91,14 @@ export class LabSimulationCore implements SimulationCore {
     return true;
   }
   private detach(a:Actor,ids:readonly string[]):void{
-    const pose=this.actorPose(a);
-    for(const id of ids)if(a.segments.includes(id)){
-      const part=pose.find(p=>p.id===id);
-      a.segments=a.segments.filter(s=>s!==id);a.health.detach([id]);this.detachedCount++;
-      this.events.push({tick:this.tick,type:'segment-detached',fighterId:a.id,segmentId:id,...(part?{detachedPose:part}:{})});
-    }
+    const active=ids.filter(id=>a.segments.includes(id));
+    if(!active.length)return;
+    const pose=this.actorPose(a),byId=new Map(pose.map(p=>[p.id,p]));
+    const parts=this.copyPose(active.flatMap(id=>{const p=byId.get(id);return p?[p]:[];}));
+    const removed=new Set(active);
+    a.segments=a.segments.filter(id=>!removed.has(id));a.health.detach(active);this.detachedCount+=active.length;
+    // A single cut creates a single physical branch, not one body per bone.
+    this.events.push({tick:this.tick,type:'segment-detached',fighterId:a.id,segmentId:active[0]!,detachedParts:parts});
   }
   /** Validated contact from a future strike resolver, or explicit lab test.
    * Plain collision overlaps never invoke this product damage path. */
