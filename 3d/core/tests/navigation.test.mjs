@@ -53,3 +53,34 @@ test('free endpoint behind a separating wall has no viable static route',()=>{
  assert.equal(new ArenaNavigation([w]).reachable(a,b),true,'ordinary wall can be routed around');
  assert.equal(new ArenaNavigation().reachable(a,b),true,'open arena remains direct');
 });
+
+test('glancing against a wall preserves lateral progress without crossing the root footprint',()=>{
+ const n=new ArenaNavigation([w]);
+ const start={x:-1.2,z:-.6},goal={x:1,z:-1.2};
+ const p=n.move(start,goal);
+ assert.ok(p.x<-.75&&p.x>-.751,JSON.stringify(p));
+ assert.ok(Math.abs(p.z-goal.z)<1e-6,'along-wall travel must not be discarded');
+ assert.ok(n.move(a,b).x<=-.75,'head-on collisions must still stop');
+ assert.deepEqual(n.move({x:-.60,z:0},{x:-1,z:0}),{x:-1,z:0},'exit from clearance is unchanged');
+});
+test('tangential contact on an exact padded wall face slides but never penetrates inward',()=>{
+ const n=new ArenaNavigation([w]);
+ assert.deepEqual(n.move({x:-.75,z:-.7},{x:-.75,z:-.8}),{x:-.75,z:-.8});
+ assert.deepEqual(n.move({x:-.75,z:0},{x:-.65,z:0}),{x:-.75,z:0});
+});
+test('deterministic swept root slides respect the footprint around two obstacles',()=>{
+ const obstacles=[w,{minX:1,maxX:1.5,minZ:-2,maxZ:-.1,height:3}];
+ const n=new ArenaNavigation(obstacles);let rng=7,samples=0;
+ const random=()=>{rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296;};
+ const interior=(p,w)=>p.x>w.minX-.5+1e-6&&p.x<w.maxX+.5-1e-6&&p.z>w.minZ-.5+1e-6&&p.z<w.maxZ+.5-1e-6;
+ for(let i=0;i<3000;i++){
+  const start={x:(random()*2-1)*5.65,z:(random()*2-1)*5.65};
+  if(obstacles.some(w=>interior(start,w)))continue;
+  const goal={x:(random()*2-1)*5.65,z:(random()*2-1)*5.65};
+  const p=n.move(start,goal);
+  assert.ok(obstacles.every(w=>!interior(p,w)),JSON.stringify({start,goal,p}));
+  assert.ok(Math.hypot(p.x-start.x,p.z-start.z)<=Math.hypot(goal.x-start.x,goal.z-start.z)+1e-8);
+  samples++;
+ }
+ assert.ok(samples>2000);
+});
