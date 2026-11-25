@@ -14,7 +14,7 @@ test('close-quarters pursuit stops for real strike opportunities, not failed geo
  assert.equal(pursuitForward(.4,0,.82,true),.82,'patient pursuit trait retained');
 });
 
-test('autonomous armless biped tries to close a sub-standoff gap when no arm strike exists',()=>{
+test('arm-only autonomous pursuit closes sub-standoff gaps after failed preview',()=>{
  const base=createLabConfig(7);
  const withoutArms=base.fighters[0].segmentIds.filter(id=>!['L.upperArm','L.lowerArm','L.hand','R.upperArm','R.lowerArm','R.hand'].includes(id));
  const fighters=[
@@ -23,7 +23,9 @@ test('autonomous armless biped tries to close a sub-standoff gap when no arm str
  ];
  const c=new LabSimulationCore();
  try{
-  c.initialize({seed:7,fighters,combatEnabled:true,tacticalCombat:true});
+  // Explicitly exercise the arm-only pursuit fallback. The separate
+  // tactical disarmed mode (ported from v1) must flee instead of chasing.
+  c.initialize({seed:7,fighters,combatEnabled:true,tacticalCombat:false});
   // Exercise the command planner directly, rather than requiring physical
   // collision solvers to let two already-touching torsos overlap.
   const commands=new Map();
@@ -35,5 +37,11 @@ test('autonomous armless biped tries to close a sub-standoff gap when no arm str
   const manualCommands=new Map([[0,manual]]);
   c.planCombat(manualCommands);
   assert.strictEqual(manualCommands.get(0),manual,'manual input must never be overridden');
+  // The same anatomy in product tactical mode has *no* usable arm strike.
+  // It must avoid an armed opponent instead of treating proximity as a hit.
+  c.initialize({seed:7,fighters,combatEnabled:true,tacticalCombat:true});
+  const tactical=new Map();c.planCombat(tactical);
+  assert.equal(c.getSnapshot().tactics[0].mode,'retreat');
+  assert.equal(c.getSnapshot().strikes[0].phase,'idle');
  }finally{c.dispose();}
 });
