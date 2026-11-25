@@ -1,6 +1,6 @@
 export { ReferenceCore } from './reference-core.js';
 export { LabSimulationCore } from './lab-core.js';
-export { createLabConfig,createArenaCombatConfig } from './lab-config.js';
+export { createLabConfig,createArenaCombatConfig,createNavigationCombatConfig } from './lab-config.js';
 export { FixedClock, FIXED_DT } from './fixed-clock.js';
 export type {
   FighterId, SegmentId, Vec3, FighterCommand, InputFrame, FighterDefinition,
@@ -28,3 +28,6 @@ export {EscapeState,ESCAPE,tacticalEscape,pincerThreats,pincerGoal} from './comb
 
 export {PatientPerception,VISION,notices} from './combat/perception.js';
 export type {VisionBody,VisionMemory,PerceptionSnapshot,SightClear} from './combat/perception.js';
+
+export {ArenaNavigation,RouteState,rectHit,sightClear} from './arena/navigation.js';
+export type {ArenaWall} from './arena/navigation.js';

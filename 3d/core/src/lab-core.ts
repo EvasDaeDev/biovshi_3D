@@ -1,3 +1,5 @@
+import { ArenaNavigation,RouteState,sightClear } from './arena/navigation.js';
+import type { PointXZ } from './combat/escape.js';
 import { PatientPerception,notices,type VisionBody } from './combat/perception.js';
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
 import { usableStrike } from './combat/strike.js';
@@ -30,7 +32,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; behavior:PatientBehavior; tactics:CombatTactics; escape:EscapeState; perception:PatientPerception; lastHitTick:number; terrainOnly:boolean; physicsPose:readonly RigPose[];
+  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; behavior:PatientBehavior; tactics:CombatTactics; escape:EscapeState; perception:PatientPerception; route:RouteState; lastHitTick:number; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -44,6 +46,7 @@ export class LabSimulationCore implements SimulationCore {
   private oilRng=0;private oilMarks:OilMark[]=[];private nextMark=0;
   private ready = false;
   private mounds:readonly Mound[]=[];
+  private navigation=new ArenaNavigation();
   /** Copy plain terrain data from the external physics adapter. */
   setTerrainMounds(mounds:readonly Mound[]):void{
     this.requireReady();
@@ -73,8 +76,11 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),lastHitTick:0,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
+    const navigation=new ArenaNavigation(config.walls);
+    if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
+    this.navigation=navigation;
     this.actors = actors;
     this.mounds=[];
     this.tick = 0;
@@ -104,7 +110,7 @@ export class LabSimulationCore implements SimulationCore {
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed)return false;
     const pose=this.copyPose(this.actorPose(a));
-    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.tactics.setMode('inactive');a.escape.clear();a.perception.clear();a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
+    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.tactics.setMode('inactive');a.escape.clear();a.perception.clear();a.route.clear();a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
     const source=this.actors.find(b=>b.id===attackerId&&b.id!==a.id);
     let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
     if(Math.hypot(dx,dz)<1e-6){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
@@ -189,6 +195,10 @@ export class LabSimulationCore implements SimulationCore {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  private routeHeading(a:Actor,goal:PointXZ):number{
+    const p=this.navigation.walls.length?a.route.waypoint(this.navigation,a,goal,this.tick):goal;
+    return wrap(Math.atan2(p.x-a.x,-(p.z-a.z))-a.yaw);
+  }
   private planCombat(commands:Map<number,FighterCommand>):void{
     // Shared pre-intent pose snapshot avoids an order-dependent view of newly started strikes.
     const vision=this.perceptionCombat?new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,{id:a.id,x:a.x,z:a.z,yaw:a.yaw,parts:this.actorPose(a)} satisfies VisionBody])):null;
@@ -199,12 +209,12 @@ export class LabSimulationCore implements SimulationCore {
       a.strike.advance(this.tick,allowed&&compatible,a.segments);
       if(a.fixed){a.tactics.setMode('inactive');continue;}
       const command=commands.get(a.id);
-      if(this.fightEnded){a.tactics.setMode('inactive');a.perception.clear();commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
+      if(this.fightEnded){a.tactics.setMode('inactive');a.perception.clear();a.route.clear();commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
       const opponents=this.actors.filter(b=>b!==a&&!b.fixed);
       const distanceTo=(b:Actor)=>Math.hypot(b.x-a.x,b.z-a.z);
       const previousTarget=a.tactics.snapshot().targetId;
       const sensing=vision!==null&&!command;
-      const visible=sensing?opponents.filter(b=>notices(vision!.get(a.id)!,vision!.get(b.id)!,a.perception.gaze(a.yaw))):opponents;
+      const visible=sensing?opponents.filter(b=>notices(vision!.get(a.id)!,vision!.get(b.id)!,a.perception.gaze(a.yaw),(from,to)=>sightClear(from,to,this.navigation.walls))):opponents;
       const visibleIds=visible.map(b=>b.id);
       if(sensing)a.perception.setVisible(visibleIds);
       const locked=a.strike.punch?.targetId;
@@ -219,7 +229,7 @@ export class LabSimulationCore implements SimulationCore {
           const remembered=a.perception.recalled(this.tick,a,opponents.map(b=>b.id)),goal=remembered?.point??a.perception.patrol(this.tick,a);
           a.perception.advanceLook(a.yaw,a,remembered?.point??null);
           a.tactics.setMode(remembered?'memory':'search');
-          const heading=wrap(Math.atan2(goal.x-a.x,-(goal.z-a.z))-a.yaw);
+          const heading=this.routeHeading(a,goal);
           commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading)),turn:clamp(heading*2,-1,1),sprint:false});
         }else{a.tactics.setMode('search');if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});}
         continue;
@@ -233,9 +243,10 @@ export class LabSimulationCore implements SimulationCore {
       if(this.tacticalCombat&&!command&&previousTarget!==target.id)this.events.push({tick:this.tick,type:'combat-target',fighterId:a.id,targetId:target.id});
       a.behavior.notice(target.id,this.tick);
       const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
-      const retreat=this.tacticalCombat&&!command&&!a.strike.punch&&!mobility.prone&&mobility.mode==='biped'&&a.tactics.retreating(this.tick)&&distance<1.6&&Math.abs(a.x)<5.1&&Math.abs(a.z)<5.1;
+      const unobstructed=this.navigation.clear(a,target,.0),heading=(!command&&this.navigation.walls.length&&!a.strike.punch)?this.routeHeading(a,target):turn;
+      const retreat=this.tacticalCombat&&!command&&!a.strike.punch&&!mobility.prone&&mobility.mode==='biped'&&a.tactics.retreating(this.tick)&&unobstructed&&distance<1.6&&Math.abs(a.x)<5.1&&Math.abs(a.z)<5.1;
       a.tactics.setMode(retreat?'retreat':'pursuit');
-      if(!command)commands.set(a.id,{fighterId:a.id,forward:retreat?(Math.abs(turn)<.8?-.65:0):distance>.46?Math.max(0,Math.cos(turn))*a.behavior.traits.pursuit:0,turn:clamp(turn*2,-1,1),sprint:false});
+      if(!command)commands.set(a.id,{fighterId:a.id,forward:retreat?(Math.abs(turn)<.8?-.65:0):distance>.46?Math.max(0,Math.cos(heading))*a.behavior.traits.pursuit:0,turn:clamp((retreat?turn:heading)*2,-1,1),sprint:false});
       // Port of v1 anti-stuck and pincer behavior, opt-in for arena.
       // Pincer uses a body-heading approximation of the original vision;
       // full head scanning and occlusion belong to the perception step.
@@ -247,7 +258,7 @@ export class LabSimulationCore implements SimulationCore {
         const plan=a.escape.choose(this.tick,a,sense(target),visible.map(sense),this.actors.filter(b=>b!==a&&!b.terrainOnly).map(b=>({x:b.x,z:b.z})),
           mobility.mode==='biped'&&!a.strike.punch&&!a.knockdown.blocked&&!retreat);
         if(plan){
-          const heading=wrap(Math.atan2(plan.goal.x-a.x,-(plan.goal.z-a.z))-a.yaw);
+          const heading=this.routeHeading(a,plan.goal);
           a.tactics.setMode(plan.mode);
           commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*ESCAPE.fleeSpeed/MOVEMENT.sprintSpeed,turn:clamp(heading*2,-1,1),sprint:true});
           continue;
@@ -258,7 +269,7 @@ export class LabSimulationCore implements SimulationCore {
       // This is only a broad phase; each source still has to pass IK/contact.
       const groundedPair=this.expandedStrikes&&(prone||target.gait.posture==='prone');
       const previewRange=groundedPair?2.65:this.expandedStrikes?1.05:.82;
-      if(seen&&allowed&&!retreat&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
+      if(unobstructed&&seen&&allowed&&!retreat&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         const pose=this.actorPose(a),victim=this.actorPose(target),eligible=(id:string)=>target.health.canDamage(id,this.tick);
         const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
         const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];
@@ -295,7 +306,7 @@ export class LabSimulationCore implements SimulationCore {
       const p=a.strike.punch;if(a.fixed||!p||a.strike.resolved||a.strike.phase(this.tick)!=='thrust'||(p.prone?a.gait.posture!=='prone':a.gait.posture!=='upright'))continue;
       const b=this.actors.find(v=>v.id===p.targetId&&!v.fixed);
       const a0=previous.get(a.id),a1=current.get(a.id),b0=b&&previous.get(b.id),b1=b&&current.get(b.id);
-      if(!b||!a0||!a1||!b0||!b1)continue;
+      if(!b||!a0||!a1||!b0||!b1||!this.navigation.clear(a,b))continue;
       const id=firstStrikeContact(a0,a1,b0,b1,p.side,p.kind??'arm');
       if(id){a.strike.resolve();this.events.push({tick:this.tick,type:'strike-contact',fighterId:b.id,attackerId:a.id,segmentId:id,sourceSegment:strikeSource(p.kind??'arm',p.side),strikeKind:p.kind??'arm',proneStrike:!!p.prone});requests.push({fighterId:b.id,segmentId:id,attackerId:a.id,amount:b.health.canDamage(id,this.tick)?a.behavior.damage():1});}
     }
@@ -362,6 +373,7 @@ export class LabSimulationCore implements SimulationCore {
       const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+Math.sin(a.yaw)*travel+recoil[0],-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*travel+recoil[2],-5.65,5.65);
+      if(this.navigation.walls.length){const p=this.navigation.move({x:oldX,z:oldZ},a);a.x=p.x;a.z=p.z;}
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
       a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
@@ -370,7 +382,7 @@ export class LabSimulationCore implements SimulationCore {
     if(previous)this.resolveStrikes(previous);
     const hits:SegmentContact[] = [];
     const before=this.dynamicBalance?this.actors.map(a=>[a.x,a.z] as const):[];
-    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat);
+    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat,this.navigation.walls.length?(a,x,z)=>this.navigation.move(a,{x,z}):undefined);
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
@@ -412,6 +424,7 @@ export class LabSimulationCore implements SimulationCore {
       postures:this.actors.map(a=>a.gait.posture),
       bodyTerrainStates:this.actors.map(a=>a.terrainOnly),
       oil:this.actors.map(a=>a.oil.snapshot()),oilMarks:this.oilMarks.map(m=>({...m,point:[...m.point]})),impacts:this.actors.map(a=>a.impact.snapshot()),
+      routes:this.actors.map(a=>a.route.snapshot()),
       perception:this.actors.map(a=>a.perception.snapshot(a.yaw)),
       escapes:this.actors.map(a=>a.escape.snapshot()),
       tactics:this.actors.map(a=>a.tactics.snapshot()),

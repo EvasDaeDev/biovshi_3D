@@ -13,3 +13,8 @@ export function createArenaCombatConfig(seed:number,escapeCombat=false,perceptio
  return {...base,combatEnabled:true,expandedStrikes:true,tacticalCombat:true,escapeCombat,perceptionCombat,
   fighters:base.fighters.map(f=>({...f,profile:f.id%3===0?{movement:4,critical:2,turning:3,temperament:'impulsive'}:f.id%3===1?{movement:2,critical:4,turning:3,temperament:'hesitant'}:{movement:3,critical:3,turning:3,temperament:'balanced'}}))};
 }
+
+/** Diagnostic obstacle scenario; product locations will supply wall geometry. */
+export function createNavigationCombatConfig(seed:number):WorldConfig{
+ return {...createArenaCombatConfig(seed,true,true),walls:[{minX:-.28,maxX:.28,minZ:-.65,maxZ:.65,height:2.8}]};
+}

@@ -7,7 +7,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 /** Physics adapter owns Rapier bodies; renderer consumes plain snapshots. */
 export class DebrisWorld {
  constructor(RAPIER){this.R=RAPIER;this.reset();}
- reset(){
+ reset(walls=[]){
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
@@ -17,6 +17,10 @@ export class DebrisWorld {
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
    const wall=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x,2.1,z));
    this.world.createCollider(R.ColliderDesc.cuboid(w,2.1,d),wall);
+  }
+  for(const w of walls){
+   const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2));
+   this.world.createCollider(R.ColliderDesc.cuboid((w.maxX-w.minX)/2,w.height/2,(w.maxZ-w.minZ)/2),body);
   }
  }
  accept(event){

@@ -1,16 +1,16 @@
 import {bodyTerrain} from '../dist/collision/body-terrain.js';
 import {performance} from 'node:perf_hooks';
-import {LabSimulationCore,createLabConfig,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
+import {LabSimulationCore,createLabConfig,createArenaCombatConfig,createNavigationCombatConfig,FIXED_DT} from '../dist/index.js';
 const q=(values,p)=>values[Math.floor((values.length-1)*p)];
 const summarize=a=>{a.sort((x,y)=>x-y);return {p50:q(a,.5),p95:q(a,.95),p99:q(a,.99)};};
 const base=createLabConfig(7);
-for(const scenario of ['intact','legless','balance','settled','single-support','combat','combat-mixed','combat-prone','combat-traits','combat-arena','combat-escape','combat-vision']){
+for(const scenario of ['intact','legless','balance','settled','single-support','combat','combat-mixed','combat-prone','combat-traits','combat-arena','combat-escape','combat-vision','combat-navigation']){
  const damaged=scenario==='legless'||scenario==='combat-prone';
  const fighters=damaged
   ?base.fighters.map(f=>({...f,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}))
   :scenario==='single-support'?base.fighters.map(f=>({...f,segmentIds:f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s))})):base.fighters;
  const cfg={...base,fighters:scenario==='combat-traits'?fighters.map(f=>({...f,profile:f.id%2?{movement:2,critical:4,turning:3,temperament:'hesitant'}:{movement:4,critical:2,turning:3,temperament:'impulsive'}})):fighters};
- const core=new LabSimulationCore();core.initialize(['combat-arena','combat-escape','combat-vision'].includes(scenario)?createArenaCombatConfig(7,scenario!=='combat-arena',scenario==='combat-vision'):{...cfg,labContactFracture:false,labDynamicBalance:scenario==='balance',combatEnabled:scenario.startsWith('combat'),expandedStrikes:scenario==='combat-mixed'||scenario==='combat-prone'||scenario==='combat-traits'});
+ const core=new LabSimulationCore();core.initialize(scenario==='combat-navigation'?createNavigationCombatConfig(7):['combat-arena','combat-escape','combat-vision'].includes(scenario)?createArenaCombatConfig(7,scenario!=='combat-arena',scenario==='combat-vision'):{...cfg,labContactFracture:false,labDynamicBalance:scenario==='balance',combatEnabled:scenario.startsWith('combat'),expandedStrikes:scenario==='combat-mixed'||scenario==='combat-prone'||scenario==='combat-traits'});
  if(scenario==='settled'){
   const mounds=[];for(const f of fighters.slice(4)){core.incapacitate(f.id);const s=core.getSnapshot(),i=Array.from(s.fighterIds).indexOf(f.id),parts=s.rigSegments[i].map(p=>({...p,a:[p.a[0],.2+p.a[2]-f.origin[2],f.origin[2]-p.a[1]+1],b:[p.b[0],.2+p.b[2]-f.origin[2],f.origin[2]-p.b[1]+1]}));core.setIncapacitatedPose(f.id,parts,true);mounds.push(...bodyTerrain(parts));}core.setTerrainMounds(mounds);
  }
@@ -21,6 +21,7 @@ for(const scenario of ['intact','legless','balance','settled','single-support','
   let t=performance.now();run(i);step.push(performance.now()-t);
   t=performance.now();core.getSnapshot();snapshot.push(performance.now()-t);
  }
- console.log(JSON.stringify({scenario:'8 '+scenario+' patients, 60 simulated seconds, seed 7',segments:core.getSnapshot().rigSegments.flat().length,unit:'ms',step:summarize(step),snapshot:summarize(snapshot)},null,2));
+ const final=core.getSnapshot();
+ console.log(JSON.stringify({fight:final.fight,active:final.lifeStates.filter(v=>v==='active').length,hits:final.damageStats.hits,scenario:'8 '+scenario+' patients, 60 simulated seconds, seed 7',segments:core.getSnapshot().rigSegments.flat().length,unit:'ms',step:summarize(step),snapshot:summarize(snapshot)},null,2));
  core.dispose();
 }

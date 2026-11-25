@@ -1,3 +1,5 @@
+import type { ArenaWall } from './arena/navigation.js';
+import type { PointXZ } from './combat/escape.js';
 import type { PerceptionSnapshot } from './combat/perception.js';
 import type { EscapePlan } from './combat/escape.js';
 import type { TacticalSnapshot } from './combat/tactics.js';
@@ -56,6 +58,8 @@ export interface WorldConfig {
   readonly tacticalCombat?: boolean;
   readonly escapeCombat?: boolean;
   readonly perceptionCombat?: boolean;
+  /** Opaque tall walls; low terrain cones use the separate height field. */
+  readonly walls?: readonly ArenaWall[];
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
@@ -70,6 +74,7 @@ export interface WorldSnapshot {
   readonly oil?: readonly OilSnapshot[];
   readonly oilMarks?: readonly OilMark[];
   readonly impacts?: readonly {readonly active:boolean;readonly remainingSeconds:number;readonly slow:number}[];
+  readonly routes?: readonly (readonly PointXZ[])[];
   readonly perception?: readonly PerceptionSnapshot[];
   readonly escapes?: readonly {readonly stationaryTicks:number;readonly plan:EscapePlan|null}[];
   readonly tactics?: readonly TacticalSnapshot[];

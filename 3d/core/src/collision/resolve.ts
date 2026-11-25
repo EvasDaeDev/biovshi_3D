@@ -13,9 +13,9 @@ function prepare(p:RigPose){
 }
 /** Three bounded passes. Pose callback must be pure; never advances gait.
  * Rebuild after root corrections; planted feet stay in world coordinates. */
-export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[],hits?:SegmentContact[],combatBodyCorrection=false):CollisionStats{
+export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[],hits?:SegmentContact[],combatBodyCorrection=false,guard?:(a:T,x:number,z:number)=>{x:number;z:number}):CollisionStats{
  const stats:CollisionStats={tests:0,contacts:0,wallContacts:0};
- const move=(a:T,x:number,z:number)=>{if(a.fixed)return;a.x=clamp(a.x+clamp(x,-.10,.10),-5.65,5.65);a.z=clamp(a.z+clamp(z,-.10,.10),-5.65,5.65);};
+ const move=(a:T,x:number,z:number)=>{if(a.fixed)return;const nx=clamp(a.x+clamp(x,-.10,.10),-5.65,5.65),nz=clamp(a.z+clamp(z,-.10,.10),-5.65,5.65);const p=guard?guard(a,nx,nz):{x:nx,z:nz};a.x=p.x;a.z=p.z;};
  for(let iteration=0;iteration<3;iteration++){
   const shapes=actors.map(a=>{
    const parts=pose(a);if(a.fixed)return parts.map(prepare);let x=0,z=0;
