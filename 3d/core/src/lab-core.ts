@@ -22,6 +22,7 @@ import { MOVEMENT } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
 import { expandLegacyTorso } from './rig/anatomy.js';
 import { terrainHeight, type Mound } from './collision/terrain.js';
+import { gradeHeight,validateGradeSurface,type GradeSurface } from './arena/graded-surface.js';
 import { ContactEpisodes, type SegmentContact } from './collision/contact-episodes.js';
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
 import { PatientGait,type RigPose } from './rig/gait.js';
@@ -49,6 +50,8 @@ export class LabSimulationCore implements SimulationCore {
   private oilRng=0;private oilMarks:OilMark[]=[];private nextMark=0;
   private ready = false;
   private mounds:readonly Mound[]=[];
+  private grade:GradeSurface=[];
+  private ground(a:Actor,x:number,z:number):number{return a.baseY+gradeHeight(x,z,this.grade)+terrainHeight(x,z,this.mounds);}
   private navigation=new ArenaNavigation();
   /** Copy plain terrain data from the external physics adapter. */
   setTerrainMounds(mounds:readonly Mound[]):void{
@@ -68,6 +71,7 @@ export class LabSimulationCore implements SimulationCore {
   initialize(config: WorldConfig): void {
     if (!Number.isInteger(config.seed) || config.seed < 0 || config.seed > 0xffffffff)
       throw new RangeError('seed must be uint32');
+    const graded=validateGradeSurface(config.gradedSurface??[]);
     const ids = new Set<number>();
     const actors = config.fighters.map(f => {
       if (!Number.isInteger(f.id) || f.id < 0 || f.id > 0xffffffff || ids.has(f.id))
@@ -78,12 +82,13 @@ export class LabSimulationCore implements SimulationCore {
         throw new RangeError('Invalid transform');
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
-      return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
+      return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
         wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
     this.navigation=navigation;
+    this.grade=graded;
     this.actors = actors;
     this.mounds=[];
     this.tick = 0;
@@ -95,13 +100,13 @@ export class LabSimulationCore implements SimulationCore {
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
     this.collisionStats = {tests:0,contacts:0,wallContacts:0};
     this.ready = true;
-    for(const a of this.actors)a.gait.advance([a.x,a.y,a.z],a.yaw,0,0,()=>a.baseY,mobilityFor(a.segments),a.segments);
+    for(const a of this.actors)a.gait.advance([a.x,a.y,a.z],a.yaw,0,0,(x,z)=>this.ground(a,x,z),mobilityFor(a.segments),a.segments);
   }
 
   private actorPose(a:Actor):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const pose=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
-    const strike=a.strike.punch;return strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick,(x,z)=>a.baseY+terrainHeight(x,z,this.mounds)):pose;
+    const strike=a.strike.punch;return strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick,(x,z)=>this.ground(a,x,z)):pose;
   }
   private copyPose(parts:readonly PhysicsSegmentPose[]):readonly RigPose[]{
     return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius}));
@@ -182,7 +187,7 @@ export class LabSimulationCore implements SimulationCore {
     for(const a of this.actors){
       if(a.fixed)continue;
       const failed=a.oil.advance(this.tick,a.segments,()=>this.actorPose(a),()=>this.oilRandom(),(segmentId,origin)=>{
-        const point:[number,number,number]=[origin[0],a.baseY+terrainHeight(origin[0],origin[2],this.mounds),origin[2]];
+        const point:[number,number,number]=[origin[0],this.ground(a,origin[0],origin[2]),origin[2]];
         this.oilMarks.push({id:this.nextMark++,fighterId:a.id,point,tick:this.tick});
         if(this.oilMarks.length>OIL.limit)this.oilMarks.shift();
         this.events.push({tick:this.tick,type:'oil-drop',fighterId:a.id,segmentId,point:[...point]});
@@ -323,7 +328,7 @@ export class LabSimulationCore implements SimulationCore {
       if(unobstructed&&seen&&allowed&&!retreat&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         checkedStrikeGeometry=true;
         const pose=this.actorPose(a),victim=this.actorPose(target),eligible=(id:string)=>target.health.canDamage(id,this.tick);
-        const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
+        const ground=(x:number,z:number)=>this.ground(a,x,z);
         const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];
         if(this.expandedStrikes&&!command&&order.length>1){const shift=(a.strike.attempts+a.id)%order.length;order.push(...order.splice(0,shift));}
         for(const kind of order){
@@ -406,7 +411,7 @@ export class LabSimulationCore implements SimulationCore {
       const flinch=a.impact.slow,recoil=a.impact.advance(dt);
       if(a.knockdown.blocked){
         a.speed=0;
-        const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
+        const ground=(x:number,z:number)=>this.ground(a,x,z);
         a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
         a.gait.advance([a.x,a.y,a.z],a.yaw,0,dt,ground,mobility,a.segments,a.knockdown.amount);
         continue;
@@ -428,7 +433,7 @@ export class LabSimulationCore implements SimulationCore {
       }
       target*=mobility.speedScale*flinch*a.behavior.traits.movementMultiplier;
       a.speed = mobility.mode==='unsupported'||a.strike.punch?.kind==='leg'||a.strike.punch?.prone?0:damp(a.speed,target,3);
-      const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
+      const ground=(x:number,z:number)=>this.ground(a,x,z);
       const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed,mobility,a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT,ground);
       const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+Math.sin(a.yaw)*travel+recoil[0],-5.65,5.65);
@@ -447,7 +452,7 @@ export class LabSimulationCore implements SimulationCore {
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
       const parts=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
-      const support=analyzeSupport(parts,(x,z)=>a.baseY+terrainHeight(x,z,this.mounds));
+      const support=analyzeSupport(parts,(x,z)=>this.ground(a,x,z));
       if(a.knockdown.observe(displacement,support.margin,true)){
         a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
       }
@@ -479,7 +484,7 @@ export class LabSimulationCore implements SimulationCore {
       roots.set([a.x,a.y,a.z,a.yaw],i*4);
     });
     const rigSegments=this.actors.map(a=>this.copyPose(this.actorPose(a)));
-    const supports=rigSegments.map((parts,i)=>analyzeSupport(parts,(x,z)=>this.actors[i]!.baseY+terrainHeight(x,z,this.mounds)));
+    const supports=rigSegments.map((parts,i)=>analyzeSupport(parts,(x,z)=>this.ground(this.actors[i]!,x,z)));
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
