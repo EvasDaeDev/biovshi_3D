@@ -1,3 +1,5 @@
+import { StrikeState,usableArm,punchPose } from './combat/strike.js';
+import { firstStrikeContact } from './combat/swept-contact.js';
 import { ImpactState } from './combat/impact.js';
 import { OilState,OIL,type OilMark } from './combat/oil.js';
 import { DamageState,type IncapacitationCause } from './combat/damage.js';
@@ -20,7 +22,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; terrainOnly:boolean; physicsPose:readonly RigPose[];
+  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -44,6 +46,7 @@ export class LabSimulationCore implements SimulationCore {
   private events: SimulationEvent[] = [];
   private fracture = false;
   private dynamicBalance=false;
+  private combat=false;private fightEnded=false;private winnerId:number|null=null;
   private hitCount = 0;
   private detachedCount = 0;
   private collisionStats: CollisionStats = {tests:0,contacts:0,wallContacts:0};
@@ -62,14 +65,15 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
     this.mounds=[];
     this.tick = 0;
     this.rng = config.seed;
     this.oilRng=(config.seed^0x9e3779b9)>>>0;this.oilMarks=[];this.nextMark=0;
-    this.fracture = config.labContactFracture === true;
+    this.combat=config.combatEnabled===true;this.fightEnded=false;this.winnerId=null;
+    this.fracture = !this.combat&&config.labContactFracture === true;
     this.dynamicBalance=config.labDynamicBalance===true;
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
     this.collisionStats = {tests:0,contacts:0,wallContacts:0};
@@ -78,7 +82,9 @@ export class LabSimulationCore implements SimulationCore {
   }
 
   private actorPose(a:Actor):readonly RigPose[]{
-    return a.fixed?a.physicsPose:a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
+    if(a.fixed)return a.physicsPose;
+    const pose=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
+    const strike=a.strike.punch;return strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick):pose;
   }
   private copyPose(parts:readonly PhysicsSegmentPose[]):readonly RigPose[]{
     return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius}));
@@ -90,7 +96,7 @@ export class LabSimulationCore implements SimulationCore {
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed)return false;
     const pose=this.copyPose(this.actorPose(a));
-    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.impact.clear();a.oil.clear();
+    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
     this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,bodyPose:this.copyPose(pose)});
     return true;
   }
@@ -169,6 +175,53 @@ export class LabSimulationCore implements SimulationCore {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  private planCombat(commands:Map<number,FighterCommand>):void{
+    for(const a of this.actors){
+      const allowed=!a.fixed&&!a.knockdown.blocked&&a.gait.posture==='upright'&&!this.fightEnded;
+      a.strike.advance(this.tick,allowed,a.segments);
+      if(a.fixed)continue;
+      const command=commands.get(a.id);
+      if(this.fightEnded){commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
+      const target=this.actors.filter(b=>b!==a&&!b.fixed).sort((b,c)=>Math.hypot(b.x-a.x,b.z-a.z)-Math.hypot(c.x-a.x,c.z-a.z)||b.id-c.id)[0];
+      if(!target){if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
+      const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
+      if(!command)commands.set(a.id,{fighterId:a.id,forward:distance>.59?Math.max(0,Math.cos(turn)):0,turn:clamp(turn*2,-1,1),sprint:false});
+      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<.82&&!a.strike.punch){
+        const targetPose=this.actorPose(target),chest=targetPose.find(p=>p.id==='chest')??targetPose.find(p=>p.id==='head');
+        const pose=this.actorPose(a);
+        if(chest){
+          const aim:[number,number,number]=[(chest.a[0]+chest.b[0])/2,(chest.a[1]+chest.b[1])/2,(chest.a[2]+chest.b[2])/2];
+          const sides=(['L','R'] as const).filter(s=>usableArm(a.segments,s));
+          const score=(s:'L'|'R')=>{const u=pose.find(p=>p.id===s+'.upperArm')!;return Math.hypot(u.a[0]-aim[0],u.a[1]-aim[1],u.a[2]-aim[2]);};
+          const side=sides.sort((x,y)=>score(x)-score(y))[0];
+          if(side&&score(side)<.92&&a.strike.start(this.tick,side,target.id,aim,a.yaw))this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:side+'.lowerArm'});
+        }
+      }
+      if(a.strike.punch)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});
+    }
+  }
+  private resolveStrikes(previous:Map<number,readonly RigPose[]>):void{
+    const current=new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,this.actorPose(a)]));
+    const requests:DamageRequest[]=[];
+    // Capture all contacts before mutating anatomy or incapacitating either fighter.
+    for(const a of this.actors){
+      const p=a.strike.punch;if(a.fixed||!p||a.strike.resolved||a.strike.phase(this.tick)!=='thrust')continue;
+      const b=this.actors.find(v=>v.id===p.targetId&&!v.fixed);
+      const a0=previous.get(a.id),a1=current.get(a.id),b0=b&&previous.get(b.id),b1=b&&current.get(b.id);
+      if(!b||!a0||!a1||!b0||!b1)continue;
+      const id=firstStrikeContact(a0,a1,b0,b1,p.side);
+      if(id){a.strike.resolve();requests.push({fighterId:b.id,segmentId:id,attackerId:a.id,amount:1});}
+    }
+    for(const request of requests)this.applyDamage(request);
+  }
+  private finishFight():void{
+    if(this.fightEnded||this.actors.length<2)return;
+    const active=this.actors.filter(a=>!a.fixed);
+    if(active.length>1)return;
+    this.fightEnded=true;this.winnerId=active[0]?.id??null;
+    for(const a of this.actors)a.strike.advance(this.tick,false,a.segments);
+    this.events.push({tick:this.tick,type:'fight-ended',fighterId:this.winnerId??0});
+  }
   step(dt: number, input: InputFrame): void {
     this.requireReady();
     if (dt !== FIXED_DT) throw new RangeError('Lab requires exactly 1/60 s');
@@ -176,10 +229,12 @@ export class LabSimulationCore implements SimulationCore {
     for (const c of input.commands) {
       if (commands.has(c.fighterId) || !this.actors.some(a=>a.id===c.fighterId) ||
           !Number.isFinite(c.forward) || Math.abs(c.forward)>1 ||
-          !Number.isFinite(c.turn) || Math.abs(c.turn)>1 || typeof c.sprint !== 'boolean')
+          !Number.isFinite(c.turn) || Math.abs(c.turn)>1 || typeof c.sprint !== 'boolean'||(c.attack!==undefined&&typeof c.attack!=='boolean'))
         throw new RangeError('Invalid or duplicate command');
       commands.set(c.fighterId,c);
     }
+    if(this.combat)this.planCombat(commands);
+    const previous=this.combat&&!this.fightEnded?new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,this.actorPose(a)])):null;
     for (const a of this.actors) {
       if(a.fixed)continue;
       const c = commands.get(a.id);
@@ -223,6 +278,7 @@ export class LabSimulationCore implements SimulationCore {
       a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments);
     }
     this.tick++;
+    if(previous)this.resolveStrikes(previous);
     const hits:SegmentContact[] = [];
     const before=this.dynamicBalance?this.actors.map(a=>[a.x,a.z] as const):[];
     this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined);
@@ -241,7 +297,7 @@ export class LabSimulationCore implements SimulationCore {
       const actor=this.actors.find(a=>a.id===hit.fighterId)!;
       this.detach(actor,chain);
     });
-    this.updateOil();
+    this.updateOil();if(this.combat)this.finishFight();
   }
 
   getSnapshot(): WorldSnapshot {
@@ -260,6 +316,7 @@ export class LabSimulationCore implements SimulationCore {
       postures:this.actors.map(a=>a.gait.posture),
       bodyTerrainStates:this.actors.map(a=>a.terrainOnly),
       oil:this.actors.map(a=>a.oil.snapshot()),oilMarks:this.oilMarks.map(m=>({...m,point:[...m.point]})),impacts:this.actors.map(a=>a.impact.snapshot()),
+      strikes:this.actors.map(a=>a.strike.snapshot(this.tick)),fight:{ended:this.fightEnded,winnerId:this.winnerId},
       health:this.actors.map(a=>a.health.snapshot()),
       lifeStates:this.actors.map(a=>a.fixed?'incapacitated':'active'),
       balanceStates:this.actors.map(a=>a.knockdown.phase),

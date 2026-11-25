@@ -1,3 +1,4 @@
+import type { StrikeSnapshot } from './combat/strike.js';
 import type { OilMark,OilSnapshot } from './combat/oil.js';
 import type { HealthSnapshot,IncapacitationCause } from './combat/damage.js';
 import type { BalancePhase } from './rig/knockdown.js';
@@ -17,6 +18,7 @@ export interface FighterCommand {
   /** Turn speed request, [-1, 1], positive = right. */
   readonly turn: number;
   readonly sprint: boolean;
+  readonly attack?: boolean;
 }
 
 export interface DamageRequest {readonly fighterId:FighterId;readonly segmentId:SegmentId;readonly amount:number;readonly attackerId?:FighterId}
@@ -39,6 +41,8 @@ export interface WorldConfig {
   readonly labContactFracture?: boolean;
   /** Lab-only collision-induced temporary knockdown. */
   readonly labDynamicBalance?: boolean;
+  /** Opt-in product strike path; omitted commands use simple combat AI. */
+  readonly combatEnabled?: boolean;
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
@@ -53,6 +57,8 @@ export interface WorldSnapshot {
   readonly oil?: readonly OilSnapshot[];
   readonly oilMarks?: readonly OilMark[];
   readonly impacts?: readonly {readonly active:boolean;readonly remainingSeconds:number;readonly slow:number}[];
+  readonly strikes?: readonly StrikeSnapshot[];
+  readonly fight?: Readonly<{ended:boolean;winnerId:number|null}>;
   readonly health?: readonly HealthSnapshot[];
   readonly lifeStates?: readonly ('active'|'incapacitated')[];
   readonly balanceStates?: readonly BalancePhase[];
@@ -83,6 +89,7 @@ export interface SimulationEvent {
   readonly fighterId: FighterId;
   readonly segmentId?: SegmentId;
   readonly attackerId?: FighterId;
+  readonly targetId?: FighterId;
   readonly damage?: number;
   readonly remainingHP?: number;
   readonly critical?: boolean;
