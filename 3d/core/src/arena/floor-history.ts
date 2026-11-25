@@ -13,7 +13,7 @@ export interface FloorHistory {readonly schemaVersion:1;readonly arenaId:string;
 type RecordValue=Record<string,unknown>;
 const object=(v:unknown):v is RecordValue=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 const number=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
-const positive=(v:unknown)=>number(v)&&v>0;
+const positive=(v:unknown):v is number=>number(v)&&v>0;
 const vec=(v:unknown):FloorVec3=>{
  if(!object(v)||!number(v.x)||!number(v.y)||!number(v.z))throw new RangeError('Invalid floor vector');
  return {x:v.x,y:v.y,z:v.z};
