@@ -44,6 +44,8 @@ interface Graph {boxes:readonly Box[];outer:readonly Box[];nodes:readonly PointX
 /** Adapt src/systems/navigation.js: cached static corners/edges, dynamic
  * start/goal links, Dijkstra, and a safe exit from an occupied clearance zone. */
 export class ArenaNavigation{
+ /** v1 P3 standoff; P4 authored polygons may use a narrower but safe graph margin. */
+ readonly routePad:number=.65;
  readonly walls:readonly ArenaWall[];
  private cache=new Map<number,Graph>();
  constructor(walls:readonly ArenaWall[]=[]){this.walls=validateWalls(walls);}
@@ -134,9 +136,9 @@ export class RouteState{
  private goal:PointXZ|null=null;private route:PointXZ[]=[];private next=0;private retry=0;
  clear():void{this.goal=null;this.route=[];this.next=0;this.retry=0;}
  waypoint(nav:ArenaNavigation,start:PointXZ,goal:PointXZ,tick:number):PointXZ{
-  if(nav.clear(start,goal,.65)){this.clear();return goal;}
+  if(nav.clear(start,goal,nav.routePad)){this.clear();return goal;}
   if(!this.goal||dist(goal,this.goal)>.35||this.next>=this.route.length||tick>=this.retry){
-   this.goal={...goal};this.route=[...nav.plan(start,goal)];this.next=0;this.retry=tick+30;
+   this.goal={...goal};this.route=[...nav.plan(start,goal,nav.routePad)];this.next=0;this.retry=tick+30;
   }
   while(this.next+1<this.route.length&&dist(start,this.route[this.next]!)<.14&&nav.clear(start,this.route[this.next+1]!,.50))this.next++;
   return this.route[this.next]??start;
