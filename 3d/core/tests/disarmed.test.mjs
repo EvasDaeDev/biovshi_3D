@@ -91,3 +91,21 @@ test('disarmed upper-arm stump can crawl away without inventing a missing forear
   assert.equal(c.getSnapshot().strikes[0].phase,'idle');
  }finally{c.dispose();}
 });
+
+test('unreachable escape is negatively cached until its 1.8-second retry, not rescored every tick',()=>{
+ const c=new LabSimulationCore(),ids=defenseless.filter(s=>s!=='R.foot');
+ const stationary={fighterId:1,forward:0,turn:0,sprint:false};
+ try{
+  c.initialize({seed:7,fighters:[{...base.fighters[0],origin:[0,0,1],segmentIds:ids},{...base.fighters[1],origin:[0,0,0]}],combatEnabled:true,expandedStrikes:true,tacticalCombat:true});
+  let checks=0;
+  c.navigation.reachable=()=>{checks++;return false;};
+  c.planCombat(new Map([[1,stationary]]));
+  assert.ok(checks>=72,'one failed search evaluated the known v1 candidates');
+  assert.equal(c.getSnapshot().tactics[0].mode,'search');
+  const first=checks;
+  for(let i=0;i<108;i++)c.step(FIXED_DT,{commands:[stationary]});
+  assert.equal(checks,first,'no replan storm while a goal cannot be reached');
+  c.step(FIXED_DT,{commands:[stationary]});
+  assert.ok(checks>first,'a bounded retry is permitted after 1.8 s');
+ }finally{c.dispose();}
+});
