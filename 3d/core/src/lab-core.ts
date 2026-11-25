@@ -256,7 +256,8 @@ export class LabSimulationCore implements SimulationCore {
           attacking:b.strike.punch?.targetId===a.id,
           visible:sensing?visibleIds.includes(b.id):a.segments.includes('head')&&distanceTo(b)<=7.03125&&Math.abs(wrap(Math.atan2(b.x-a.x,-(b.z-a.z))-a.yaw))<=100*Math.PI/360});
         const plan=a.escape.choose(this.tick,a,sense(target),visible.map(sense),this.actors.filter(b=>b!==a&&!b.terrainOnly).map(b=>({x:b.x,z:b.z})),
-          mobility.mode==='biped'&&!a.strike.punch&&!a.knockdown.blocked&&!retreat);
+          mobility.mode==='biped'&&!a.strike.punch&&!a.knockdown.blocked&&!retreat,
+          goal=>this.navigation.clear(goal,goal,.50));
         if(plan){
           const heading=this.routeHeading(a,plan.goal);
           a.tactics.setMode(plan.mode);
