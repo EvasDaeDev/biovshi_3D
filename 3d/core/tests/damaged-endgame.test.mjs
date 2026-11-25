@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
+import {LabSimulationCore,createLabConfig,FIXED_DT,hasWorkingLimb} from '../dist/index.js';
 import {hasAttackSource} from '../dist/combat/disarmed.js';
 
 const source=createLabConfig(19).fighters;
@@ -55,7 +55,8 @@ test('real severing and oil loss resolve a damaged duel without a fabricated com
   for(const segmentId of ['L.upperLeg','R.upperLeg','L.upperArm','R.upperArm'])
    assert.equal(c.applyDamage({fighterId:fighterIds[0],segmentId,amount:3}),true);
   events.push(...c.drainEvents());
-  assert.ok(!hasAttackSource(c.getSnapshot().segmentIds[0],true));
+  assert.equal(hasWorkingLimb(c.getSnapshot().segmentIds[0]),false);
+  assert.equal(c.getSnapshot().mobilityModes[0],'head-crawl','head survives while locomotion limbs were severed');
   assert.equal(c.getSnapshot().fight.ended,false);
   const commands=idle(fighterIds);
   c.step(FIXED_DT,commands);
