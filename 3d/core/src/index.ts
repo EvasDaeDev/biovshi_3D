@@ -31,3 +31,6 @@ export type {VisionBody,VisionMemory,PerceptionSnapshot,SightClear} from './comb
 
 export {ArenaNavigation,RouteState,rectHit,sightClear} from './arena/navigation.js';
 export type {ArenaWall} from './arena/navigation.js';
+
+export {FLOOR_VERSION,FLOOR_OIL_LIMIT,readFloorHistory,createFloorHistory} from './arena/floor-history.js';
+export type {FloorHistory,FloorMound,FloorVisual,FloorOilMark} from './arena/floor-history.js';
