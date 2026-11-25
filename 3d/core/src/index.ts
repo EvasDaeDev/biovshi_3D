@@ -17,3 +17,6 @@ export type { OilSnapshot,OilMark } from './combat/oil.js';
 export {STRIKE,StrikeState,punchPose,usableStrike,strikeSource} from './combat/strike.js';
 export {sweptContact,firstStrikeContact} from './combat/swept-contact.js';
 export type {Punch,StrikePhase,StrikeSnapshot,StrikeKind} from './combat/strike.js';
+
+export {PatientBehavior,patientTraits,statMultiplier,critChance} from './combat/patient-profile.js';
+export type {PatientProfile,PatientTraits} from './combat/patient-profile.js';

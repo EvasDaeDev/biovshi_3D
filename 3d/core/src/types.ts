@@ -1,3 +1,4 @@
+import type { PatientProfile,PatientTraits } from './combat/patient-profile.js';
 import type { StrikeSnapshot,StrikeKind } from './combat/strike.js';
 import type { OilMark,OilSnapshot } from './combat/oil.js';
 import type { HealthSnapshot,IncapacitationCause } from './combat/damage.js';
@@ -33,6 +34,8 @@ export interface FighterDefinition {
   readonly origin: Vec3;
   readonly yawRad: number;
   readonly segmentIds: readonly SegmentId[];
+  /** Optional native effective points and behavioral temperament. */
+  readonly profile?: PatientProfile;
 }
 
 export interface WorldConfig {
@@ -60,6 +63,7 @@ export interface WorldSnapshot {
   readonly oil?: readonly OilSnapshot[];
   readonly oilMarks?: readonly OilMark[];
   readonly impacts?: readonly {readonly active:boolean;readonly remainingSeconds:number;readonly slow:number}[];
+  readonly patientTraits?: readonly (PatientTraits & {readonly targetId:number|null;readonly noticedAt:number;readonly nextAttack:number})[];
   readonly strikes?: readonly StrikeSnapshot[];
   readonly fight?: Readonly<{ended:boolean;winnerId:number|null}>;
   readonly health?: readonly HealthSnapshot[];
