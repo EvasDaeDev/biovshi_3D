@@ -1,3 +1,4 @@
+import {PATIENT_SCALE} from './rig/patient-scale.js';
 import type { WorldConfig } from './types.js';
 import type { NativeLocation } from './arena/location-adapter.js';
 import { LAB_SEGMENTS } from './rig/anatomy.js';
@@ -34,5 +35,6 @@ export function createAuthoredCombatConfig(seed:number,location:NativeLocation,p
    yawRad:Math.atan2(-origin[0],origin[2])};
  });
  return {...base,location,walls:location.walls,fighters,
+  ...(location.shape==='circle'?{patientScale:PATIENT_SCALE}:{}),
   ...(location.terrain?{gradedSurface:location.terrain.triangles}:{})};
 }

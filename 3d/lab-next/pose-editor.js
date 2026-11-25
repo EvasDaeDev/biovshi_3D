@@ -1,3 +1,4 @@
+import {solveTwoBone} from '../core/dist/rig/two-bone.js';
 import {TransformControls} from './vendor/TransformControls.js';
 import * as THREE from 'three';
 import {LAB_SEGMENTS} from '../core/dist/rig/anatomy.js';
@@ -15,7 +16,7 @@ for(const {id} of LAB_SEGMENTS){
  segmentSelect.add(new Option(part?(side==='L'?'Л / ':'П / ')+labels[part]:labels[id],id));
 }
 segmentSelect.value='L.upperArm';
-let data={schemaVersion:1,slots:{}};
+let data={schemaVersion:1,stature:1.65,slots:{}};
 try{
  const saved=localStorage.getItem(storageKey);
  if(saved)data=readPoseDocument(JSON.parse(saved));
@@ -28,7 +29,7 @@ scene.background=new THREE.Color(0x101715);
 scene.add(new THREE.HemisphereLight(0xd7f4df,0x334d53,2.8));
 const light=new THREE.DirectionalLight(0xffffff,2.6);light.position.set(-3,5,2);scene.add(light);
 scene.add(new THREE.GridHelper(7,28,0x55776b,0x283b35));
-const camera=new THREE.PerspectiveCamera(39,1,.03,60),target=new THREE.Vector3(0,1.05,0);
+const camera=new THREE.PerspectiveCamera(39,1,.03,60),target=new THREE.Vector3(0,.83,0);
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));workspace.append(renderer.domElement);
 const actor=new THREE.Group();scene.add(actor);
@@ -45,25 +46,82 @@ function draw(){
  );
  camera.lookAt(target);renderer.render(scene,camera);
 }
-const controls=new TransformControls(camera,renderer.domElement),pickable=[];
+const controls=new TransformControls(camera,renderer.domElement),pickable=[],nodes=new Map();
+const ikTarget=new THREE.Object3D();scene.add(ikTarget);
+let mode='translate',chain=null,dragPose=null;
+const worldPosition=node=>node.getWorldPosition(new THREE.Vector3());
+function place(node,position){
+ node.position.copy(node.parent.worldToLocal(position.clone()));
+ node.updateWorldMatrix(true,true);
+}
+function orient(node,startDirection,startRotation,newDirection){
+ const swing=new THREE.Quaternion().setFromUnitVectors(startDirection,newDirection.normalize());
+ const worldRotation=swing.multiply(startRotation);
+ node.quaternion.copy(node.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(worldRotation));
+ node.updateWorldMatrix(true,true);
+}
+function attachControl(){
+ chain=null;
+ const id=segmentSelect.value,node=nodes.get(id);
+ if(mode!=='ik'){if(node)controls.attach(node);return;}
+ if(!node||!/[.](hand|foot)$/.test(id))return;
+ const lower=node.parent,upper=lower.parent;
+ const upperEnd=upper.localToWorld(upper.userData.tip.clone());
+ const lowerEnd=lower.localToWorld(lower.userData.tip.clone());
+ chain={upper,lower,tip:node,upperEnd,lowerEnd};
+ ikTarget.position.copy(worldPosition(node));controls.attach(ikTarget);
+}
+controls.addEventListener('mouseDown',()=>{
+ if(!chain)return;
+ const {upper,lower,tip,upperEnd,lowerEnd}=chain;
+ const origin=worldPosition(upper),joint=worldPosition(lower);
+ dragPose={
+  origin,pole:joint.clone().sub(origin),
+  upperDirection:upperEnd.clone().sub(origin).normalize(),
+  lowerDirection:lowerEnd.clone().sub(joint).normalize(),
+  upperRotation:upper.getWorldQuaternion(new THREE.Quaternion()),
+  lowerRotation:lower.getWorldQuaternion(new THREE.Quaternion()),
+  tipRotation:tip.getWorldQuaternion(new THREE.Quaternion()),
+  tipOffset:worldPosition(tip).sub(lowerEnd),
+ };
+});
+controls.addEventListener('objectChange',()=>{
+ if(!chain||!dragPose)return;
+ const {upper,lower,tip}=chain,d=dragPose;
+ const goal=ikTarget.position.clone().sub(d.tipOffset);
+ const result=solveTwoBone(d.origin.toArray(),goal.toArray(),upper.userData.length,lower.userData.length,d.pole.toArray());
+ const joint=new THREE.Vector3(...result.joint),end=new THREE.Vector3(...result.end);
+ orient(upper,d.upperDirection,d.upperRotation,joint.clone().sub(d.origin));
+ place(lower,joint);
+ orient(lower,d.lowerDirection,d.lowerRotation,end.clone().sub(joint));
+ place(tip,end.add(d.tipOffset));
+ tip.quaternion.copy(lower.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(d.tipRotation));
+ draw();
+});
 controls.setSize(.72);scene.add(controls.getHelper());
 controls.addEventListener('change',draw);
 controls.addEventListener('mouseUp',()=>{
- const node=controls.object;
- const offset=node.position.clone().sub(node.userData.origin).toArray();
- const {x,y,z}=node.rotation;
- queueMicrotask(()=>edit({offset,rotation:[x,y,z]}));
+ const affected=chain?[chain.upper,chain.lower,chain.tip]:[controls.object];
+ const patches=new Map(affected.map(node=>{
+  const offset=node.position.clone().sub(node.userData.origin).toArray();
+  const {x,y,z}=node.rotation;
+  return [node.userData.id,{offset,rotation:[x,y,z]}];
+ }));
+ dragPose=null;
+ queueMicrotask(()=>editParts(parts=>parts.map(p=>({...p,...patches.get(p.id)}))));
 });
-for(const mode of ['translate','rotate'])element(mode).onclick=()=>{
- controls.setMode(mode);
- for(const id of ['translate','rotate'])element(id).setAttribute('aria-pressed',String(id===mode));
+for(const id of ['translate','rotate','ik'])element(id).onclick=()=>{
+ mode=id;controls.detach();controls.setMode(id==='ik'?'translate':id);attachControl();
+ for(const button of ['translate','rotate','ik'])element(button).setAttribute('aria-pressed',String(button===id));
+ if(id==='ik')status.textContent='Выберите кисть или стопу и потяните стрелку.';
  draw();
 };
 function renderPose(){
  controls.detach();
  actor.traverse(obj=>obj.geometry?.dispose());actor.clear();pickable.length=0;
  const parts=current(),settings=new Map(parts.map(p=>[p.id,p]));
- const nodes=new Map(),anchors=new Map();
+ nodes.clear();
+ const anchors=new Map();
  for(const part of buildEditedPose(parts)){
   const a=new THREE.Vector3(...part.a),b=new THREE.Vector3(...part.b),axis=b.clone().sub(a);
   const anchor=['pelvis','chest'].includes(part.id)?a.clone().lerp(b,.5):a.clone();
@@ -72,6 +130,9 @@ function renderPose(){
   joint.position.copy(anchor);
   if(parent)joint.position.sub(anchors.get(parent));
   joint.userData.origin=joint.position.clone();
+  joint.userData.id=part.id;
+  joint.userData.tip=b.clone().sub(anchor);
+  joint.userData.length=axis.length();
   joint.position.add(new THREE.Vector3(...(params.offset??[0,0,0])));
   joint.rotation.set(...(params.rotation??[0,0,0]));
   (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
@@ -81,7 +142,7 @@ function renderPose(){
   if(axis.lengthSq()>1e-12)mesh.quaternion.setFromUnitVectors(up,axis.normalize());
   joint.add(mesh);pickable.push(mesh);
  }
- const node=nodes.get(segmentSelect.value);if(node)controls.attach(node);
+ actor.updateMatrixWorld(true);attachControl();
  workspace.dataset.segments=String(pickable.length);
  draw();
 }
@@ -105,9 +166,12 @@ function save(message){
  catch(error){status.textContent='Черновик недоступен. Экспортируйте JSON, чтобы сохранить правки.';}
 }
 function edit(patch){
+ editParts(parts=>parts.map(p=>p.id===segmentSelect.value?{...p,...patch}:p));
+}
+function editParts(update){
  const slot=poseSelect.value;
  try{
-  const parts=current().map(p=>p.id===segmentSelect.value?{...p,...patch}:p);
+  const parts=update(current());
   data=readPoseDocument({...data,slots:{...data.slots,[slot]:parts}});
   save('Черновик сохранён.');
  }catch(error){status.textContent=error.message;}

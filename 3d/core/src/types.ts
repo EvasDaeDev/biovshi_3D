@@ -46,6 +46,7 @@ export interface FighterDefinition {
 }
 
 export interface WorldConfig {
+  readonly patientScale?:number;
   readonly fighters: readonly FighterDefinition[];
   readonly seed: number;
   /** Lab stress-test only, not product combat balance. */

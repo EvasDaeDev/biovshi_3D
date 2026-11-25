@@ -19,6 +19,10 @@ test('the active catalog has one 5 m circular arena and protects its perimeter i
  try{
   const fighter={...config.fighters[0],origin:[0,0,-1.5],yawRad:0};
   core.initialize({...config,fighters:[fighter],combatEnabled:false});
+  const pose=core.getSnapshot().rigSegments[0];
+  const height=Math.max(...pose.map(p=>Math.max(p.a[1],p.b[1])+p.radius))-
+   Math.min(...pose.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
+  assert.ok(Math.abs(height-1.65)<1e-9);
   for(let i=0;i<220;i++)core.step(FIXED_DT,{commands:[{fighterId:0,forward:1,turn:0,sprint:true}]});
   const [x,,z]=core.getSnapshot().roots;
   assert.ok(Math.hypot(x,z)>1.75);
@@ -28,7 +32,7 @@ test('the active catalog has one 5 m circular arena and protects its perimeter i
 
 test('pose files restore adjusted anatomy and connected bones and reject invalid inputs',()=>{
  const parts=referencePose(),arm=parts.find(p=>p.id==='L.upperArm');
- const source={schemaVersion:1,slots:{punch:parts.map(p=>p===arm?{...arm,length:.48,radius:.16}:p)}};
+ const source={schemaVersion:1,stature:1.65,slots:{punch:parts.map(p=>p===arm?{...arm,length:.48,radius:.16}:p)}};
  const document=readPoseDocument(JSON.parse(JSON.stringify(source)));
  const edited=buildEditedPose(document.slots.punch);
  const upper=edited.find(p=>p.id==='L.upperArm'),lower=edited.find(p=>p.id==='L.lowerArm');

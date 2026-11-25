@@ -1,3 +1,4 @@
+import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
 import {OilMarks} from './oil.js';
 import {loadFloorHistory,saveFloorHistory,clearFloorHistory} from './floor-storage.js';
@@ -67,7 +68,7 @@ function floorArenaId(){
  const ring=location??(scenario.value.startsWith('duel')?authoredLocations.ring:null);
  const revision=ring?.terrain?.revision??ring?.floorRevision;
  const scope=location?.id??scenario.value;
- return revision?scope+'@'+revision:scope;
+ return revision?scope+'@'+revision+'-165':scope+'@165';
 }
 function scenarioConfig(){
  const mode=scenario.value,base=createLabConfig(7);
@@ -88,7 +89,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const location=config.location??null;
  patientCount.disabled=!selectedLocation();
  document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
-  ?'Ринг ⌀ 5 м · деление 1 м · пациент в исходной стойке ≈ 2,03 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег.';
+  ?'Ринг ⌀ 5 м · деление 1 м · пациент в исходной стойке 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег.';
  floor.visible=grid.visible=location?.shape!=='circle';
  camera.position.set(...(location?.shape==='circle'?[4,5.4,6]:[8,6,9]));
  camera.lookAt(0,location?.shape==='circle'?.55:1,0);
@@ -121,7 +122,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize(config);pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';

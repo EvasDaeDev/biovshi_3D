@@ -1,3 +1,4 @@
+import type {Vec3} from './types.js';
 import { ArenaNavigation,RouteState } from './arena/navigation.js';
 import { PolygonNavigation } from './arena/polygon-navigation.js';
 import type { PointXZ } from './combat/escape.js';
@@ -53,6 +54,15 @@ export class LabSimulationCore implements SimulationCore {
   private mounds:readonly Mound[]=[];
   private grade:GradeSurface=[];
   private gradeContact:ReturnType<typeof createGradeContact>|null=null;
+  private patientScale=1;
+  private gaitPoint(point:Vec3):Vec3{
+    return this.patientScale===1?point:this.scalePoint(point,1/this.patientScale);
+  }
+  private scalePoint([x,y,z]:Vec3,scale:number):Vec3{return [x*scale,y*scale,z*scale];}
+  private gaitGround(a:Actor){return (x:number,z:number)=>this.ground(a,x*this.patientScale,z*this.patientScale)/this.patientScale;}
+  private worldPose(parts:readonly RigPose[],scale=this.patientScale):readonly RigPose[]{
+    return scale===1?parts:parts.map(p=>({...p,a:this.scalePoint(p.a,scale),b:this.scalePoint(p.b,scale),radius:p.radius*scale}));
+  }
   private ground(a:Actor,x:number,z:number):number{return a.baseY+gradeHeight(x,z,this.grade)+terrainHeight(x,z,this.mounds);}
   private navigation=new ArenaNavigation();
   /** Copy plain terrain data from the external physics adapter. */
@@ -73,6 +83,8 @@ export class LabSimulationCore implements SimulationCore {
   initialize(config: WorldConfig): void {
     if (!Number.isInteger(config.seed) || config.seed < 0 || config.seed > 0xffffffff)
       throw new RangeError('seed must be uint32');
+    const scale=config.patientScale??1;
+    if(!Number.isFinite(scale)||scale<=0)throw new RangeError('Invalid patient scale');
     const graded=validateGradeSurface(config.gradedSurface??[]);
     const ids = new Set<number>();
     const actors = config.fighters.map(f => {
@@ -85,10 +97,11 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
+    this.patientScale=scale;
     this.navigation=navigation;
     this.grade=graded;
     this.gradeContact=graded.length?createGradeContact(graded):null;
@@ -103,15 +116,16 @@ export class LabSimulationCore implements SimulationCore {
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
     this.collisionStats = {tests:0,contacts:0,wallContacts:0};
     this.ready = true;
-    for(const a of this.actors)a.gait.advance([a.x,a.y,a.z],a.yaw,0,0,(x,z)=>this.ground(a,x,z),mobilityFor(a.segments),a.segments);
+    for(const a of this.actors)a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,0,this.gaitGround(a),mobilityFor(a.segments),a.segments);
   }
 
   private actorPose(a:Actor):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
-    const pose=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
+    const pose=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
     const strike=a.strike.punch;
-    const posed=strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick,(x,z)=>this.ground(a,x,z)):pose;
-    return this.gradeContact?.(posed,a.baseY)??posed;
+    const posed=strike&&!a.knockdown.blocked?punchPose(pose,{...strike,aim:this.gaitPoint(strike.aim)},this.tick,this.gaitGround(a)):pose;
+    const world=this.worldPose(posed);
+    return this.gradeContact?.(world,a.baseY)??world;
   }
   private copyPose(parts:readonly PhysicsSegmentPose[]):readonly RigPose[]{
     return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius}));
@@ -426,7 +440,7 @@ export class LabSimulationCore implements SimulationCore {
         a.speed=0;
         const ground=(x:number,z:number)=>this.ground(a,x,z);
         a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
-        a.gait.advance([a.x,a.y,a.z],a.yaw,0,dt,ground,mobility,a.segments,a.knockdown.amount);
+        a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,dt,this.gaitGround(a),mobility,a.segments,a.knockdown.amount);
         continue;
       }
       if (c || a.id === 0) {
@@ -447,14 +461,14 @@ export class LabSimulationCore implements SimulationCore {
       target*=mobility.speedScale*flinch*a.behavior.traits.movementMultiplier;
       a.speed = mobility.mode==='unsupported'||a.strike.punch?.kind==='leg'||a.strike.punch?.prone?0:damp(a.speed,target,3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
-      const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed,mobility,a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT,ground);
+      const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a))*this.patientScale;
       const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+Math.sin(a.yaw)*travel+recoil[0],-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*travel+recoil[2],-5.65,5.65);
       if(this.navigation instanceof PolygonNavigation||this.navigation.walls.length){const p=this.navigation.move({x:oldX,z:oldZ},a);a.x=p.x;a.z=p.z;}
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
-      a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
+      a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
     }
     this.tick++;
     if(previous)this.resolveStrikes(previous);
@@ -464,8 +478,9 @@ export class LabSimulationCore implements SimulationCore {
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
-      const parts=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
-      const support=analyzeSupport(this.gradeContact?.(parts,a.baseY)??parts,(x,z)=>this.ground(a,x,z));
+      const parts=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
+      const world=this.worldPose(parts);
+      const support=analyzeSupport(this.gradeContact?.(world,a.baseY)??world,(x,z)=>this.ground(a,x,z));
       if(a.knockdown.observe(displacement,support.margin,true)){
         a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
       }
@@ -513,9 +528,9 @@ export class LabSimulationCore implements SimulationCore {
       health:this.actors.map(a=>a.health.snapshot()),
       lifeStates:this.actors.map(a=>a.fixed?'incapacitated':'active'),
       balanceStates:this.actors.map(a=>a.knockdown.phase),
-      stepCounts:this.actors.map(a=>a.gait.stepCount),footStates:this.actors.map(a=>a.gait.footStates),
-      hopHeights:this.actors.map(a=>a.gait.hopHeight),hopPhases:this.actors.map(a=>a.gait.hopPhase),
-      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports,crawlAnchors:rigSegments.map((parts,i)=>this.actors[i]!.fixed?[]:this.actors[i]!.gait.crawlAnchors(parts)),residualTraction:rigSegments.map((parts,i)=>this.actors[i]!.fixed?null:this.actors[i]!.gait.residualSupport(parts))};
+      stepCounts:this.actors.map(a=>a.gait.stepCount),footStates:this.actors.map(a=>a.gait.footStates.map(f=>({...f,point:this.scalePoint(f.point,this.patientScale),target:this.scalePoint(f.target,this.patientScale)}))),
+      hopHeights:this.actors.map(a=>a.gait.hopHeight*this.patientScale),hopPhases:this.actors.map(a=>a.gait.hopPhase),
+      damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports,crawlAnchors:rigSegments.map((parts,i)=>this.actors[i]!.fixed?[]:this.actors[i]!.gait.crawlAnchors(this.worldPose(parts,1/this.patientScale)).map(c=>({...c,point:this.scalePoint(c.point,this.patientScale)}))),residualTraction:rigSegments.map((parts,i)=>this.actors[i]!.fixed?null:this.actors[i]!.gait.residualSupport(this.worldPose(parts,1/this.patientScale)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
   dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0; this.rng=0;this.oilMarks=[];this.events=[];this.episodes.reset(); }

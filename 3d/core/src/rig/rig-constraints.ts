@@ -10,7 +10,7 @@ const lengths=new Map(LAB_SEGMENTS.map(p=>[p.id,p.nominalLength]));
 /** Rebuild a connected skeleton from desired directions, not independently
  * interpolated endpoints. The full nominal rig is supplied before filtering
  * absent parts, so no missing limb can invalidate the transform chain. */
-export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths):readonly RigPose[]{
+export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths,scaleOffsets=1):readonly RigPose[]{
  const length=(id:string)=>customLengths.get(id)??lengths.get(id)!;
  const raw=new Map(pose.map(p=>[p.id,p])),out=new Map<string,RigPose>();
  const get=(id:string)=>raw.get(id)!;
@@ -20,11 +20,11 @@ export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<s
  const hip=center(get('pelvis')),oldChest=center(get('chest'));
  const spine=unit(sub(oldChest,hip),[0,1,0]);
  // Fixed anatomical attachment offsets from the two girdle centres.
- const abdomenStart=add(hip,scale(spine,.10)),abdomenEnd=add(abdomenStart,scale(spine,length('abdomen')));
- const chest=add(abdomenEnd,scale(spine,.14));
+ const abdomenStart=add(hip,scale(spine,.10*scaleOffsets)),abdomenEnd=add(abdomenStart,scale(spine,length('abdomen')));
+ const chest=add(abdomenEnd,scale(spine,.14*scaleOffsets));
  girdle('pelvis',hip);put('abdomen',abdomenStart,abdomenEnd);girdle('chest',chest);
  const headAxis=unit(sub(get('head').a,oldChest),spine),neckEnd=add(chest,scale(headAxis,length('neck')));
- put('neck',chest,neckEnd);put('head',add(neckEnd,scale(headAxis,.10)));
+ put('neck',chest,neckEnd);put('head',add(neckEnd,scale(headAxis,.10*scaleOffsets)));
  for(const side of ['L','R']){
   for(const [upper,lower,end,girdleId] of [['upperLeg','lowerLeg','foot','pelvis'],['upperArm','lowerArm','hand','chest']] as const){
    const u=side+'.'+upper,l=side+'.'+lower,e=side+'.'+end;

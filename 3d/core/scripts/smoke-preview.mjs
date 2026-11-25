@@ -121,7 +121,7 @@ try{
  await page.goto(floorUrl,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='0';},{},{timeout:45000});
  const archived={
-  schemaVersion:1,arenaId:'one-arm',
+  schemaVersion:1,arenaId:'one-arm@165',
   mounds:[{id:'stored',source:'segment',x:1,z:1,radius:.35,height:.16}],
   visuals:[{id:1,fighterId:0,segmentId:'L.hand',settled:true,length:0,radius:.08,
    position:{x:1,y:.08,z:1},rotation:{x:0,y:0,z:0,w:1}}],
@@ -129,7 +129,7 @@ try{
  };
  await page.evaluate(async({release,session,archived})=>{
   const storage=await import('/releases/'+release+'/3d/lab-next/floor-storage.js');
-  await storage.saveFloorHistory(session,'one-arm',archived);
+  await storage.saveFloorHistory(session,'one-arm@165',archived);
  },{release,session:floorSession,archived});
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
@@ -147,7 +147,7 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='0';},{},{timeout:45000});
  const deleted=await page.evaluate(async({release,session})=>{
   const storage=await import('/releases/'+release+'/3d/lab-next/floor-storage.js');
-  return await storage.loadFloorHistory(session,'one-arm');
+  return await storage.loadFloorHistory(session,'one-arm@165');
  },{release,session:floorSession});
  assert.equal(deleted,null,'clean Reset deletes persisted floor, not only in-memory meshes');
  await page.reload({waitUntil:'domcontentloaded'});
