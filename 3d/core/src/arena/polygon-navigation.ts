@@ -78,11 +78,13 @@ export class PolygonNavigation extends ArenaNavigation{
  readonly location:NativeLocation;
  private readonly shapes:readonly (readonly NativePoint[])[];
  private readonly perimeter:readonly NativePoint[];
+ private readonly heights:readonly number[];
  private readonly cached=new Map<number,StaticGraph>();
  constructor(location:NativeLocation){
   super(location.walls);this.location=location;
   this.shapes=location.objects.flatMap(o=>o.convexParts.map(poly=>poly.map(p=>({...p}))));
   this.perimeter=location.boundary.map(p=>({...p}));
+  this.heights=location.objects.flatMap(o=>o.convexParts.map(()=>o.height));
  }
  private boundaryClear(p:PointXZ,pad:number):boolean{
   return this.perimeter.every((a,i)=>{
@@ -100,7 +102,7 @@ export class PolygonNavigation extends ArenaNavigation{
  /** Height-gated polygon sight through the same source obstacle hulls. */
  sightClear(a:Vec3,b:Vec3):boolean{
   return this.shapes.every((poly,i)=>{
-   const h=this.location.objects.find(o=>o.convexParts.some(p=>p.length===poly.length&&p[0]?.x===poly[0]?.x))?.height??2.8;
+   const h=this.heights[i]!;
    if(Math.min(a[1],b[1])>h)return true;
    return polygonHit({x:a[0],z:a[2]},{x:b[0],z:b[2]},poly,0)===null;
   });
@@ -145,7 +147,7 @@ export class PolygonNavigation extends ArenaNavigation{
   let t=1;
   for(const poly of this.shapes){
    const gap=edgeDistance(start,poly).gap,inside=polygonInside(poly,start);
-   if(!inside&&gap<pad&&gap>EPS){
+   if(!inside&&gap<=pad+EPS&&gap>EPS){
     const nearest=edgeDistance(start,poly).point,away=sub(start,nearest),movement=sub(end,start);
     if(dot(away,movement)>0&&polygonHit(start,end,poly,0)===null)continue;
    }
