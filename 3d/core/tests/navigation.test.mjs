@@ -41,3 +41,15 @@ test('eight patients with wall geometry, sight and routing remain finite and do 
  const s=c.getSnapshot();assert.ok(Array.from(s.roots).every(Number.isFinite));assert.ok(hits>=2,JSON.stringify({hits,roots:Array.from(s.roots),routes:s.routes}));
  for(let i=0;i<s.fighterIds.length;i++)if(s.lifeStates[i]==='active')assert.ok(config.walls.every(w=>s.roots[i*4]<=w.minX||s.roots[i*4]>=w.maxX||s.roots[i*4+2]<=w.minZ||s.roots[i*4+2]>=w.maxZ));
 });
+
+test('free endpoint behind a separating wall has no viable static route',()=>{
+ const partition=new ArenaNavigation([{minX:-.25,maxX:.25,minZ:-6,maxZ:6,height:2.8}]);
+ const start={x:-1,z:0},across={x:1,z:0};
+ assert.equal(partition.clear(across,across,.65),true,'destination itself is free');
+ assert.deepEqual(partition.plan(start,across),[start],'visibility graph correctly has no path');
+ assert.equal(partition.reachable(start,across),false,'escape must reject unreachable destination');
+ assert.equal(partition.reachable(start,{x:-1,z:2}),true);
+ assert.equal(partition.reachable(start,{x:-.7,z:0}),false,'destination in root clearance is invalid');
+ assert.equal(new ArenaNavigation([w]).reachable(a,b),true,'ordinary wall can be routed around');
+ assert.equal(new ArenaNavigation().reachable(a,b),true,'open arena remains direct');
+});
