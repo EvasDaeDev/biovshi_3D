@@ -1,3 +1,5 @@
+import { ImpactState } from './combat/impact.js';
+import { OilState,OIL,type OilMark } from './combat/oil.js';
 import { DamageState,type IncapacitationCause } from './combat/damage.js';
 import { Knockdown,KNOCKDOWN } from './rig/knockdown.js';
 import { analyzeSupport } from './rig/support.js';
@@ -18,7 +20,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; terrainOnly:boolean; physicsPose:readonly RigPose[];
+  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -29,6 +31,7 @@ export class LabSimulationCore implements SimulationCore {
   private actors: Actor[] = [];
   private tick = 0;
   private rng = 0;
+  private oilRng=0;private oilMarks:OilMark[]=[];private nextMark=0;
   private ready = false;
   private mounds:readonly Mound[]=[];
   /** Copy plain terrain data from the external physics adapter. */
@@ -59,12 +62,13 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
     this.mounds=[];
     this.tick = 0;
     this.rng = config.seed;
+    this.oilRng=(config.seed^0x9e3779b9)>>>0;this.oilMarks=[];this.nextMark=0;
     this.fracture = config.labContactFracture === true;
     this.dynamicBalance=config.labDynamicBalance===true;
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
@@ -86,17 +90,18 @@ export class LabSimulationCore implements SimulationCore {
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed)return false;
     const pose=this.copyPose(this.actorPose(a));
-    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);
+    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.impact.clear();a.oil.clear();
     this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,bodyPose:this.copyPose(pose)});
     return true;
   }
-  private detach(a:Actor,ids:readonly string[]):void{
+  private detach(a:Actor,ids:readonly string[],product=false):void{
     const active=ids.filter(id=>a.segments.includes(id));
     if(!active.length)return;
     const pose=this.actorPose(a),byId=new Map(pose.map(p=>[p.id,p]));
     const parts=this.copyPose(active.flatMap(id=>{const p=byId.get(id);return p?[p]:[];}));
     const removed=new Set(active);
     a.segments=a.segments.filter(id=>!removed.has(id));a.health.detach(active);this.detachedCount+=active.length;
+    if(product)a.oil.cut(active[0]!,active,a.segments,this.tick,()=>this.oilRandom());
     // A single cut creates a single physical branch, not one body per bone.
     this.events.push({tick:this.tick,type:'segment-detached',fighterId:a.id,segmentId:active[0]!,detachedParts:parts});
   }
@@ -114,8 +119,14 @@ export class LabSimulationCore implements SimulationCore {
     if(!result)return false;
     this.hitCount++;
     this.events.push({tick:this.tick,type:'fighter-damaged',fighterId,segmentId,damage:result.amount,remainingHP:result.remainingHP,critical:result.critical,...(attackerId===undefined?{}:{attackerId})});
-    this.detach(a,result.detached);
+    this.detach(a,result.detached,true);
     if(result.cause)this.incapacitate(a.id,result.cause);
+    else{
+      const source=this.actors.find(v=>v.id===attackerId&&v.id!==a.id);
+      let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
+      if(Math.hypot(dx,dz)<1e-8){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
+      a.impact.hit(segmentId,dx,dz);
+    }
     return true;
   }
   /** External physics owns body transforms after handoff. Copy them at the
@@ -133,6 +144,22 @@ export class LabSimulationCore implements SimulationCore {
     const pelvis=parts.find(p=>p.id==='pelvis')??parts[0];
     if(pelvis){a.x=(pelvis.a[0]+pelvis.b[0])/2;a.z=(pelvis.a[2]+pelvis.b[2])/2;
       a.y=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));}
+  }
+  private oilRandom():number{
+    this.oilRng=(Math.imul(this.oilRng,1664525)+1013904223)>>>0;
+    return this.oilRng/4294967296;
+  }
+  private updateOil():void{
+    for(const a of this.actors){
+      if(a.fixed)continue;
+      const failed=a.oil.advance(this.tick,a.segments,()=>this.actorPose(a),()=>this.oilRandom(),(segmentId,origin)=>{
+        const point:[number,number,number]=[origin[0],a.baseY+terrainHeight(origin[0],origin[2],this.mounds),origin[2]];
+        this.oilMarks.push({id:this.nextMark++,fighterId:a.id,point,tick:this.tick});
+        if(this.oilMarks.length>OIL.limit)this.oilMarks.shift();
+        this.events.push({tick:this.tick,type:'oil-drop',fighterId:a.id,segmentId,point:[...point]});
+      });
+      if(failed)this.incapacitate(a.id,'oil-loss');
+    }
   }
   private random(): number {
     // Mulberry32; seed zero is valid.
@@ -161,6 +188,7 @@ export class LabSimulationCore implements SimulationCore {
       const previousPhase=a.knockdown.phase;
       a.knockdown.advance(dt,!mobility.prone);
       if(previousPhase!=='standing'&&a.knockdown.phase==='standing'&&!mobility.prone)this.events.push({tick:this.tick+1,type:'fighter-recovered',fighterId:a.id});
+      const flinch=a.impact.slow,recoil=a.impact.advance(dt);
       if(a.knockdown.blocked){
         a.speed=0;
         const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
@@ -169,7 +197,7 @@ export class LabSimulationCore implements SimulationCore {
         continue;
       }
       if (c || a.id === 0) {
-        a.yaw += (c?.turn ?? 0) * 2.15 * dt;
+        a.yaw += (c?.turn ?? 0) * 2.15 * dt*flinch;
         target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? MOVEMENT.sprintSpeed : MOVEMENT.walkSpeed);
       } else {
         a.wanderTimer -= dt;
@@ -180,16 +208,16 @@ export class LabSimulationCore implements SimulationCore {
         }
         if (Math.abs(a.x)>4.2 || Math.abs(a.z)>4.2)
           a.wanderAngle = -Math.atan2(a.x,a.z);
-        a.yaw += clamp(wrap(a.wanderAngle-a.yaw),-1.1*dt,1.1*dt);
+        a.yaw += clamp(wrap(a.wanderAngle-a.yaw),-1.1*dt,1.1*dt)*flinch;
         target = a.wanderSpeed;
       }
-      target*=mobility.speedScale;
+      target*=mobility.speedScale*flinch;
       a.speed = mobility.mode==='unsupported'?0:damp(a.speed,target,3);
       const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
       const travel=a.gait.travel(dt,a.speed,mobility,a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT,ground);
       const oldX=a.x,oldZ=a.z;
-      a.x = clamp(a.x+Math.sin(a.yaw)*travel,-5.65,5.65);
-      a.z = clamp(a.z-Math.cos(a.yaw)*travel,-5.65,5.65);
+      a.x = clamp(a.x+Math.sin(a.yaw)*travel+recoil[0],-5.65,5.65);
+      a.z = clamp(a.z-Math.cos(a.yaw)*travel+recoil[2],-5.65,5.65);
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
       a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments);
@@ -213,6 +241,7 @@ export class LabSimulationCore implements SimulationCore {
       const actor=this.actors.find(a=>a.id===hit.fighterId)!;
       this.detach(actor,chain);
     });
+    this.updateOil();
   }
 
   getSnapshot(): WorldSnapshot {
@@ -230,6 +259,7 @@ export class LabSimulationCore implements SimulationCore {
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
       bodyTerrainStates:this.actors.map(a=>a.terrainOnly),
+      oil:this.actors.map(a=>a.oil.snapshot()),oilMarks:this.oilMarks.map(m=>({...m,point:[...m.point]})),impacts:this.actors.map(a=>a.impact.snapshot()),
       health:this.actors.map(a=>a.health.snapshot()),
       lifeStates:this.actors.map(a=>a.fixed?'incapacitated':'active'),
       balanceStates:this.actors.map(a=>a.knockdown.phase),
@@ -238,6 +268,6 @@ export class LabSimulationCore implements SimulationCore {
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports,crawlAnchors:rigSegments.map((parts,i)=>this.actors[i]!.fixed?[]:this.actors[i]!.gait.crawlAnchors(parts)),residualTraction:rigSegments.map((parts,i)=>this.actors[i]!.fixed?null:this.actors[i]!.gait.residualSupport(parts))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
-  dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0; this.rng=0;this.events=[];this.episodes.reset(); }
+  dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0; this.rng=0;this.oilMarks=[];this.events=[];this.episodes.reset(); }
   private requireReady(): void { if (!this.ready) throw new Error('Simulation core is not initialized'); }
 }

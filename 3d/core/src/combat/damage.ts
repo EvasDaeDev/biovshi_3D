@@ -3,7 +3,7 @@ import { FIXED_DT } from '../fixed-clock.js';
 /** Native 3D rules, sourced from src/config.js and src/robot/{robot,anatomy}.js.
  * Three central torso capsules stay attached; their destruction is terminal. */
 export const DAMAGE=Object.freeze({segmentHP:3,headHP:6,pelvisHP:4,invulnerabilitySeconds:.28,traumaThreshold:24,headMultiplier:1.5});
-export type IncapacitationCause='head-loss'|'torso-failure'|'trauma'|'manual';
+export type IncapacitationCause='head-loss'|'torso-failure'|'trauma'|'oil-loss'|'manual';
 export interface SegmentHealth {readonly id:string;readonly hp:number;readonly maxHp:number;readonly attached:boolean}
 export interface HealthSnapshot {readonly segments:readonly SegmentHealth[];readonly trauma:number;readonly traumaThreshold:number;readonly cause:IncapacitationCause|null}
 export interface DamageResult {readonly amount:number;readonly remainingHP:number;readonly critical:boolean;readonly detached:readonly string[];readonly cause:IncapacitationCause|null}

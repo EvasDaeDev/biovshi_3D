@@ -9,3 +9,7 @@ export type {
 
 export { DAMAGE, DamageState } from './combat/damage.js';
 export type { HealthSnapshot,SegmentHealth,IncapacitationCause,DamageResult } from './combat/damage.js';
+
+export { OIL,OilState,hasWorkingLimb } from './combat/oil.js';
+export { IMPACT,ImpactState } from './combat/impact.js';
+export type { OilSnapshot,OilMark } from './combat/oil.js';

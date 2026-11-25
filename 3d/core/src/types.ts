@@ -1,3 +1,4 @@
+import type { OilMark,OilSnapshot } from './combat/oil.js';
 import type { HealthSnapshot,IncapacitationCause } from './combat/damage.js';
 import type { BalancePhase } from './rig/knockdown.js';
 import type { ResidualTraction } from './rig/residual-traction.js';
@@ -49,6 +50,9 @@ export interface WorldSnapshot {
   readonly supports?: readonly SupportState[];
   /** True when a settled body is represented only by walkable terrain. */
   readonly bodyTerrainStates?: readonly boolean[];
+  readonly oil?: readonly OilSnapshot[];
+  readonly oilMarks?: readonly OilMark[];
+  readonly impacts?: readonly {readonly active:boolean;readonly remainingSeconds:number;readonly slow:number}[];
   readonly health?: readonly HealthSnapshot[];
   readonly lifeStates?: readonly ('active'|'incapacitated')[];
   readonly balanceStates?: readonly BalancePhase[];
@@ -82,6 +86,7 @@ export interface SimulationEvent {
   readonly damage?: number;
   readonly remainingHP?: number;
   readonly critical?: boolean;
+  readonly point?: Vec3;
   readonly cause?: IncapacitationCause;
   readonly bodyPose?: readonly PhysicsSegmentPose[];
   /** One severed connected branch, root first; geometry captured before removal. */
