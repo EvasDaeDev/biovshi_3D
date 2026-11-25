@@ -4,19 +4,37 @@ const sub=(a,b)=>a.map((v,i)=>v-b[i]);
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const vec=([x,y,z])=>({x,y,z});
 const center=rb=>{const t=rb.translation();return [t.x,t.y,t.z];};
-const mid=p=>p.a.map((v,i)=>(v+p.b[i])*.5);
 const torsoIds=new Set(['pelvis','abdomen','chest']);
 const parents=new Map(LAB_SEGMENTS.map(p=>[p.id,p.parent]));
+// Rapier's 16 collision bits: 1 terrain, 2 debris, 4 common
+// ragdoll membership (for existing terrain/debris filters). Bits 3–15
+// distinguish simultaneous casualties without breaking those filters.
+export const RAGDOLL_SLOTS=13;
+export function ragdollCollisionGroups(slot,selfCollision=true){
+ if(slot<0||slot>=RAGDOLL_SLOTS)return 0xfffcffff>>>0;
+ const bit=1<<(slot+3);
+ const membership=4|bit,filter=0xfffb&~(selfCollision?0:bit);
+ return ((membership<<16)|filter)>>>0;
+}
+export function relaxRagdoll(rag){
+ for(const node of rag.nodes){
+  node.rb.setLinearDamping(3);node.rb.setAngularDamping(4);
+  // Keep collision with other casualties, debris and the world. Remove
+  // only own non-adjacent contacts which can fight the joint constraints.
+  for(const c of node.colliders)c.setCollisionGroups(ragdollCollisionGroups(rag.slot,false));
+ }
+}
+
 /** Preserve the captured geometry at handoff. The three central segments
  * share a torso body; head, neck and every surviving limb segment have
  * independent inertial bodies. Joint anchors are expressed in each body's
  * initial local frame (all bodies begin with identity rotation).
  * No animation or kinematic motor drives the falling patient. */
-export function createRagdoll(R,world,pose,direction){
+export function createRagdoll(R,world,pose,direction,slot=-1){
  const parts=new Map(pose.map(p=>[p.id,p])),order=pose.map(p=>p.id),nodes=[],byPart=new Map(),joints=[];
  const groups=[pose.filter(p=>torsoIds.has(p.id)),...pose.filter(p=>!torsoIds.has(p.id)).map(p=>[p])].filter(g=>g.length);
  for(const group of groups){
-  const node=createCompound(R,world,group,{groups:0x00040007,linearDamping:.85,angularDamping:1.35,friction:.9});
+  const node=createCompound(R,world,group,{groups:ragdollCollisionGroups(slot),linearDamping:.85,angularDamping:1.35,friction:.9});
   nodes.push(node);for(const part of group)byPart.set(part.id,node);
  }
  for(const child of pose){
@@ -52,7 +70,7 @@ export function createRagdoll(R,world,pose,direction){
   node.rb.setLinvel({x:dx*.38+v[0]*.55,y:Math.min(0,v[1]*.55),z:dz*.38+v[2]*.55},true);
   node.rb.setAngvel(vec(omega),true);
  }
- return {nodes,joints,torso,order,dx,dz};
+ return {nodes,joints,torso,order,dx,dz,slot};
 }
 export function ragdollPose(rag){
  const parts=new Map(rag.nodes.flatMap(compoundPose).map(p=>[p.id,p]));

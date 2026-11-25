@@ -23,8 +23,8 @@ test('two nearby simultaneous casualties topple away from one another and become
   const events=c.drainEvents();assert.equal(events.length,2);assert.ok(events[0].fallDirection[2]>0&&events[1].fallDirection[2]<0);
   for(const e of events)w.accept(e);
   for(let i=0;i<900;i++){c.setTerrainMounds(w.moundSnapshot());c.step(FIXED_DT,{commands:[]});for(const e of c.drainEvents())w.accept(e);w.step(FIXED_DT);for(const b of w.bodySnapshot())c.setIncapacitatedPose(b.fighterId,b.parts,b.settled);}
-  const s=c.getSnapshot();assert.deepEqual(s.fight,{ended:true,winnerId:null});assert.deepEqual(s.bodyTerrainStates,[true,true]);assert.equal(w.bodySnapshot().length,2);
+  const s=c.getSnapshot();assert.deepEqual(s.fight,{ended:true,winnerId:null});assert.deepEqual(s.bodyTerrainStates,[true,true],JSON.stringify(w.bodySnapshot().map(b=>({id:b.fighterId,settled:b.settled,motion:b.motion,torso:b.parts.filter(p=>p.id==='pelvis'||p.id==='chest')}))));assert.equal(w.bodySnapshot().length,2);
   assert.ok(w.moundSnapshot().length>=2&&w.moundSnapshot().length<=8);
-  for(const parts of s.rigSegments){const p=parts.find(p=>p.id==='pelvis'),q=parts.find(p=>p.id==='chest'),v=q.a.map((x,i)=>(x+q.b[i]-p.a[i]-p.b[i])*.5);assert.ok(Math.abs(v[1])<Math.hypot(...v)*.45);}
+  for(const parts of s.rigSegments){const p=parts.find(p=>p.id==='pelvis'),q=parts.find(p=>p.id==='chest'),v=q.a.map((x,i)=>(x+q.b[i]-p.a[i]-p.b[i])*.5);assert.ok(Math.abs(v[1])<Math.hypot(...v)*.45,JSON.stringify(w.bodySnapshot().map(b=>({id:b.fighterId,motion:b.motion}))));}
  }finally{w.dispose();}
 });

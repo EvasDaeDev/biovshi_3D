@@ -1,6 +1,6 @@
 import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {terrainHeight} from '../core/dist/collision/terrain.js';
-import {createRagdoll,ragdollPose,ragdollMotion,removeRagdoll} from './ragdoll.js';
+import {createRagdoll,ragdollPose,ragdollMotion,removeRagdoll,relaxRagdoll,RAGDOLL_SLOTS} from './ragdoll.js';
 /** Physics-driven articulated fall, followed by static visible anatomy
  * and a small number of invisible walkable cone colliders. */
 export class IncapacitatedBodies{
@@ -8,15 +8,17 @@ export class IncapacitatedBodies{
  accept(event){
   if(event.type!=='fighter-incapacitated'||!event.bodyPose?.length||this.bodies.has(event.fighterId))return;
   const direction=event.fallDirection??[Math.sin(event.fighterId*2.399963),0,Math.cos(event.fighterId*2.399963)];
-  const rag=createRagdoll(this.R,this.world,event.bodyPose,direction);
-  this.bodies.set(event.fighterId,{rag,still:0,age:0,settled:null,mounds:[]});
+  const occupied=new Set([...this.bodies.values()].filter(b=>b.rag).map(b=>b.rag.slot));
+  const slot=Array.from({length:RAGDOLL_SLOTS},(_,i)=>i).find(i=>!occupied.has(i))??-1;
+  const rag=createRagdoll(this.R,this.world,event.bodyPose,direction,slot);
+  this.bodies.set(event.fighterId,{rag,still:0,age:0,quiet:0,reference:null,motion:null,settled:null,mounds:[]});
  }
  worldPose(b){return b.settled??ragdollPose(b.rag);}
  settle(terrain){
   for(const [fighterId,b] of this.bodies){
    if(b.settled)continue;
    const parts=this.worldPose(b),rag=b.rag,{sleeping,speed}=ragdollMotion(rag);
-   const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=terrainHeight(q[0],q[2],terrain)+.06));
+   const near=parts.some(p=>[p.a,p.a.map((v,i)=>(v+p.b[i])*.5),p.b].some(q=>q[1]-p.radius<=terrainHeight(q[0],q[2],terrain)+.08));
    const bottom=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
    const top=Math.max(...parts.map(p=>Math.max(p.a[1],p.b[1])+p.radius));
    const pelvis=parts.find(p=>p.id==='pelvis'),chest=parts.find(p=>p.id==='chest');
@@ -29,13 +31,24 @@ export class IncapacitatedBodies{
     const rb=rag.torso.rb;
     rb.setLinvel({x:rag.dx*.52,y:0,z:rag.dz*.52},true);
     rb.setAngvel({x:rag.dz*2.5,y:0,z:-rag.dx*2.5},true);
-    b.still=0;continue;
+    b.still=0;b.quiet=0;b.reference=null;continue;
    }
-   // Dampen residual joint oscillation after six seconds. Still require
-   // actual rest; no timeout-based freezing of airborne moving bodies.
-   if(b.age===360)for(const node of rag.nodes){node.rb.setLinearDamping(3);node.rb.setAngularDamping(4);}
-   b.still=(near||sleeping)&&(lying||b.age>480)&&(sleeping||speed<.20)?b.still+1:0;
-   if(b.still<60)continue;
+   // Initial fall keeps self-collisions. After six seconds, a lingering
+   // ragdoll gets relaxed self-contact constraints, never a pose teleport.
+   if(b.age===360)relaxRagdoll(rag);
+   if(b.age===600)for(const node of rag.nodes){node.rb.setLinearDamping(6);node.rb.setAngularDamping(8);}
+   const supported=(near||sleeping)&&(lying||b.age>480);
+   b.still=supported&&(sleeping||speed<.20)?b.still+1:0;
+   // A constrained resting limb may have nonzero solver angular velocity.
+   // Require the WHOLE visible pose to remain within 3 cm of one fixed
+   // reference for a full second, not just tiny per-tick displacement.
+   if(!supported){b.reference=null;b.quiet=0;}
+   else{
+    const drift=b.reference?Math.max(...parts.flatMap((p,i)=>['a','b'].map(k=>Math.hypot(...p[k].map((v,j)=>v-b.reference[i][k][j]))))):Infinity;
+    if(drift>.03){b.reference=parts;b.quiet=0;}else b.quiet++;
+   }
+   b.motion={age:b.age,near,lying,speed,sleeping,still:b.still,quiet:b.quiet,bottom,top};
+   if(b.still<60&&!(b.age>=360&&b.quiet>=60))continue;
    b.settled=parts;b.mounds=bodyTerrain(parts).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
    removeRagdoll(this.world,rag);b.rag=null;
    for(const m of b.mounds){
@@ -46,6 +59,6 @@ export class IncapacitatedBodies{
  }
  moundSnapshot(){return [...this.bodies.values()].flatMap(b=>b.mounds.map(m=>({...m})));}
  snapshot(){
-  return [...this.bodies].map(([fighterId,b])=>({fighterId,parts:this.worldPose(b).map(p=>({...p,a:[...p.a],b:[...p.b]})),settled:!!b.settled,sleeping:b.settled?true:ragdollMotion(b.rag).sleeping,dynamicBodies:b.rag?.nodes.length??0,joints:b.rag?.joints.length??0}));
+  return [...this.bodies].map(([fighterId,b])=>({fighterId,parts:this.worldPose(b).map(p=>({...p,a:[...p.a],b:[...p.b]})),settled:!!b.settled,sleeping:b.settled?true:ragdollMotion(b.rag).sleeping,dynamicBodies:b.rag?.nodes.length??0,joints:b.rag?.joints.length??0,motion:b.motion?{...b.motion}:null}));
  }
 }

@@ -18,13 +18,13 @@ export function createCompound(R,world,poses,{groups,linearDamping=.7,angularDam
  const total=mass.reduce((a,b)=>a+b,0);
  const origin=[0,1,2].map(i=>frames.reduce((a,{f},j)=>a+f.center[i]*mass[j],0)/total);
  const rb=world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(...origin).setLinearDamping(linearDamping).setAngularDamping(angularDamping));
- const parts=[];
+ const parts=[],colliders=[];
  for(const {p,f} of frames){
   const center=sub(f.center,origin),shape=f.length>1e-8?R.ColliderDesc.capsule(f.length/2,p.radius):R.ColliderDesc.ball(p.radius);
-  world.createCollider(shape.setTranslation(...center).setRotation(capsuleOrientation(f.y)).setDensity(25).setFriction(friction).setRestitution(0).setCollisionGroups(groups),rb);
+  colliders.push(world.createCollider(shape.setTranslation(...center).setRotation(capsuleOrientation(f.y)).setDensity(25).setFriction(friction).setRestitution(0).setCollisionGroups(groups),rb));
   parts.push({id:p.id,a:sub(p.a,origin),b:sub(p.b,origin),radius:p.radius});
  }
- return {rb,parts};
+ return {rb,parts,colliders};
 }
 export function compoundPose({rb,parts}){
  const t=rb.translation(),q=rb.rotation(),origin=[t.x,t.y,t.z];
