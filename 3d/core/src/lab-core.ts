@@ -31,6 +31,7 @@ import { ContactEpisodes, type SegmentContact } from './collision/contact-episod
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
 import { PatientGait,type RigPose } from './rig/gait.js';
 import { FIXED_DT } from './fixed-clock.js';
+import {captureSegmentMotion} from './animation/handoff-motion.js';
 import type { FighterCommand, InputFrame, SimulationCore, SimulationEvent, WorldConfig, WorldSnapshot, PhysicsSegmentPose, DamageRequest } from './types.js';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -50,6 +51,8 @@ interface Actor {
 export class LabSimulationCore implements SimulationCore {
   private actors: Actor[] = [];
   private tick = 0;
+  private handoffPrevious:Map<number,readonly RigPose[]>|null=null;
+  private handoffTick=-1;
   private rng = 0;
   private oilRng=0;private oilMarks:OilMark[]=[];private nextMark=0;
   private ready = false;
@@ -115,7 +118,7 @@ export class LabSimulationCore implements SimulationCore {
     this.gradeContact=graded.length?createGradeContact(graded):null;
     this.actors = actors;
     this.mounds=[];
-    this.tick = 0;
+    this.tick = 0;this.handoffPrevious=null;this.handoffTick=-1;
     this.rng = config.seed;
     this.oilRng=(config.seed^0x9e3779b9)>>>0;this.oilMarks=[];this.nextMark=0;
     this.combat=config.combatEnabled===true;this.expandedStrikes=this.combat&&config.expandedStrikes===true;this.tacticalCombat=this.combat&&config.tacticalCombat===true;this.escapeCombat=this.tacticalCombat&&config.escapeCombat===true;this.perceptionCombat=this.tacticalCombat&&config.perceptionCombat===true;this.fightEnded=false;this.winnerId=null;
@@ -145,12 +148,14 @@ export class LabSimulationCore implements SimulationCore {
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed||this.fightEnded)return false;
     const pose=this.copyPose(this.actorPose(a));
+    const prior=this.handoffTick===this.tick-1?this.handoffPrevious?.get(a.id):undefined;
+    const motion=prior?captureSegmentMotion(prior,pose,FIXED_DT):undefined;
     a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.tactics.setMode('inactive');a.escape.clear();a.perception.clear();a.route.clear();a.disarmedGoal=null;a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
     const source=this.actors.find(b=>b.id===attackerId&&b.id!==a.id);
     let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
     if(Math.hypot(dx,dz)<1e-6){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
     const n=Math.hypot(dx,dz)||1;
-    this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,fallDirection:[dx/n,0,dz/n],bodyPose:this.copyPose(pose)});
+    this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,fallDirection:[dx/n,0,dz/n],bodyPose:this.copyPose(pose),...(motion?.length?{bodyMotion:motion}:{})});
     return true;
   }
   private detach(a:Actor,ids:readonly string[],product=false):void{
@@ -470,6 +475,11 @@ export class LabSimulationCore implements SimulationCore {
     const escapeStart=automatic?new Map(this.actors.map(a=>[a.id,[a.x,a.z] as const])):null;
     if(this.combat)this.planCombat(commands);
     const previous=this.combat&&!this.fightEnded?new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,this.actorPose(a)])):null;
+    // Reuse the existing pre-step strike geometry on authored rounds.
+    // Non-combat authored diagnostics need a sample as well. No extra
+    // queries in the normal combat path or the legacy simulation.
+    this.handoffPrevious=this.authored?.stalk?(previous??new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,this.actorPose(a)]))):null;
+    this.handoffTick=this.tick;
     for (const a of this.actors) {
       if(a.fixed)continue;
       const c = commands.get(a.id);
@@ -581,6 +591,6 @@ export class LabSimulationCore implements SimulationCore {
       damageStats:{hits:this.hitCount,detached:this.detachedCount}, collisionStats:{...this.collisionStats}, rigVersion:2, rigSegments,supports,crawlAnchors:rigSegments.map((parts,i)=>this.actors[i]!.fixed?[]:this.actors[i]!.gait.crawlAnchors(this.worldPose(parts,1/this.patientScale)).map(c=>({...c,point:this.scalePoint(c.point,this.patientScale)}))),residualTraction:rigSegments.map((parts,i)=>this.actors[i]!.fixed?null:this.actors[i]!.gait.residualSupport(this.worldPose(parts,1/this.patientScale)))};
   }
   drainEvents(): readonly SimulationEvent[] { this.requireReady(); const events=this.events;this.events=[];return events; }
-  dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0; this.rng=0;this.oilMarks=[];this.events=[];this.episodes.reset(); }
+  dispose(): void { this.ready=false; this.mounds=[]; this.actors=[]; this.tick=0;this.handoffPrevious=null;this.handoffTick=-1; this.rng=0;this.oilMarks=[];this.events=[];this.episodes.reset(); }
   private requireReady(): void { if (!this.ready) throw new Error('Simulation core is not initialized'); }
 }

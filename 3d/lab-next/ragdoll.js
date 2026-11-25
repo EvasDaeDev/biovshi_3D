@@ -1,3 +1,4 @@
+import {HANDOFF_LIMITS} from '../core/dist/animation/handoff-motion.js';
 import {LAB_SEGMENTS} from '../core/dist/rig/anatomy.js';
 import {createCompound,compoundPose} from './compound.js';
 const sub=(a,b)=>a.map((v,i)=>v-b[i]);
@@ -30,7 +31,7 @@ export function relaxRagdoll(rag){
  * independent inertial bodies. Joint anchors are expressed in each body's
  * initial local frame (all bodies begin with identity rotation).
  * No animation or kinematic motor drives the falling patient. */
-export function createRagdoll(R,world,pose,direction,slot=-1){
+export function createRagdoll(R,world,pose,direction,slot=-1,motion=[]){
  const parts=new Map(pose.map(p=>[p.id,p])),order=pose.map(p=>p.id),nodes=[],byPart=new Map(),joints=[];
  const groups=[pose.filter(p=>torsoIds.has(p.id)),...pose.filter(p=>!torsoIds.has(p.id)).map(p=>[p])].filter(g=>g.length);
  for(const group of groups){
@@ -62,13 +63,31 @@ export function createRagdoll(R,world,pose,direction,slot=-1){
   joints.push({joint,a,b,parentId:parent.id,childId:child.id});
  }
  const torso=byPart.get('pelvis')??byPart.get('chest')??nodes[0],origin=center(torso.rb);
+ const inherited=new Map(motion.filter(m=>Array.isArray(m.linear)&&m.linear.length===3&&Array.isArray(m.angular)&&m.angular.length===3&&[...m.linear,...m.angular].every(Number.isFinite)).map(m=>[m.id,m]));
+ const cap=(v,max)=>{const n=Math.hypot(...v);return n>max?v.map(x=>x*max/n):v;};
  const n=Math.hypot(direction[0],direction[2])||1,dx=direction[0]/n,dz=direction[2]/n,omega=[dz*2.4,0,-dx*2.4];
  // Inherit coherent outward tipping velocity, but each limb is free to
  // fold under gravity and contact immediately after handoff.
  for(const node of nodes){
   const v=cross(omega,sub(center(node.rb),origin));
-  node.rb.setLinvel({x:dx*.38+v[0]*.55,y:Math.min(0,v[1]*.55),z:dz*.38+v[2]*.55},true);
-  node.rb.setAngvel(vec(omega),true);
+  const fallback=[dx*.38+v[0]*.55,Math.min(0,v[1]*.55),dz*.38+v[2]*.55];
+  // Use the same capsule-volume weights as createCompound. A shared torso
+  // cannot independently inherit each central segment's angular motion.
+  let mass=0;const linear=[0,0,0],angular=[0,0,0];
+  for(const p of node.parts){
+   const m=inherited.get(p.id);if(!m)continue;
+   const w=p.radius*p.radius*Math.hypot(...sub(p.b,p.a))+4*p.radius**3/3;
+   mass+=w;
+   for(let i=0;i<3;i++){linear[i]+=m.linear[i]*w;angular[i]+=m.angular[i]*w;}
+  }
+  if(mass>0){
+   // Keep a bounded tipping impulse so a stationary casualty still falls.
+   // Preserve independent limb motion rather than assigning one omega.
+   node.rb.setLinvel(vec(cap(linear.map((x,i)=>x/mass*.75+fallback[i]*.55),HANDOFF_LIMITS.linear)),true);
+   node.rb.setAngvel(vec(cap(angular.map((x,i)=>x/mass*.75+omega[i]*.55),HANDOFF_LIMITS.angular)),true);
+  }else{
+   node.rb.setLinvel(vec(fallback),true);node.rb.setAngvel(vec(omega),true);
+  }
  }
  return {nodes,joints,torso,order,dx,dz,slot};
 }

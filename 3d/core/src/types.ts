@@ -118,6 +118,9 @@ export interface WorldSnapshot {
 
 export interface PhysicsSegmentPose {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number}
 
+/** Captured world-space motion at a terminal animation-to-physics handoff. */
+export interface SegmentMotion {readonly id:SegmentId;readonly linear:Vec3;readonly angular:Vec3}
+
 export interface SimulationEvent {
   readonly tick: number;
   readonly type: string;
@@ -135,6 +138,7 @@ export interface SimulationEvent {
   readonly cause?: IncapacitationCause;
   readonly fallDirection?: Vec3;
   readonly bodyPose?: readonly PhysicsSegmentPose[];
+  readonly bodyMotion?: readonly SegmentMotion[];
   /** One severed connected branch, root first; geometry captured before removal. */
   readonly detachedParts?: readonly PhysicsSegmentPose[];
   readonly detachedPose?: {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number};

@@ -10,7 +10,7 @@ export class IncapacitatedBodies{
   const direction=event.fallDirection??[Math.sin(event.fighterId*2.399963),0,Math.cos(event.fighterId*2.399963)];
   const occupied=new Set([...this.bodies.values()].filter(b=>b.rag).map(b=>b.rag.slot));
   const slot=Array.from({length:RAGDOLL_SLOTS},(_,i)=>i).find(i=>!occupied.has(i))??-1;
-  const rag=createRagdoll(this.R,this.world,event.bodyPose,direction,slot);
+  const rag=createRagdoll(this.R,this.world,event.bodyPose,direction,slot,event.bodyMotion??[]);
   this.bodies.set(event.fighterId,{rag,still:0,age:0,attempts:0,quiet:0,reference:null,motion:null,settled:null,mounds:[]});
  }
  worldPose(b){return b.settled??ragdollPose(b.rag);}
