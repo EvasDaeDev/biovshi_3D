@@ -107,7 +107,7 @@ export class PolygonNavigation extends ArenaNavigation{
    return polygonHit({x:a[0],z:a[2]},{x:b[0],z:b[2]},poly,0)===null;
   });
  }
- private graph(pad:number):StaticGraph{
+ private polygonGraph(pad:number):StaticGraph{
   const cached=this.cached.get(pad);if(cached)return cached;
   const nodes=this.shapes.flatMap(poly=>poly.flatMap((_,i)=>{const p=expandedVertex(poly,i,pad);return p&&this.pointClear(p,pad)?[p]:[]}));
   const edges=nodes.map((a,i)=>nodes.map((b,j)=>i===j?null:this.clear(a,b,pad)?dist(a,b):null));
@@ -117,7 +117,7 @@ export class PolygonNavigation extends ArenaNavigation{
  override plan(start:PointXZ,end:PointXZ,pad=.65):readonly NativePoint[]{
   if(this.clear(start,end,pad))return [{...end}];
   if(!this.pointClear(end,pad))return [{...start}];
-  const {nodes:corners,edges}=this.graph(pad);
+  const {nodes:corners,edges}=this.polygonGraph(pad);
   const nodes=[start,end,...corners],cost=nodes.map(()=>Infinity),previous=nodes.map(()=>-1),used=new Set<number>();
   const link=(a:PointXZ,b:PointXZ)=>this.clear(a,b,pad)||
    (a===start&&!this.pointClear(a,pad)&&this.clear(a,b,.03)&&this.pointClear(b,pad));
