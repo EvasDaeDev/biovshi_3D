@@ -6,9 +6,12 @@ import { firstStrikeContact } from './swept-contact.js';
 export interface ExtraChoice extends PunchChoice {kind:'leg'|'head'}
 /** Evaluate real attack geometry before committing to a kick or head strike.
  * Bounded candidate list; actual contact still resolved at fixed ticks. */
-export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:'leg'|'head',ground:(x:number,z:number)=>number,motion?:AuthoredMotion):ExtraChoice|null{
+export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:'leg'|'head',ground:(x:number,z:number)=>number,motion?:AuthoredMotion,groundTarget=false):ExtraChoice|null{
  const targets=kind==='head'?['head','neck','chest','L.upperArm','R.upperArm']:['pelvis','abdomen','L.upperLeg','R.upperLeg','L.lowerLeg','R.lowerLeg','L.foot','R.foot'];
- for(const id of targets){
+ // A grounded victim has its head, torso and arms at foot height.
+ // Keep the accepted standing-victim target order; only broaden the grounded case.
+ const candidates=kind==='leg'&&groundTarget?[...targets,...victim.map(p=>p.id).filter(id=>!targets.includes(id))]:targets;
+ for(const id of candidates){
   if(!eligible(id))continue;
   const part=victim.find(v=>v.id===id);if(!part)continue;
   const sides=kind==='head'?['L'] as const:['L','R'] as const;

@@ -380,19 +380,29 @@ export class LabSimulationCore implements SimulationCore {
       // Prone rigs extend almost a metre in front of their pelvis. Two
       // touching heads can leave the pelvis roots more than two metres apart.
       // This is only a broad phase; each source still has to pass IK/contact.
-      const groundedPair=this.expandedStrikes&&(prone||target.gait.posture==='prone');
+      const lowVictim=this.expandedStrikes&&!prone&&target.gait.posture!=='upright';
+      const groundedPair=this.expandedStrikes&&(prone||target.gait.posture!=='upright');
       const previewRange=groundedPair?2.65:this.expandedStrikes?1.05:.82;
-      let checkedStrikeGeometry=false;
+      let checkedStrikeGeometry=false,preparingLowKick=false;
       if(unobstructed&&seen&&allowed&&!retreat&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         checkedStrikeGeometry=true;
         const pose=this.worldPose(this.actorPose(a),1/this.patientScale),victim=this.worldPose(this.actorPose(target),1/this.patientScale),eligible=(id:string)=>target.health.canDamage(id,this.tick);
         const ground=this.gaitGround(a);
-        const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];
-        if(this.expandedStrikes&&!this.ringCombat&&!command&&order.length>1){const shift=(a.strike.attempts+a.id)%order.length;order.push(...order.splice(0,shift));}
+        const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:lowVictim?['leg','arm','head']:['arm','leg','head']):['arm'];
+        if(this.expandedStrikes&&!this.ringCombat&&!command&&!lowVictim&&order.length>1){const shift=(a.strike.attempts+a.id)%order.length;order.push(...order.splice(0,shift));}
         for(const kind of order){
           if(ringFootwork&&!command&&kind==='head'&&distance>.49)continue;
-          if(kind==='leg'&&(prone||a.gait.footStates.some(f=>f.moving)||Math.abs(a.speed)>.10))continue;
-          const best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored);
+          if(kind==='leg'&&(prone||!usableStrike(a.segments,'leg','L')))continue;
+          const needsPlant=kind==='leg'&&(a.gait.footStates.some(f=>f.moving)||Math.abs(a.speed)>.10);
+          // Against a low victim, preview while approaching. If the real kick
+          // is reachable, brake and let the current step finish before windup.
+          if(needsPlant&&(!lowVictim||command))continue;
+          const best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim);
+          if(best&&needsPlant){
+            preparingLowKick=true;
+            commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});
+            break;
+          }
           if(best&&a.strike.start(this.tick,best.side,target.id,this.scalePoint(best.aim,this.patientScale),a.yaw,best.id,kind,prone)){
             a.behavior.started(this.tick,Math.ceil(STRIKE.cooldown/FIXED_DT-1e-9));
             this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side),strikeKind:kind,proneStrike:prone});break;
@@ -403,7 +413,7 @@ export class LabSimulationCore implements SimulationCore {
       // an actual healthy capsule is reachable by any usable strike.
       // Move a little closer only after the existing IK/swept preview failed;
       // blocked roots can then participate in the anti-stuck logic.
-      if(!command&&checkedStrikeGeometry&&!a.strike.punch&&!mobility.prone&&distance<=standoff){
+      if(!command&&checkedStrikeGeometry&&!preparingLowKick&&!a.strike.punch&&!mobility.prone&&distance<=standoff){
         const old=commands.get(a.id)!;
         commands.set(a.id,{...old,forward:pursuitForward(distance,heading,a.behavior.traits.pursuit,true)*(ringFootwork?.55:1)});
       }
