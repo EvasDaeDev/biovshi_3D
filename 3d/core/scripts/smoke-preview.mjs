@@ -49,13 +49,17 @@ try{
  // not fetched from the old app or from any external website.
  await page.locator('#scenario').selectOption('location-ward');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
-  return d?.state==='running'&&d.location==='ward'&&d.authoredObjects==='5'&&Number(d.tick)>3;},{},{timeout:45000});
+  return d?.state==='running'&&d.location==='ward'&&d.authoredObjects==='5'&&d.patients==='10'&&Number(d.tick)>3;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('location-ring');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
-  return d?.state==='running'&&d.location==='ring'&&d.authoredObjects==='0'&&Number(d.tick)>3;},{},{timeout:45000});
+  return d?.state==='running'&&d.location==='ring'&&d.authoredObjects==='0'&&d.patients==='3'&&Number(d.tick)>3;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('location-maze');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
-  return d?.state==='running'&&d.location==='maze'&&Number(d.authoredObjects)>0&&Number(d.tick)>3;},{},{timeout:45000});
+  return d?.state==='running'&&d.location==='maze'&&d.patients==='10'&&Number(d.authoredObjects)>0&&Number(d.tick)>3;},{},{timeout:45000});
+ await page.locator('#patient-count').selectOption('4');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='maze'&&d.patients==='4'&&Number(d.tick)>3;},{},{timeout:45000});
+ await page.locator('#patient-count').selectOption('full');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='maze'&&d.patients==='10'&&Number(d.tick)>3;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('arena-vision');
  await page.locator('#vision-debug').check();
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0&&d.visible?.split('/').length===8;},{},{timeout:45000});
