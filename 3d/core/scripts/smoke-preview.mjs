@@ -86,6 +86,10 @@ try{
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.incapacitated==='0');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&['falling','down','rising'].includes(d.balance);},{},{timeout:30000});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.balance==='standing'&&Number(d.tick)>100;},{},{timeout:30000});
+ await page.locator('#scenario').selectOption('terrain-hill');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.graded==='4'&&Number(d.tick)>4;},{},{timeout:45000});
+ await page.keyboard.down('KeyW');
+ try{await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.y)>.11,{},{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  await page.locator('#scenario').selectOption('walk');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&document.getElementById('stats')?.dataset.mode==='biped');
  await page.locator('#next-round').click();
