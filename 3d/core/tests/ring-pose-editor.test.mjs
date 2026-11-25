@@ -4,16 +4,16 @@ import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 import {LabSimulationCore,PolygonNavigation,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {buildEditedPose,readPoseDocument,referencePose} from '../dist/rig/pose-editor.js';
 
-test('the active catalog has one 5 m circular arena and protects its perimeter in movement',async()=>{
+test('the active catalog has one 7 m circular arena and protects its perimeter in movement',async()=>{
  const catalog=await buildLocationCatalog();
  assert.deepEqual(Object.keys(catalog),['ring']);
  const {ring}=catalog;
  assert.equal(ring.shape,'circle');
- assert.equal(ring.width,5);
- assert.equal(ring.depth,5);
- assert.ok(ring.boundary.every(({x,z})=>Math.abs(Math.hypot(x,z)-2.5)<1e-12));
+ assert.equal(ring.width,7);
+ assert.equal(ring.depth,7);
+ assert.ok(ring.boundary.every(({x,z})=>Math.abs(Math.hypot(x,z)-3.5)<1e-12));
  const nav=new PolygonNavigation(ring);
- assert.equal(nav.clear({x:0,z:0},{x:2.8,z:0},.50),false);
+ assert.equal(nav.clear({x:0,z:0},{x:3.8,z:0},.50),false);
  const config=createAuthoredCombatConfig(1,ring);
  const core=new LabSimulationCore();
  try{
@@ -22,11 +22,11 @@ test('the active catalog has one 5 m circular arena and protects its perimeter i
   const pose=core.getSnapshot().rigSegments[0];
   const height=Math.max(...pose.map(p=>Math.max(p.a[1],p.b[1])+p.radius))-
    Math.min(...pose.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
-  assert.ok(Math.abs(height-1.65)<1e-9);
+  assert.ok(Math.abs(height-1.65)<.04,'authored stance preserves patient scale');
   for(let i=0;i<220;i++)core.step(FIXED_DT,{commands:[{fighterId:0,forward:1,turn:0,sprint:true}]});
   const [x,,z]=core.getSnapshot().roots;
-  assert.ok(Math.hypot(x,z)>1.75);
-  assert.ok(Math.hypot(x,z)<2.02);
+  assert.ok(Math.hypot(x,z)>2.75);
+  assert.ok(Math.hypot(x,z)<3.02);
  }finally{core.dispose();}
 });
 

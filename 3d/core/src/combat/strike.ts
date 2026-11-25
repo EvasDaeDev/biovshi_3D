@@ -1,3 +1,4 @@
+import {strikeBody,type AuthoredMotion} from '../rig/authored-motion.js';
 import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import { FIXED_DT } from '../fixed-clock.js';
 import { proneStrikePose } from './prone-strike.js';
@@ -49,9 +50,13 @@ export class StrikeState{
 }
 /** The actual rendered forearm and hand are the attacking geometry.
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
-export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0):readonly PhysicsSegmentPose[]{
+export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion):readonly PhysicsSegmentPose[]{
  const age=tick-punch.start;if(age<0||age>=W+T+R||age===0)return pose;
  if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
+ if(motion){
+  const amount=age<W?-.32*smooth(age/W):age<W+T?-.32+1.32*smooth((age-W+1)/T):1-smooth((age-W-T)/R);
+  pose=strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
+ }
  if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');
  if(!u||!l)return pose;

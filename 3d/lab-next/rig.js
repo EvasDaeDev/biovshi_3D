@@ -93,9 +93,9 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const location=config.location??null;
  patientCount.disabled=!selectedLocation();
  document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
-  ?'Ринг ⌀ 5 м · деление 1 м · пациент в исходной стойке 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег.';
+  ?'Ринг ⌀ 7 м · деление 1 м · рост пациента 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
  floor.visible=grid.visible=location?.shape!=='circle';
- camera.position.set(...(location?.shape==='circle'?[4,5.4,6]:[8,6,9]));
+ camera.position.set(...(location?.shape==='circle'?[5,6.4,7.4]:[8,6,9]));
  camera.lookAt(0,location?.shape==='circle'?.55:1,0);
  if(location?.shape==='circle'){
   const mat=floor.material;
@@ -126,17 +126,17 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
   stats.dataset.authoredObjects=String(location?.objects.length??0);
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
-const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
+const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
 addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();clock.reset();last=null;});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
-const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
+const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight'),jump:!!has('Space')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
 document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};
  function suspendRound(message){
   if(frameRequest)cancelAnimationFrame(frameRequest);

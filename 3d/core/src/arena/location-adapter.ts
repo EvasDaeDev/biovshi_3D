@@ -1,3 +1,4 @@
+import type {PoseDocument} from '../rig/pose-editor.js';
 import type {ArenaWall} from './navigation.js';
 import type {GradeSurface} from './graded-surface.js';
 import type {Vec3} from '../types.js';
@@ -27,6 +28,7 @@ export interface NativeLocation{
  readonly id:string;readonly name:string;readonly capacity:number;
  readonly width:number;readonly depth:number;
  readonly shape?:'circle';
+ readonly patientPoses?:PoseDocument;
  readonly floorRevision?:string;
  readonly boundaryHeight?:number;
  readonly boundary:readonly NativePoint[];

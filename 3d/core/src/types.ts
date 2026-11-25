@@ -1,3 +1,4 @@
+import type {PoseDocument} from './rig/pose-editor.js';
 import type { ArenaWall } from './arena/navigation.js';
 import type { NativeLocation } from './arena/location-adapter.js';
 import type { GradeSurface } from './arena/graded-surface.js';
@@ -26,6 +27,7 @@ export interface FighterCommand {
   /** Turn speed request, [-1, 1], positive = right. */
   readonly turn: number;
   readonly sprint: boolean;
+  readonly jump?:boolean;
   readonly attack?: boolean;
   readonly attackKind?: StrikeKind;
 }
@@ -47,6 +49,7 @@ export interface FighterDefinition {
 
 export interface WorldConfig {
   readonly patientScale?:number;
+  readonly patientPoses?:PoseDocument;
   readonly fighters: readonly FighterDefinition[];
   readonly seed: number;
   /** Lab stress-test only, not product combat balance. */
@@ -94,7 +97,7 @@ export interface WorldSnapshot {
   readonly stepCounts?: readonly number[];
   readonly footStates?: readonly (readonly {readonly moving:boolean;readonly target:Vec3;readonly point:Vec3}[])[];
   readonly hopHeights?: readonly number[];
-  readonly hopPhases?: readonly ('idle'|'flight'|'pause')[];
+  readonly hopPhases?: readonly ('idle'|'prepare'|'flight'|'pause')[];
   readonly postures?: readonly ('upright'|'falling'|'prone')[];
   readonly damageStats?: Readonly<{hits:number; detached:number}>;
   readonly collisionStats?: Readonly<{tests:number; contacts:number; wallContacts:number}>;
