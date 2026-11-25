@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {EscapeState,ESCAPE,tacticalEscape,pincerThreats,pincerGoal,LabSimulationCore,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
+import {EscapeState,ESCAPE,tacticalEscape,pincerThreats,pincerGoal,ArenaNavigation,LabSimulationCore,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
 const a={id:0,x:0,z:0,yaw:0};
 const foe={id:1,x:0,z:-1,yaw:Math.PI,visible:true,armed:true,attacking:false};
 test('v1 escape direction order stays inside arena and avoids occupied destinations',()=>{
@@ -35,4 +35,31 @@ test('escape-enabled arena remains autonomous with real strikes and finite posit
  for(let i=0;i<1800;i++){c.step(FIXED_DT,{commands:[]});for(const e of c.drainEvents())if(e.type==='fighter-damaged'){count++;hits.add(e.attackerId);}}
  const s=c.getSnapshot();assert.ok(count>=4&&hits.size>=2,JSON.stringify({count,roots:Array.from(s.roots),tactics:s.tactics,escapes:s.escapes}));
  assert.ok(Array.from(s.roots).every(Number.isFinite));assert.equal(s.fighterIds.length,8);
+});
+
+test('v1 goal clearance rejects a wall-occupied escape endpoint and finds a safe candidate',()=>{
+ const nav=new ArenaNavigation([{minX:-.28,maxX:.28,minZ:-.65,maxZ:.65,height:2.8}]);
+ const actor={id:0,x:-1,z:-1.9,yaw:0};
+ const opponent={id:1,x:-2,z:-1.9,yaw:0,visible:true,armed:true,attacking:false};
+ const blocked=tacticalEscape(actor,opponent,1,[]);
+ assert.ok(blocked&&!nav.clear(blocked,blocked,.50),'baseline must reproduce a blocked goal');
+ const clear=point=>nav.clear(point,point,.50);
+ const safe=tacticalEscape(actor,opponent,1,[],clear);
+ assert.ok(safe&&clear(safe),'redirect to a valid root footprint');
+ assert.notDeepEqual(safe,blocked);
+ // The convex arena's historical choice remains unchanged when clearance is omitted.
+ assert.deepEqual(tacticalEscape(actor,opponent,1,[]),blocked);
+});
+test('pincer and relocation do not create an impossible goal if all endpoints are blocked',()=>{
+ const opponents=[{...foe,x:-.9,z:-.65,yaw:Math.atan2(.9,-.65)},{...foe,id:2,x:.9,z:-.65,yaw:Math.atan2(-.9,-.65)}];
+ const threats=pincerThreats(a,opponents);
+ assert.equal(threats.length,2);
+ assert.equal(pincerGoal(a,threats,1,opponents,()=>false),null);
+ const pincer=new EscapeState(7,0);
+ assert.equal(pincer.choose(0,a,opponents[0],opponents,opponents,true,()=>false),null);
+ assert.equal(pincer.snapshot().plan,null);
+ const escape=new EscapeState(7,0);
+ for(let i=0;i<153;i++)escape.observe(0,true,false,true);
+ assert.equal(escape.choose(153,a,foe,[foe],[foe],true,()=>false),null);
+ assert.equal(escape.snapshot().plan,null);
 });
