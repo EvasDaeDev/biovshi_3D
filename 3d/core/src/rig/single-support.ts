@@ -11,7 +11,8 @@ const bound=(x:number,z:number,max:number):readonly [number,number]=>{const n=Ma
  * and solve legs again without changing the supporting foot's world target.
  * Tilt is preferred to translation; the latter handles residual reach error.
  * No dynamic angular momentum or forces are integrated here. */
-export function balanceSingleSupport(pose:readonly RigPose[],active:readonly string[],side:'L'|'R',plant:Vec3,ground:(x:number,z:number)=>number,swingTarget?:Vec3):readonly RigPose[]{
+export function balanceSingleSupport(pose:readonly RigPose[],active:readonly string[],side:'L'|'R',plant:Vec3,ground:(x:number,z:number)=>number,swingTarget?:Vec3,load=1):readonly RigPose[]{
+ load=Math.max(0,Math.min(1,load));
  const ids=new Set(active),index=new Map(pose.map((p,i)=>[p.id,i]));
  const get=(id:string)=>pose[index.get(id)!]!;
  const hip=get('pelvis'),pivot=center(hip),uid=side+'.upperLeg',lid=side+'.lowerLeg',fid=side+'.foot';
@@ -19,10 +20,10 @@ export function balanceSingleSupport(pose:readonly RigPose[],active:readonly str
  const target:Vec3=[plant[0],plant[1],plant[2]];
  let tx=0,tz=0,sx=0,sz=0;
  const build=():readonly RigPose[]=>{
-  const angle=Math.hypot(tx,tz),ux=angle>1e-9?tx/angle:1,uz=angle>1e-9?tz/angle:0,c=Math.cos(angle),s=Math.sin(angle);
+  const rawAngle=Math.hypot(tx,tz),ux=rawAngle>1e-9?tx/rawAngle:1,uz=rawAngle>1e-9?tz/rawAngle:0,angle=rawAngle*load,c=Math.cos(angle),s=Math.sin(angle);
   const rot=(p:Vec3):Vec3=>{
    const x=p[0]-pivot[0],y=p[1]-pivot[1],z=p[2]-pivot[2],h=x*ux+z*uz,delta=h*(c-1)+y*s;
-   return [p[0]+ux*delta+sx,pivot[1]+y*c-h*s,p[2]+uz*delta+sz];
+   return [p[0]+ux*delta+sx*load,pivot[1]+y*c-h*s,p[2]+uz*delta+sz*load];
   };
   const joint=rot(side==='L'?hip.a:hip.b);
   // Lower the body if the fixed target is outside the normal reach.

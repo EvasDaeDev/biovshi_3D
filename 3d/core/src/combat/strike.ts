@@ -1,3 +1,4 @@
+import {coordinatedStrikeBody} from './coordinated-strike.js';
 import {strikeBody,type AuthoredMotion} from '../rig/authored-motion.js';
 import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import { FIXED_DT } from '../fixed-clock.js';
@@ -53,18 +54,24 @@ export class StrikeState{
 export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion):readonly PhysicsSegmentPose[]{
  const age=tick-punch.start;if(age<0||age>=W+T+R||age===0)return pose;
  if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
+ const coordinated=!!motion?.stalk;
+ const phase=age<W?'windup':age<W+T?'thrust':'recover';
+ const progress=age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R);
+ const load=phase==='windup'?progress:phase==='recover'?1-progress:1;
  if(motion){
   const amount=age<W?-.32*smooth(age/W):age<W+T?-.32+1.32*smooth((age-W+1)/T):1-smooth((age-W-T)/R);
-  pose=strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
+  pose=coordinated?coordinatedStrikeBody(pose,punch,amount,motion):strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
  }
- if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
+ if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,phase,progress,ground,coordinated?load:1);
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');
  if(!u||!l)return pose;
  const a=u.a,back:Vec3=[a[0]-Math.sin(punch.yaw)*.13,a[1]-.25,a[2]+Math.cos(punch.yaw)*.13];
  const base=l.b;
  const target=age<W?mix(base,back,smooth(age/W)):age<W+T?mix(back,punch.aim,smooth((age-W+1)/T)):mix(punch.aim,base,smooth((age-W-T)/R));
  if(age===0)return pose;
- const pole:Vec3=[Math.cos(punch.yaw)*(punch.side==='L'?-1:1),-.65,Math.sin(punch.yaw)*(punch.side==='L'?-1:1)];
+ const strikePole:Vec3=[Math.cos(punch.yaw)*(punch.side==='L'?-1:1),-.65,Math.sin(punch.yaw)*(punch.side==='L'?-1:1)];
+ const basePole:Vec3=[u.b[0]-u.a[0],u.b[1]-u.a[1],u.b[2]-u.a[2]];
+ const pole=coordinated?mix(basePole,strikePole,load):strikePole;
  const ik=solveTwoBone(a,target,.36,.32,pole);
  const end=ik.end;
  return pose.map(p=>p.id===u.id?{...p,b:ik.joint}:p.id===l.id?{...p,a:ik.joint,b:end}:h&&p.id===h.id?{...p,a:end,b:end}:p);
