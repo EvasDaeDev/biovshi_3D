@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "node --check scripts/benchmark-core.mjs && node --check scripts/stage-preview.mjs && node --check scripts/smoke-preview.mjs && npm run build && node --test tests/*.test.mjs",
+    "audit:combat": "npm run build && node scripts/audit-combat-cycle.mjs",
     "preview:stage": "node scripts/stage-preview.mjs",
     "preview:smoke": "node scripts/smoke-preview.mjs"
   },

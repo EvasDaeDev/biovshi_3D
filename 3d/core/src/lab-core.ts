@@ -108,7 +108,7 @@ export class LabSimulationCore implements SimulationCore {
   incapacitate(fighterId:number,cause:IncapacitationCause='manual',attackerId?:number):boolean{
     this.requireReady();const a=this.actors.find(a=>a.id===fighterId);
     if(!a)throw new RangeError('Unknown fighter');
-    if(a.fixed)return false;
+    if(a.fixed||this.fightEnded)return false;
     const pose=this.copyPose(this.actorPose(a));
     a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.tactics.setMode('inactive');a.escape.clear();a.perception.clear();a.route.clear();a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
     const source=this.actors.find(b=>b.id===attackerId&&b.id!==a.id);
@@ -138,7 +138,7 @@ export class LabSimulationCore implements SimulationCore {
     const a=this.actors.find(a=>a.id===fighterId);
     if(!a)throw new RangeError('Unknown fighter');
     if(attackerId!==undefined&&!this.actors.some(v=>v.id===attackerId))throw new RangeError('Unknown attacker');
-    if(a.fixed||!a.segments.includes(segmentId))return false;
+    if(this.fightEnded||a.fixed||!a.segments.includes(segmentId))return false;
     const result=a.health.apply(segmentId,amount,this.tick);
     if(!result)return false;
     this.hitCount++;a.lastHitTick=this.tick;
@@ -405,7 +405,9 @@ export class LabSimulationCore implements SimulationCore {
       const wantsMove=!!c&&Math.abs(c.forward)>.16;
       a.escape.observe(Math.hypot(a.x-old[0],a.z-old[1]),wantsMove,!wantsMove&&!!c&&Math.abs(c.turn)<.2&&this.tick-a.lastHitTick>120,eligible);
     }
-    this.updateOil();if(this.combat)this.finishFight();
+    // v1 game/loop.js stops round damage and oil-loss deadlines after
+    // the result, while presentation/physical settling can continue.
+    if(!this.fightEnded){this.updateOil();if(this.combat)this.finishFight();}
   }
 
   getSnapshot(): WorldSnapshot {
