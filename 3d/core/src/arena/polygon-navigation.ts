@@ -107,6 +107,38 @@ export class PolygonNavigation extends ArenaNavigation{
    return polygonHit({x:a[0],z:a[2]},{x:b[0],z:b[2]},poly,0)===null;
   });
  }
+ /** Port the v1/ArenaNavigation occupied-clearance goal fallback to
+  * convex authored geometry. A patient may stand at the *physical* .50 m
+  * root clearance while route graph nodes use .65 m. Approach the nearest
+  * safe point instead of returning [start] and staring at a wall.
+  * Never invent a passage through an obstacle or change reachable() for
+  * tactical escape goals, which must genuinely be reachable. */
+ private approachGoal(goal:PointXZ,pad:number):NativePoint|null{
+  if(this.pointClear(goal,pad))return {...goal};
+  if(!this.boundaryClear(goal,0)||this.shapes.some(poly=>polygonInside(poly,goal)))return null;
+  const q:NativePoint={...goal},clearance=pad+.025;
+  for(let attempt=0;attempt<12;attempt++){
+   let changed=false;
+   for(let i=0;i<this.perimeter.length;i++){
+    const a=this.perimeter[i]!,b=this.perimeter[(i+1)%this.perimeter.length]!;
+    const dx=b.x-a.x,dz=b.z-a.z,length=Math.hypot(dx,dz),distance=side(a,b,q)/length;
+    if(distance>=clearance)continue;
+    const delta=clearance-distance;
+    q.x+=-dz/length*delta;q.z+=dx/length*delta;changed=true;
+   }
+   for(const poly of this.shapes){
+    if(polygonInside(poly,q))return null;
+    const {point,gap}=edgeDistance(q,poly);
+    if(gap>=clearance)continue;
+    if(gap<EPS)return null;
+    const delta=(clearance-gap)/gap;
+    q.x+=(q.x-point.x)*delta;q.z+=(q.z-point.z)*delta;changed=true;
+   }
+   if(this.pointClear(q,pad)&&this.clear(goal,q,.03))return {...q};
+   if(!changed)break;
+  }
+  return null;
+ }
  private polygonGraph(pad:number):StaticGraph{
   const cached=this.cached.get(pad);if(cached)return cached;
   const nodes=this.shapes.flatMap(poly=>poly.flatMap((_,i)=>{const p=expandedVertex(poly,i,pad);return p&&this.pointClear(p,pad)?[p]:[]}));
@@ -116,9 +148,10 @@ export class PolygonNavigation extends ArenaNavigation{
  }
  override plan(start:PointXZ,end:PointXZ,pad=.65):readonly NativePoint[]{
   if(this.clear(start,end,pad))return [{...end}];
-  if(!this.pointClear(end,pad))return [{...start}];
+  const finish=this.approachGoal(end,pad);
+  if(!finish)return [{...start}];
   const {nodes:corners,edges}=this.polygonGraph(pad);
-  const nodes=[start,end,...corners],cost=nodes.map(()=>Infinity),previous=nodes.map(()=>-1),used=new Set<number>();
+  const nodes=[start,finish,...corners],cost=nodes.map(()=>Infinity),previous=nodes.map(()=>-1),used=new Set<number>();
   const link=(a:PointXZ,b:PointXZ)=>this.clear(a,b,pad)||
    (a===start&&!this.pointClear(a,pad)&&this.clear(a,b,.03)&&this.pointClear(b,pad));
   cost[0]=0;
