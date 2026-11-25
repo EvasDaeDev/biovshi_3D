@@ -7,13 +7,13 @@ const base=createLabConfig(7);
 const fighters=[{...base.fighters[0],origin:[0,0,1.2],yawRad:0},{...base.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}];
 test('published duel configuration is not terminated by three torso hits each',()=>{
  const c=new LabSimulationCore();c.initialize({seed:7,fighters,combatEnabled:true});
- let hits=0,atSix=null;const targets=new Set();
+ let hits=0,atSix=null,windups=0;const targets=new Set();
  for(let i=0;i<1800;i++){
   c.step(FIXED_DT,{commands:[]});
-  for(const e of c.drainEvents())if(e.type==='fighter-damaged'){hits++;targets.add(e.segmentId);}
+  for(const e of c.drainEvents()){if(e.type==='combat-windup')windups++;if(e.type==='fighter-damaged'){hits++;targets.add(e.segmentId);}}
   if(hits>=6&&!atSix)atSix=c.getSnapshot();
  }
- assert.ok(hits>=6,'hits '+hits);assert.ok(atSix.lifeStates.includes('active'));assert.ok(targets.size>=2,JSON.stringify([...targets]));
+ const final=c.getSnapshot();assert.ok(hits>=6,JSON.stringify({hits,windups,roots:Array.from(final.roots),targets:[...targets],health:final.health,strikes:final.strikes}));assert.ok(atSix.lifeStates.includes('active'));assert.ok(targets.size>=2,JSON.stringify([...targets]));
 });
 test('two nearby simultaneous casualties topple away from one another and become cones',async()=>{
  await RAPIER.init();const w=new DebrisWorld(RAPIER),c=new LabSimulationCore();

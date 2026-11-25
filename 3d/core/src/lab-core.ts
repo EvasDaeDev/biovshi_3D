@@ -1,4 +1,5 @@
-import { StrikeState,usableArm,punchPose } from './combat/strike.js';
+import { choosePunch,closestAim } from './combat/punch-choice.js';
+import { StrikeState,punchPose } from './combat/strike.js';
 import { firstStrikeContact } from './combat/swept-contact.js';
 import { ImpactState } from './combat/impact.js';
 import { OilState,OIL,type OilMark } from './combat/oil.js';
@@ -189,25 +190,23 @@ export class LabSimulationCore implements SimulationCore {
       const target=this.actors.filter(b=>b!==a&&!b.fixed).sort((b,c)=>Math.hypot(b.x-a.x,b.z-a.z)-Math.hypot(c.x-a.x,c.z-a.z)||b.id-c.id)[0];
       if(!target){if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
       const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
-      if(!command)commands.set(a.id,{fighterId:a.id,forward:distance>.59?Math.max(0,Math.cos(turn)):0,turn:clamp(turn*2,-1,1),sprint:false});
+      if(!command)commands.set(a.id,{fighterId:a.id,forward:distance>.46?Math.max(0,Math.cos(turn)):0,turn:clamp(turn*2,-1,1),sprint:false});
       if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<.82&&a.strike.ready(this.tick)){
-        const targetPose=this.actorPose(target),pose=this.actorPose(a);
-        const sides=(['L','R'] as const).filter(s=>usableArm(a.segments,s));
-        const choices:{side:'L'|'R';id:string;aim:[number,number,number];distance:number}[]=[];
-        // A fixed seed and fighter ID determine the order, but every
-        // successful windup advances the sequence rather than repeating chest.
-        const priorities=['chest','L.lowerArm','R.lowerArm','head','abdomen','L.upperArm','R.upperArm','neck','pelvis','L.hand','R.hand'];
-        for(const id of priorities){
-          if(!target.health.canDamage(id,this.tick))continue;
-          const part=targetPose.find(p=>p.id===id);if(!part)continue;
-          const aim:[number,number,number]=[(part.a[0]+part.b[0])/2,(part.a[1]+part.b[1])/2,(part.a[2]+part.b[2])/2];
-          const candidates=sides.map(side=>{const u=pose.find(p=>p.id===side+'.upperArm')!;return {side,id,aim,distance:Math.hypot(u.a[0]-aim[0],u.a[1]-aim[1],u.a[2]-aim[2])};}).filter(v=>v.distance<.68+part.radius+.08).sort((x,y)=>x.distance-y.distance);
-          if(candidates[0])choices.push(candidates[0]);
-        }
-        const best=choices.length?choices[(a.strike.attempts+a.id)%choices.length]:undefined;
-        if(best&&a.strike.start(this.tick,best.side,target.id,best.aim,a.yaw))this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:best.side+'.lowerArm'});
+        const best=choosePunch(this.actorPose(a),a.segments,this.actorPose(target),a.yaw,id=>target.health.canDamage(id,this.tick),a.strike.attempts+a.id);
+        if(best&&a.strike.start(this.tick,best.side,target.id,best.aim,a.yaw,best.id))this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:best.side+'.lowerArm'});
       }
-      if(a.strike.punch)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});
+      const punch=a.strike.punch;
+      if(punch){
+        const victim=this.actors.find(b=>b.id===punch.targetId&&!b.fixed);
+        const windup=a.strike.phase(this.tick)==='windup';
+        if(windup&&victim&&punch.targetSegment){
+          const part=this.actorPose(victim).find(p=>p.id===punch.targetSegment);
+          const shoulder=this.actorPose(a).find(p=>p.id===punch.side+'.upperArm');
+          if(part&&shoulder)a.strike.track(this.tick,closestAim(shoulder.a,part));
+        }
+        const gap=victim?Math.hypot(victim.x-a.x,victim.z-a.z):0;
+        commands.set(a.id,{fighterId:a.id,forward:windup&&!command&&gap>.60?.55:0,turn:0,sprint:false});
+      }
     }
   }
   private resolveStrikes(previous:Map<number,readonly RigPose[]>):void{

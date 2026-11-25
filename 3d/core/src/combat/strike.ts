@@ -7,7 +7,7 @@ const W=ticks(STRIKE.windup),T=ticks(STRIKE.thrust),R=ticks(STRIKE.recover),C=ti
 const smooth=(t:number)=>{const v=Math.max(0,Math.min(1,t));return v*v*(3-2*v);};
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 export type StrikePhase='idle'|'windup'|'thrust'|'recover';
-export interface Punch {readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number}
+export interface Punch {readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string}
 export interface StrikeSnapshot {readonly phase:StrikePhase;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean}
 export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
@@ -25,9 +25,13 @@ export class StrikeState{
  advance(tick:number,allowed:boolean,ids:readonly string[]):void{
   if(this.current&&(!allowed||!usableArm(ids,this.current.side)||this.phase(tick)==='idle'))this.current=null;
  }
- start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number):boolean{
+ start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string):boolean{
   if(this.current||tick-this.last<C)return false;
-  this.current={side,targetId,aim:[...aim],start:tick,yaw};this.last=tick;this.done=false;this.sequence++;return true;
+  this.current={side,targetId,aim:[...aim],start:tick,yaw,...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.sequence++;return true;
+ }
+ /** Track the target only during preparation; commit the aim for thrust. */
+ track(tick:number,aim:Vec3):void{
+  if(this.current&&this.phase(tick)==='windup')this.current={...this.current,aim:[...aim]};
  }
  get resolved():boolean{return this.done;}
  resolve():void{this.done=true;}
