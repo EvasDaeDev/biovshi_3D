@@ -1,5 +1,6 @@
 import type { ArenaWall } from './arena/navigation.js';
 import type { NativeLocation } from './arena/location-adapter.js';
+import type { GradeSurface } from './arena/graded-surface.js';
 import type { PointXZ } from './combat/escape.js';
 import type { PerceptionSnapshot } from './combat/perception.js';
 import type { EscapePlan } from './combat/escape.js';
@@ -63,6 +64,8 @@ export interface WorldConfig {
   readonly walls?: readonly ArenaWall[];
   /** Original convex geometry and perimeter for native P4 navigation. */
   readonly location?: NativeLocation;
+  /** Optional native walkable inclines above the flat base floor. */
+  readonly gradedSurface?: GradeSurface;
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
