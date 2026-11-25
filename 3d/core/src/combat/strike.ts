@@ -13,7 +13,9 @@ export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
 }
 export class StrikeState{
- private current:Punch|null=null;private last=-Infinity;private done=false;
+ private current:Punch|null=null;private last=-Infinity;private done=false;private sequence=0;
+ get attempts():number{return this.sequence;}
+ ready(tick:number):boolean{return !this.current&&tick-this.last>=C;}
  get punch():Punch|null{return this.current;}
  phase(tick:number):StrikePhase{
   if(!this.current)return 'idle';
@@ -25,7 +27,7 @@ export class StrikeState{
  }
  start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number):boolean{
   if(this.current||tick-this.last<C)return false;
-  this.current={side,targetId,aim:[...aim],start:tick,yaw};this.last=tick;this.done=false;return true;
+  this.current={side,targetId,aim:[...aim],start:tick,yaw};this.last=tick;this.done=false;this.sequence++;return true;
  }
  get resolved():boolean{return this.done;}
  resolve():void{this.done=true;}

@@ -19,13 +19,13 @@ test('native segment HP, critical hit, fixed-tick invulnerability and independen
  const cuts=ev.filter(e=>e.type==='segment-detached');assert.equal(cuts.length,1);assert.deepEqual(cuts[0].detachedParts.map(p=>p.id),['R.upperArm','R.lowerArm','R.hand']);assert.equal(c.getSnapshot().damageStats.detached,3);
  assert.equal(hit(c,'R.hand'),false);
 });
-test('head loss and torso failure trigger terminal physics after detachment',()=>{
- for(const [id,amount,cause] of [['head',99,'head-loss'],['chest',99,'torso-failure'],['neck',99,'head-loss']]){
+test('head loss triggers terminal physics after detachment',()=>{
+ for(const [id,amount,cause] of [['head',99,'head-loss'],['neck',99,'head-loss']]){
   const c=make();assert.equal(hit(c,id,amount),true);
   const s=c.getSnapshot(),events=c.drainEvents(),terminal=events.at(-1);
   assert.equal(s.lifeStates[0],'incapacitated');assert.equal(s.health[0].cause,cause);assert.equal(terminal.type,'fighter-incapacitated');assert.equal(terminal.cause,cause);
   assert.deepEqual(terminal.bodyPose.map(p=>p.id),s.rigSegments[0].map(p=>p.id));
-  assert.equal(health(c,id).hp,0);assert.equal(health(c,id).attached,id==='chest');
+  assert.equal(health(c,id).hp,0);assert.equal(health(c,id).attached,false);
   assert.equal(hit(c,'L.hand'),false);
  }
 });
@@ -51,4 +51,10 @@ test('damage-induced loss of leg changes locomotion; snapshots and reset own hea
  wait(c);assert.equal(hit(c,'R.upperLeg',3),true);assert.equal(c.getSnapshot().mobilityModes[0],'arm-crawl');
  assert.throws(()=>hit(c,'head',NaN));assert.throws(()=>hit(c,'head',0));
  c.initialize({seed:7,fighters:[f]});assert.equal(health(c,'L.upperLeg').hp,3);assert.equal(c.getSnapshot().health[0].trauma,0);
+});
+
+test('depleted central segment remains attached and is not an instant knockout',()=>{
+ const c=make();assert.ok(hit(c,'chest',3));assert.equal(health(c,'chest').hp,0);assert.equal(health(c,'chest').attached,true);
+ assert.equal(c.getSnapshot().lifeStates[0],'active');assert.equal(c.getSnapshot().health[0].trauma,3);
+ wait(c);assert.equal(hit(c,'chest'),false);assert.ok(hit(c,'abdomen',3));assert.equal(c.getSnapshot().lifeStates[0],'active');
 });

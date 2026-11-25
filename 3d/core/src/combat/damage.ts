@@ -1,7 +1,7 @@
 import { LAB_SEGMENTS,severingChain } from '../rig/anatomy.js';
 import { FIXED_DT } from '../fixed-clock.js';
 /** Native 3D rules, sourced from src/config.js and src/robot/{robot,anatomy}.js.
- * Three central torso capsules stay attached; their destruction is terminal. */
+ * Central torso capsules remain attached at zero HP; trauma governs failure. */
 export const DAMAGE=Object.freeze({segmentHP:3,headHP:6,pelvisHP:4,invulnerabilitySeconds:.28,traumaThreshold:24,headMultiplier:1.5});
 export type IncapacitationCause='head-loss'|'torso-failure'|'trauma'|'oil-loss'|'manual';
 export interface SegmentHealth {readonly id:string;readonly hp:number;readonly maxHp:number;readonly attached:boolean}
@@ -25,8 +25,7 @@ export class DamageState {
   this.trauma+=actual*(id==='head'?DAMAGE.headMultiplier:1);
   let detached:string[]=[],cause:IncapacitationCause|null=null;
   if(p.hp===0){
-   if(definitions.get(id)!.protected)cause='torso-failure';
-   else{
+   if(!definitions.get(id)!.protected){
     detached=severingChain(id).filter(key=>this.parts.get(key)?.attached);
     this.detach(detached);
     if(detached.includes('head'))cause='head-loss';
@@ -36,6 +35,7 @@ export class DamageState {
   if(cause)this.finish(cause);
   return {amount:actual,remainingHP:p.hp,critical:amount===2,detached,cause};
  }
+ canDamage(id:string,tick:number):boolean{const p=this.parts.get(id);return !this.cause&&!!p?.attached&&p.hp>0&&tick-p.lastHit>=cooldownTicks;}
  /** Synchronizes lab-only fracture; no trauma from artificial stress contacts. */
  detach(ids:readonly string[]):void{for(const id of ids){const p=this.parts.get(id);if(p){p.hp=0;p.attached=false;}}}
  finish(cause:IncapacitationCause):void{this.cause??=cause;}

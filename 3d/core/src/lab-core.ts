@@ -91,13 +91,17 @@ export class LabSimulationCore implements SimulationCore {
   }
   /** Terminal handoff, used by lab and future damage resolver. An intact
    * anatomy stays intact; incapacitation is not a detachment event. */
-  incapacitate(fighterId:number,cause:IncapacitationCause='manual'):boolean{
+  incapacitate(fighterId:number,cause:IncapacitationCause='manual',attackerId?:number):boolean{
     this.requireReady();const a=this.actors.find(a=>a.id===fighterId);
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed)return false;
     const pose=this.copyPose(this.actorPose(a));
     a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);a.impact.clear();a.oil.clear();a.strike.advance(this.tick,false,a.segments);
-    this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,bodyPose:this.copyPose(pose)});
+    const source=this.actors.find(b=>b.id===attackerId&&b.id!==a.id);
+    let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
+    if(Math.hypot(dx,dz)<1e-6){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
+    const n=Math.hypot(dx,dz)||1;
+    this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,fallDirection:[dx/n,0,dz/n],bodyPose:this.copyPose(pose)});
     return true;
   }
   private detach(a:Actor,ids:readonly string[],product=false):void{
@@ -126,7 +130,7 @@ export class LabSimulationCore implements SimulationCore {
     this.hitCount++;
     this.events.push({tick:this.tick,type:'fighter-damaged',fighterId,segmentId,damage:result.amount,remainingHP:result.remainingHP,critical:result.critical,...(attackerId===undefined?{}:{attackerId})});
     this.detach(a,result.detached,true);
-    if(result.cause)this.incapacitate(a.id,result.cause);
+    if(result.cause)this.incapacitate(a.id,result.cause,attackerId);
     else{
       const source=this.actors.find(v=>v.id===attackerId&&v.id!==a.id);
       let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
@@ -186,16 +190,22 @@ export class LabSimulationCore implements SimulationCore {
       if(!target){if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
       const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
       if(!command)commands.set(a.id,{fighterId:a.id,forward:distance>.59?Math.max(0,Math.cos(turn)):0,turn:clamp(turn*2,-1,1),sprint:false});
-      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<.82&&!a.strike.punch){
-        const targetPose=this.actorPose(target),chest=targetPose.find(p=>p.id==='chest')??targetPose.find(p=>p.id==='head');
-        const pose=this.actorPose(a);
-        if(chest){
-          const aim:[number,number,number]=[(chest.a[0]+chest.b[0])/2,(chest.a[1]+chest.b[1])/2,(chest.a[2]+chest.b[2])/2];
-          const sides=(['L','R'] as const).filter(s=>usableArm(a.segments,s));
-          const score=(s:'L'|'R')=>{const u=pose.find(p=>p.id===s+'.upperArm')!;return Math.hypot(u.a[0]-aim[0],u.a[1]-aim[1],u.a[2]-aim[2]);};
-          const side=sides.sort((x,y)=>score(x)-score(y))[0];
-          if(side&&score(side)<.92&&a.strike.start(this.tick,side,target.id,aim,a.yaw))this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:side+'.lowerArm'});
+      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<.82&&a.strike.ready(this.tick)){
+        const targetPose=this.actorPose(target),pose=this.actorPose(a);
+        const sides=(['L','R'] as const).filter(s=>usableArm(a.segments,s));
+        const choices:{side:'L'|'R';id:string;aim:[number,number,number];distance:number}[]=[];
+        // A fixed seed and fighter ID determine the order, but every
+        // successful windup advances the sequence rather than repeating chest.
+        const priorities=['chest','L.lowerArm','R.lowerArm','head','abdomen','L.upperArm','R.upperArm','neck','pelvis','L.hand','R.hand'];
+        for(const id of priorities){
+          if(!target.health.canDamage(id,this.tick))continue;
+          const part=targetPose.find(p=>p.id===id);if(!part)continue;
+          const aim:[number,number,number]=[(part.a[0]+part.b[0])/2,(part.a[1]+part.b[1])/2,(part.a[2]+part.b[2])/2];
+          const candidates=sides.map(side=>{const u=pose.find(p=>p.id===side+'.upperArm')!;return {side,id,aim,distance:Math.hypot(u.a[0]-aim[0],u.a[1]-aim[1],u.a[2]-aim[2])};}).filter(v=>v.distance<.68+part.radius+.08).sort((x,y)=>x.distance-y.distance);
+          if(candidates[0])choices.push(candidates[0]);
         }
+        const best=choices.length?choices[(a.strike.attempts+a.id)%choices.length]:undefined;
+        if(best&&a.strike.start(this.tick,best.side,target.id,best.aim,a.yaw))this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:best.side+'.lowerArm'});
       }
       if(a.strike.punch)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});
     }
