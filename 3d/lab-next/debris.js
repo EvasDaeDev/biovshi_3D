@@ -3,15 +3,20 @@ import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {IncapacitatedBodies} from './incapacitated.js';
 import {moundDimensions,terrainHeight,capsuleVerticalHalfExtent} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
+import {createFloorHistory,readFloorHistory} from '../core/dist/arena/floor-history.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 /** Physics adapter owns Rapier bodies; renderer consumes plain snapshots. */
 export class DebrisWorld {
  constructor(RAPIER){this.R=RAPIER;this.reset();}
- reset(walls=[]){
+ reset(walls=[],previousFloor=null,arenaId='lab'){
+  // Validate BEFORE freeing an active physics world: a corrupt/mismatched
+  // saved arena must never wipe the current round.
+  const archive=previousFloor===null?null:readFloorHistory(previousFloor,arenaId);
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
   this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
+  this.archiveFloor=archive;
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
   this.world.createCollider(R.ColliderDesc.cuboid(7,.19,7).setFriction(.95),floor);
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
@@ -21,6 +26,12 @@ export class DebrisWorld {
   for(const w of walls){
    const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2));
    this.world.createCollider(R.ColliderDesc.cuboid((w.maxX-w.minX)/2,w.height/2,(w.maxZ-w.minZ)/2),body);
+  }
+  // Previous-round remains have no dynamic Rapier ownership. New bodies
+  // collide with their low, walkable cones; meshes keep exact old anatomy.
+  for(const mound of archive?.mounds??[]){
+   const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(mound.x,mound.height/2,mound.z));
+   this.world.createCollider(R.ColliderDesc.cone(mound.height/2,mound.radius).setFriction(1.1).setCollisionGroups(0x00010006),body);
   }
  }
  accept(event){
@@ -84,12 +95,29 @@ export class DebrisWorld {
   }
  }
  bodySnapshot(){return this.incapacitated.snapshot();}
- moundSnapshot(){return [...this.mounds.map(m=>({...m})),...this.incapacitated.moundSnapshot()];}
+ moundSnapshot(){return [...(this.archiveFloor?.mounds.map(m=>({...m}))??[]),...this.mounds.map(m=>({...m})),...this.incapacitated.moundSnapshot()];}
+ archivedOilSnapshot(){return this.archiveFloor?.oilMarks.map(o=>({...o,point:[...o.point]}))??[];}
+ /** Never flatten a falling ragdoll into saved scenery. Fully settled visual
+  * geometry and hidden cone colliders are serialized independently. */
+ exportSettledFloor(arenaId,oilMarks=[]){
+  const bodies=this.bodySnapshot();
+  if(this.items.length||this.branches.some(b=>!b.settled)||bodies.some(b=>!b.settled))
+   throw new Error('Cannot archive an arena while physics bodies are falling');
+  const remains=bodies.flatMap(b=>b.parts.map(p=>{
+   const frame=boneFrame(p.a,p.b);
+   const rotation=capsuleOrientation(frame.y);
+   return {fighterId:b.fighterId,segmentId:p.id,settled:true,length:frame.length,radius:p.radius,
+    position:{x:frame.center[0],y:frame.center[1],z:frame.center[2]},rotation};
+  }));
+  return createFloorHistory(arenaId,this.moundSnapshot(),[...this.snapshot(),...remains],
+   [...this.archivedOilSnapshot(),...oilMarks]);
+ }
  branchSnapshot(){return this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))}));}
  snapshot(){
   const singles=this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,segmentId:d.segmentId,fighterId:d.fighterId,settled:false,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));
   const branches=this.branchSnapshot().flatMap(b=>b.parts.map(p=>{const f=boneFrame(p.a,p.b);return {id:'branch:'+b.id+':'+p.id,branchId:b.id,segmentId:p.id,settled:b.settled,length:f.length,radius:p.radius,fighterId:b.fighterId,position:{x:f.center[0],y:f.center[1],z:f.center[2]},rotation:capsuleOrientation(f.y)};}));
-  return singles.concat(this.settledSingles.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}})),branches);
+  const fresh=singles.concat(this.settledSingles.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}})),branches);
+  return (this.archiveFloor?.visuals.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}}))??[]).concat(fresh);
  }
- dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.incapacitated=null;}
+ dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.incapacitated=null;this.archiveFloor=null;}
 }
