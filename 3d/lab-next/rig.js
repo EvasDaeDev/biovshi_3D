@@ -1,5 +1,6 @@
 import {advanceCombatStep} from './combat-step.js';
 import {OilMarks} from './oil.js';
+import {loadFloorHistory,saveFloorHistory,clearFloorHistory} from './floor-storage.js';
 import RAPIER from '@rapier';
 import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
@@ -33,7 +34,10 @@ function drawSupport(state){supportGroup.visible=supportDebug.checked;if(!suppor
 }
 const terrainDebug=document.getElementById('terrain-debug'),bodyConeMaterial=new THREE.MeshBasicMaterial({color:0xffca62,wireframe:true});
 const moundMeshes=new Map(),cone=new THREE.ConeGeometry(1,1,14),moundMaterial=new THREE.MeshStandardMaterial({color:0x4d574c,roughness:1,flatShading:true});
-let paused=false,last=null,frameRequest=0,checkSnapshot=true;
+let paused=false,last=null,frameRequest=0,checkSnapshot=true,floorOperation=0;
+const query=new URLSearchParams(location.search);
+const requestedSession=query.get('session');
+const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:'lab-preview';
 const stats=document.getElementById('stats'),floorStatus=document.getElementById('floor-status');
 function scheduleFrame(){if(!frameRequest)frameRequest=requestAnimationFrame(frame);}
 function assertSnapshot(s){
@@ -55,15 +59,44 @@ const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Ar
 addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();clock.reset();last=null;});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
-document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};document.getElementById('reset').onclick=()=>reset();scenario.onchange=()=>reset();
- document.getElementById('next-round').onclick=()=>{
+document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};
+ // Reuse v1's persisted-floor contract: load by session and arena; a plain
+ // Reset is an explicit deletion, while switching scenarios reloads its scope.
+ async function restoreScenario(){
+  const operation=++floorOperation,arena=scenario.value;
+  let saved=null,warning='';
+  try{saved=await loadFloorHistory(floorSession,arena);}
+  catch(error){warning='Хранилище пола недоступно ('+error.message+'). Сцена работает без восстановления.';}
+  if(operation!==floorOperation||arena!==scenario.value)return;
+  reset(saved);
+  if(warning)floorStatus.textContent=warning;
+ }
+ document.getElementById('reset').onclick=async()=>{
+  const operation=++floorOperation,arena=scenario.value;
+  let warning='';
+  try{await clearFloorHistory(floorSession,arena);}
+  catch(error){warning='Сброс выполнен, но удалить сохранённый пол не удалось: '+error.message;}
+  if(operation!==floorOperation||arena!==scenario.value)return;
+  reset();
+  if(warning)floorStatus.textContent=warning;
+ };
+ scenario.onchange=()=>{void restoreScenario();};
+ document.getElementById('next-round').onclick=async()=>{
+  const operation=++floorOperation,arena=scenario.value;
   try{
    const state=core.getSnapshot();
    if(!state.fight.ended)throw new Error('Сначала необходимо завершить бой.');
-   const saved=debris.exportSettledFloor(scenario.value,state.oilMarks);
+   const saved=debris.exportSettledFloor(arena,state.oilMarks);
+   let warning='';
+   try{await saveFloorHistory(floorSession,arena,saved);}
+   catch(error){warning='Следующий раунд запущен, но запись пола не удалась: '+error.message;}
+   if(operation!==floorOperation||arena!==scenario.value)return;
    reset(saved);
-  }catch(error){floorStatus.textContent=error.message;}
+   if(warning)floorStatus.textContent=warning;
+   else floorStatus.textContent+=' Сохранено в IndexedDB ('+floorSession+').';
+  }catch(error){if(operation===floorOperation)floorStatus.textContent=error.message;}
  };
+
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4();
 function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;},paused||document.hidden);const s=core.getSnapshot();if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
@@ -102,4 +135,4 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  stats.dataset.detachedBranches=String(debris.branchSnapshot().length);stats.dataset.branchSegments=String(debris.branchSnapshot().reduce((n,b)=>n+b.parts.length,0));
  stats.dataset.bodyCones=String(debris.moundSnapshot().filter(m=>m.source==='body').length);stats.dataset.settled=String(s.bodyTerrainStates.filter(Boolean).length);stats.dataset.incapacitated=String(s.lifeStates.filter(v=>v==='incapacitated').length);stats.dataset.fallReasons=s.health.map(h=>h.cause??'-').join('/');stats.dataset.lyingBodies=String(debris.bodySnapshot().filter(b=>{const p=b.parts.find(p=>p.id==='pelvis'),c=b.parts.find(p=>p.id==='chest');if(!p||!c)return b.settled;const v=c.a.map((x,i)=>(x+c.b[i]-p.a[i]-p.b[i])*.5);return Math.abs(v[1])<Math.hypot(...v)*.45;}).length);stats.dataset.bodySegments=String(debris.bodySnapshot().reduce((n,b)=>n+b.parts.length,0));stats.dataset.balance=s.balanceStates[0];stats.dataset.steps=String(s.stepCounts[0]);const support=s.supports[0],anchors=s.crawlAnchors[0],traction=s.residualTraction[0];stats.dataset.traction=String(traction?.scale??0);stats.dataset.tractionContacts=String(traction?.contacts.length??0);stats.dataset.planted=String(anchors.filter(a=>a.valid).length);drawSupport(support);stats.dataset.supportCount=String(support.contacts.length);
  document.getElementById('stats').textContent=`Build ${stats.dataset.build} | Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | ${scenario.value==='duel-traits'?'traits '+stats.dataset.traits+' | ':''}strike ${stats.dataset.strike} | ${(scenario.value.startsWith('arena')||scenario.value.startsWith('duel'))?(s.fight.ended?'winner '+(s.fight.winnerId??'draw'):'duel')+' | ':''} ${scenario.value.startsWith('arena')?'active '+stats.dataset.active+' | targets '+stats.dataset.targets+' | tactics '+stats.dataset.tactics+(scenario.value==='arena-vision'?' | seen '+stats.dataset.visible:'')+' | ':''}trauma ${health.trauma}/${health.traumaThreshold} | wounds ${stats.dataset.wounds} | oil ${stats.dataset.oil} | impact ${stats.dataset.impact} | detached ${s.damageStats.detached} | branches ${stats.dataset.detachedBranches} | incapacitated ${stats.dataset.incapacitated} (${stats.dataset.fallReasons}) | lying ${stats.dataset.lyingBodies} | ragdoll ${stats.dataset.ragdollBodies}/${stats.dataset.ragdollJoints} | body cones ${stats.dataset.bodyCones} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]} / ${s.postures[0]} | balance ${stats.dataset.balance} | steps ${stats.dataset.steps} | hop ${s.hopPhases[0]} | support ${support.contacts.length} | planted ${stats.dataset.planted} | drive ${traction?traction.mode+'/'+traction.phase+' '+traction.scale.toFixed(2):'-'} | margin ${support.margin===null?'air':support.margin.toFixed(3)+' m'}`;renderer.render(scene,camera);document.getElementById('stats').dataset.tick=String(s.tick);document.getElementById('stats').dataset.posture=s.postures[0];document.getElementById('stats').dataset.mode=s.mobilityModes[0];document.getElementById('stats').dataset.z=String(s.roots[2]);stats.dataset.hop=String(s.hopHeights[0]);if(document.getElementById('stats').dataset.state!=='running')window.labStartup.ready();scheduleFrame();}catch(e){window.labStartup.fail(e);}}
-window.labStartup.show('Подготовка первого кадра…');reset();
+window.labStartup.show('Восстановление пола арены…');void restoreScenario().catch(window.labStartup.fail);
