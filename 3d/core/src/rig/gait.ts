@@ -1,5 +1,5 @@
 import type {AuthoredMotion} from './authored-motion.js';
-import {EXPRESSION_SLOTS,PoseTransition} from '../animation/pose-transition.js';
+import {EXPRESSION_SLOTS,PoseTransition,type ExpressionSlot} from '../animation/pose-transition.js';
 import type { Vec3 } from '../types.js';
 import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
@@ -26,9 +26,9 @@ export class PatientGait {
   private expression=new PoseTransition();
   private expressive:ReadonlyMap<string,RigPose>|undefined;
   /** Resolve expressive targets once per fixed tick. IK still owns lengths and supports. */
-  advanceExpression(dt:number,hurt=false):void{
+  advanceExpression(dt:number,hurt=false,intent:'stance'|'aggressive'|'stalk'|'freeze'='stance'):void{
     if(!this.authored)return;
-    const slot=hurt?'hurt':this.hopSample.phase==='flight'?'jump':this.mobility.mode==='single-support'?'balance':'stance';
+    const slot:ExpressionSlot=hurt?'hurt':this.hopSample.phase==='flight'?'jump':this.mobility.mode==='single-support'?'balance':this.authored[intent]?intent:'stance';
     this.expression.advance(slot,dt);
     const weights=this.expression.weights,base=this.authored.stance;
     const mixed=new Map<string,RigPose>();
@@ -193,7 +193,8 @@ export class PatientGait {
     const tilt=(part:RigPose|undefined)=>part?Math.atan2(part.b[2]-part.a[2],part.b[0]-part.a[0]):0;
     const hipTwist=(this.groundedStride?.24:.11)*moving*gaitPhase+.6*tilt(baseHip);
     const chestTwist=-(this.groundedStride?.37:.16)*moving*gaitPhase+.65*tilt(baseChest);
-    const hipRoll=.025*sway+.035*moving*gaitPhase,chestRoll=-roll;
+    const authoredRoll=(p:RigPose|undefined)=>p?Math.atan2(p.b[1]-p.a[1],Math.hypot(p.b[0]-p.a[0],p.b[2]-p.a[2])):0;
+    const hipRoll=.025*sway+.035*moving*gaitPhase+.45*authoredRoll(poseHip),chestRoll=-roll+.65*authoredRoll(baseChest);
     const across=(center:Vec3,half:number,twist:number,tilt:number,side:number):Vec3=>add(center,[side*half*Math.cos(twist)*Math.cos(tilt),side*half*Math.sin(tilt),side*half*Math.sin(twist)*Math.cos(tilt)]);
     const pelvisCenter=add(hip,[0,-.055,0]),shoulderCenter=add(chestPose,[0,.05,0]);
     const hipAt=(side:number)=>across(pelvisCenter,.17,hipTwist,hipRoll,side);
@@ -205,7 +206,9 @@ export class PatientGait {
     const put=(key:string,a:Vec3,b:Vec3=a)=>points.set(key,[world(a),world(b)]);
     put('pelvis',hipAt(-1),hipAt(1));
     put('abdomen',add(hip,[0,.035,0]),add(chestPose,[0,-.095,0]));
-    put('chest',shoulderAt(-1),shoulderAt(1));const looking=add(head,[Math.sin(look)*.09,0,-Math.abs(look)*.04]);put('neck',chestPose,add(looking,[0,-.14,0]));put('head',looking);
+    put('chest',shoulderAt(-1),shoulderAt(1));const referenceHead=expressive?.get('head'),referenceChest=baseChest?center(baseChest):undefined;
+    const headBias:Vec3=referenceHead&&referenceChest?[Math.max(-.085,Math.min(.085,(referenceHead.a[0]-referenceChest[0])*.55)),0,Math.max(-.10,Math.min(.10,(referenceHead.a[2]-referenceChest[2])*.55))]:[0,0,0];
+    const looking=add(add(head,headBias),[Math.sin(look)*.09,0,-Math.abs(look)*.04]);put('neck',chestPose,add(looking,[0,-.14,0]));put('head',looking);
     for(let i=0;i<2;i++){
       const side=i===0?-1:1,key=i===0?'L.':'R.',hipRoot=hipAt(side),shoulder=shoulderAt(side);
       const foot=local(this.feet[i]!.plant);

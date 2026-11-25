@@ -1,6 +1,6 @@
-export const EXPRESSION_SLOTS = ['stance','balance','hurt','jump'] as const;
+export const EXPRESSION_SLOTS = ['stance','balance','hurt','jump','aggressive','stalk','freeze'] as const;
 export type ExpressionSlot = typeof EXPRESSION_SLOTS[number];
-const duration: Record<ExpressionSlot,number> = {stance:.45,balance:.30,hurt:.10,jump:.15};
+const duration: Record<ExpressionSlot,number> = {stance:.45,balance:.30,hurt:.10,jump:.15,aggressive:.28,stalk:.38,freeze:.32};
 const unit=(slot:ExpressionSlot):number[]=>EXPRESSION_SLOTS.map(s=>Number(s===slot));
 /** Advance exactly once per simulation tick, never from a pose query.
  * Rebase interrupted transitions on their currently evaluated weights. */

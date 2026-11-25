@@ -52,3 +52,9 @@ M2: `FixedClock.alpha` и история двух завершённых тик�
 ## P3 mixed-posture blocker during P4-M (26.11.2026)
 
 [CI 45714451513](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45714451513) confirmed success for camera commit f15a8d3. Before M3, address user-reported inability to hit crawling patients: low-victim kick target list, real preview during approach and braking before windup. See [P3_PRONE_COMBAT.md](P3_PRONE_COMBAT.md). New tests await CI; M3 not started. No final visual polish.
+
+## M3 — первая библиотека тревожных силуэтов (26.11.2026)
+
+[CI 45715314149](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45715314149) успешен для mixed-posture fix 3932e89. Утверждено отдельное направление M5 для низких целей: перенос веса и наклон корпуса, удары сверху вниз, низкие пинки, реальные опоры и контакт. Не вводить искусственный урон.
+
+Новые оригинальные локальные вращения в `animation/horror-poses.ts` и `patient-poses.json`: relaxed stance, aggressive, stalk, freeze. Убрана симметричная боевая готовность из исходной стойки, руки неодинаковы, корпус наклонён, плечи и голова имеют разные оси. Все четыре доступны редактору; формат schemaVersion 1 сохранён, неполные старые JSON читаются и переходы на отсутствующие состояния возвращаются в stance. Веса семи expressive slots обновляются в фиксированном тике. На ринге provisional intent выбирается из текущих тактических состояний и скорости/команд: наблюдение, pursuit, strike. Это не новая логика хищника, M7 ещё впереди. Авторский наклон таза/плеч и ограниченное смещение головы теперь используются в gait, а IK сохраняет длины и действующие опоры. Остальные шесть старых поз (balance/kick/punch/headbutt/hurt/jump) пока оставлены, их переработка — следующие инкременты. Новые регрессии совместимости, выраженных отличий и длины; CI и ручная проверка, performance pending. Полная клиентская сборка не запускалась.

@@ -1,3 +1,4 @@
+import {HORROR_POSES} from '../animation/horror-poses.js';
 import {PATIENT_HEIGHT} from './patient-scale.js';
 import {LAB_SEGMENTS} from './anatomy.js';
 import {PatientGait,type RigPose} from './gait.js';
@@ -11,7 +12,7 @@ const height=Math.max(...editorEnvelope.map(p=>Math.max(p.a[1],p.b[1])+p.radius)
 const editorScale=PATIENT_HEIGHT/height;
 
 export const POSE_SLOTS={
- stance:'Стойка',balance:'Баланс на одной ноге',kick:'Пинок',punch:'Удар рукой',
+ stance:'Расслабленная стойка',aggressive:'Напряжённая готовность',stalk:'Скрытное сближение',freeze:'Замирание',balance:'Баланс на одной ноге',kick:'Пинок',punch:'Удар рукой',
  headbutt:'Удар головой',hurt:'Получение урона',jump:'Прыжок',
 } as const;
 export type PoseSlot=keyof typeof POSE_SLOTS;
@@ -29,7 +30,7 @@ export interface PoseDocument{
 
 // Joint rotations in radians relative to the procedural standing skeleton.
 const rotations:Record<PoseSlot,Record<string,Vec3>>={
- stance:{},
+ ...HORROR_POSES,
  balance:{'R.upperLeg':[.85,0,.18],'R.lowerLeg':[-1.25,0,0],'L.upperArm':[.15,0,-1.15],'R.upperArm':[.3,0,1.05]},
  kick:{'L.upperLeg':[1.42,.16,-.12],'L.lowerLeg':[-.18,0,0],'R.upperArm':[.35,0,.7],chest:[-.18,.22,.13]},
  punch:{chest:[-.12,.48,0],'R.upperArm':[1.36,-.12,.16],'R.lowerArm':[.3,0,0],'L.lowerArm':[1.35,0,0]},

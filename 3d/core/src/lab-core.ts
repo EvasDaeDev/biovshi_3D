@@ -513,7 +513,9 @@ export class LabSimulationCore implements SimulationCore {
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
       a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
-      a.gait.advanceExpression(dt,a.impact.active);
+      const mode=a.tactics.snapshot().mode;
+      const intent=this.ringCombat&&!this.fightEnded?(a.strike.punch?'aggressive':mode==='search'||mode==='memory'?(Math.abs(a.speed)<.055?'freeze':'stalk'):mode==='pursuit'?(Math.abs(c?.forward??0)<.08?'freeze':c?.sprint?'aggressive':'stalk'):'stance'):'stance';
+      a.gait.advanceExpression(dt,a.impact.active,intent);
     }
     this.tick++;
     if(previous)this.resolveStrikes(previous);
