@@ -2,7 +2,7 @@ import { FIXED_DT } from '../fixed-clock.js';
 import type { PatientTraits } from './patient-profile.js';
 const ticks=(s:number)=>Math.ceil(s/FIXED_DT-1e-9);
 export interface Opponent {readonly id:number;readonly distance:number}
-export interface TacticalSnapshot {readonly targetId:number|null;readonly commitmentUntil:number;readonly mode:'search'|'pursuit'|'retreat'|'strike'|'inactive';readonly retaliationId:number|null}
+export interface TacticalSnapshot {readonly targetId:number|null;readonly commitmentUntil:number;readonly mode:'search'|'pursuit'|'retreat'|'strike'|'inactive'|'relocate'|'pincer';readonly retaliationId:number|null}
 const nearest=(opponents:readonly Opponent[]):Opponent|undefined=>opponents.reduce<Opponent|undefined>((best,o)=>!best||o.distance<best.distance||(o.distance===best.distance&&o.id<best.id)?o:best,undefined);
 /** Bounded, imperfect attention: lock a target, notice a new attacker with
  * a delay, and briefly back away after a hard hit. No omniscient path search. */

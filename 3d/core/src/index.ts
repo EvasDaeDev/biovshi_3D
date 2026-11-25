@@ -23,3 +23,5 @@ export type {PatientProfile,PatientTraits} from './combat/patient-profile.js';
 
 export {CombatTactics} from './combat/tactics.js';
 export type {TacticalSnapshot,Opponent} from './combat/tactics.js';
+
+export {EscapeState,ESCAPE,tacticalEscape,pincerThreats,pincerGoal} from './combat/escape.js';
