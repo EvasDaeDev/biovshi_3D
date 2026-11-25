@@ -11,16 +11,28 @@ export type PoseSlot=keyof typeof POSE_SLOTS;
 export interface PoseSegment extends RigPose{
  readonly length:number;
  readonly enabled:boolean;
+ readonly offset?:Vec3;
+ readonly rotation?:Vec3;
 }
 export interface PoseDocument{
  readonly schemaVersion:1;
  readonly slots:Partial<Record<PoseSlot,readonly PoseSegment[]>>;
 }
 
-export function referencePose():PoseSegment[]{
+// Joint rotations in radians relative to the procedural standing skeleton.
+const rotations:Record<PoseSlot,Record<string,Vec3>>={
+ stance:{},
+ balance:{'R.upperLeg':[.85,0,.18],'R.lowerLeg':[-1.25,0,0],'L.upperArm':[.15,0,-1.15],'R.upperArm':[.3,0,1.05]},
+ kick:{'L.upperLeg':[1.42,.16,-.12],'L.lowerLeg':[-.18,0,0],'R.upperArm':[.35,0,.7],chest:[-.18,.22,.13]},
+ punch:{chest:[-.12,.48,0],'R.upperArm':[1.36,-.12,.16],'R.lowerArm':[.3,0,0],'L.lowerArm':[1.35,0,0]},
+ headbutt:{abdomen:[-.49,.1,0],neck:[-.34,0,.08],'L.upperArm':[-.42,0,-.27],'R.upperArm':[-.55,0,.25]},
+ hurt:{abdomen:[.45,-.22,.28],neck:[.32,.18,-.24],'L.upperArm':[.35,0,-.8],'R.lowerArm':[1.28,0,0]},
+ jump:{'L.upperLeg':[.96,0,-.18],'R.upperLeg':[.52,0,.19],'L.lowerLeg':[-1.25,0,0],'R.lowerLeg':[-.97,0,0],'L.upperArm':[1.6,0,-.61],'R.upperArm':[1.13,0,.58]},
+};
+export function referencePose(slot:PoseSlot='stance'):PoseSegment[]{
  return new PatientGait([0,0,0]).pose(0,[0,0,0],0,0).map(p=>{
   const segment=LAB_SEGMENTS.find(s=>s.id===p.id)!;
-  return {...p,length:segment.nominalLength,enabled:true};
+  return {...p,length:segment.nominalLength,enabled:true,rotation:rotations[slot][p.id]??[0,0,0],offset:slot==='jump'&&p.id==='pelvis'?[0,.32,0]:[0,0,0]};
  });
 }
 
@@ -46,7 +58,7 @@ export function readPoseDocument(value:unknown):PoseDocument{
     !number(p.length,def.nominalLength===0?0:.02,def.nominalLength===0?0:1.5)||
     typeof p.enabled!=='boolean'||(def.protected&&!p.enabled))
     throw new RangeError('Некорректный сегмент '+def.id);
-   return {id:def.id,a:point(p.a),b:point(p.b),radius:p.radius,length:p.length,enabled:p.enabled};
+   return {id:def.id,a:point(p.a),b:point(p.b),radius:p.radius,length:p.length,enabled:p.enabled,offset:point(p.offset??[0,0,0]),rotation:point(p.rotation??[0,0,0])};
   });
  }
  return {schemaVersion:1,slots};

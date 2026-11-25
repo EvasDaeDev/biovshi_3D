@@ -1,3 +1,4 @@
+import {TransformControls} from './vendor/TransformControls.js';
 import * as THREE from 'three';
 import {LAB_SEGMENTS} from '../core/dist/rig/anatomy.js';
 import {buildEditedPose,POSE_SLOTS,readPoseDocument,referencePose} from '../core/dist/rig/pose-editor.js';
@@ -20,7 +21,7 @@ try{
  if(saved)data=readPoseDocument(JSON.parse(saved));
  status.textContent='Правки сохраняются в этом браузере.';
 }catch(error){status.textContent='Исходная поза загружена. Черновик недоступен.';}
-const current=()=>data.slots[poseSelect.value]??referencePose();
+const current=()=>data.slots[poseSelect.value]??referencePose(poseSelect.value);
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x101715);
@@ -44,17 +45,44 @@ function draw(){
  );
  camera.lookAt(target);renderer.render(scene,camera);
 }
+const controls=new TransformControls(camera,renderer.domElement),pickable=[];
+controls.setSize(.72);scene.add(controls.getHelper());
+controls.addEventListener('change',draw);
+controls.addEventListener('mouseUp',()=>{
+ const node=controls.object;
+ const offset=node.position.clone().sub(node.userData.origin).toArray();
+ const {x,y,z}=node.rotation;
+ queueMicrotask(()=>edit({offset,rotation:[x,y,z]}));
+});
+for(const mode of ['translate','rotate'])element(mode).onclick=()=>{
+ controls.setMode(mode);
+ for(const id of ['translate','rotate'])element(id).setAttribute('aria-pressed',String(id===mode));
+ draw();
+};
 function renderPose(){
- for(const mesh of [...actor.children]){actor.remove(mesh);mesh.geometry.dispose();}
- for(const part of buildEditedPose(current())){
+ controls.detach();
+ actor.traverse(obj=>obj.geometry?.dispose());actor.clear();pickable.length=0;
+ const parts=current(),settings=new Map(parts.map(p=>[p.id,p]));
+ const nodes=new Map(),anchors=new Map();
+ for(const part of buildEditedPose(parts)){
   const a=new THREE.Vector3(...part.a),b=new THREE.Vector3(...part.b),axis=b.clone().sub(a);
+  const anchor=['pelvis','chest'].includes(part.id)?a.clone().lerp(b,.5):a.clone();
+  const parent=LAB_SEGMENTS.find(def=>def.id===part.id).parent;
+  const joint=new THREE.Group(),params=settings.get(part.id);
+  joint.position.copy(anchor);
+  if(parent)joint.position.sub(anchors.get(parent));
+  joint.userData.origin=joint.position.clone();
+  joint.position.add(new THREE.Vector3(...(params.offset??[0,0,0])));
+  joint.rotation.set(...(params.rotation??[0,0,0]));
+  (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
   const geometry=axis.lengthSq()>1e-12?new THREE.CapsuleGeometry(part.radius,axis.length(),6,12):new THREE.SphereGeometry(part.radius,18,12);
   const mesh=new THREE.Mesh(geometry,part.id===segmentSelect.value?selected:primary);
-  mesh.userData.segment=part.id;mesh.position.copy(a).add(b).multiplyScalar(.5);
+  mesh.userData.segment=part.id;mesh.position.copy(a).lerp(b,.5).sub(anchor);
   if(axis.lengthSq()>1e-12)mesh.quaternion.setFromUnitVectors(up,axis.normalize());
-  actor.add(mesh);
+  joint.add(mesh);pickable.push(mesh);
  }
- workspace.dataset.segments=String(actor.children.length);
+ const node=nodes.get(segmentSelect.value);if(node)controls.attach(node);
+ workspace.dataset.segments=String(pickable.length);
  draw();
 }
 function refresh(){
@@ -100,7 +128,7 @@ for(const field of ['a','b']){
  element('coords').append(group);
 }
 poseSelect.onchange=()=>{
- status.textContent=data.slots[poseSelect.value]?'Поза из черновика.':'Исходная стойка для новой позы.';
+ status.textContent=data.slots[poseSelect.value]?'Поза из черновика.':'Загружена исходная поза.';
  refresh();
 };
 segmentSelect.onchange=refresh;
@@ -137,7 +165,7 @@ for(const button of views)button.onclick=()=>{
 };
 let pointer=null;
 workspace.onpointerdown=e=>{
- if(e.button!==0||pointer)return;
+ if(e.button!==0||pointer||controls.dragging)return;
  pointer={id:e.pointerId,x:e.clientX,y:e.clientY,travel:0};
  workspace.setPointerCapture(e.pointerId);
 };
@@ -155,7 +183,7 @@ workspace.onpointerup=e=>{
  if(pointer.travel<4){
   const rect=workspace.getBoundingClientRect();
   raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,1-(e.clientY-rect.top)/rect.height*2),camera);
-  const [hit]=raycaster.intersectObjects(actor.children);
+  const [hit]=raycaster.intersectObjects(pickable,false);
   if(hit){segmentSelect.value=hit.object.userData.segment;refresh();}
  }
  pointer=null;

@@ -23,6 +23,7 @@ scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.D
 const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,grid);
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
+const scaleMaterial=new THREE.LineBasicMaterial({color:0x617368});
 const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
 const routeDebug=document.getElementById('route-debug'),routeLines=[];
 const visionDebug=document.getElementById('vision-debug'),visionArrows=[];
@@ -87,7 +88,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const location=config.location??null;
  patientCount.disabled=!selectedLocation();
  document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
-  ?'Бой пациентов под управлением ИИ.':'W/S — движение, A/D — поворот, Shift — бег.';
+  ?'Ринг ⌀ 5 м · деление 1 м · пациент в исходной стойке ≈ 2,03 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег.';
  floor.visible=grid.visible=location?.shape!=='circle';
  camera.position.set(...(location?.shape==='circle'?[4,5.4,6]:[8,6,9]));
  camera.lookAt(0,location?.shape==='circle'?.55:1,0);
@@ -95,6 +96,13 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   const mat=floor.material;
   const surface=new THREE.Mesh(new THREE.CircleGeometry(location.width/2,location.boundary.length),mat);
   surface.rotation.x=-Math.PI/2;scene.add(surface);wallMeshes.push(surface);
+  const radius=location.width/2;
+  const marks=[-radius,.003,0,radius,.003,0];
+  for(let x=-radius;x<=radius;x+=1)marks.push(x,.003,-.09,x,.003,.09);
+  const scaleGeometry=new THREE.BufferGeometry();
+  scaleGeometry.setAttribute('position',new THREE.Float32BufferAttribute(marks,3));
+  const scaleLine=new THREE.LineSegments(scaleGeometry,scaleMaterial);
+  scene.add(scaleLine);wallMeshes.push(scaleLine);
  }
  if(location){
   for(const object of location.objects){

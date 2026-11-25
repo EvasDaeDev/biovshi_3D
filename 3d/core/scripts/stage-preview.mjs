@@ -16,6 +16,7 @@ await writeFile(resolve(lab,'location-catalog.json'),JSON.stringify(catalog));
 await mkdir(vendor,{recursive:true});
 for(const file of ['three.module.js','three.core.js'])await cp(resolve(core,'node_modules/three/build',file),resolve(vendor,file));
 await cp(resolve(core,'node_modules/@dimforge/rapier3d-compat/rapier.es.js'),resolve(vendor,'rapier.es.js'));
+await cp(resolve(core,'node_modules/three/examples/jsm/controls/TransformControls.js'),resolve(vendor,'TransformControls.js'));
 await cp(resolve(core,'node_modules/three/LICENSE'),resolve(vendor,'three-LICENSE.txt'));
 // All browser module URLs belong to a single content-addressed release.
 // Keep stable HTML entry points; copy the complete import graph together.

@@ -28,7 +28,7 @@
    <label>Сегмент <select id="segment"></select></label>
    <label class="check"><input type="checkbox" id="enabled"> Оставить сегмент</label>
    <div class="size"><label>Длина, м <input type="number" id="length" min=".02" max="1.5" step=".01"></label><label>Радиус, м <input type="number" id="radius" min=".01" max=".5" step=".005"></label></div>
-   <h2>Положение</h2>
+   <h2>Положение</h2><div class="actions"><button id="translate" aria-pressed="true">Переместить</button><button id="rotate" aria-pressed="false">Повернуть</button></div>
    <p class="hint" id="coord-hint">Координаты в метрах. Направление задаёт ось капсулы, соединения восстанавливаются по скелету.</p>
    <div id="coords"></div>
    <div class="actions"><button id="reset-pose">Сбросить позу</button></div>
