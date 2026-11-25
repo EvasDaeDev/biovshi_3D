@@ -63,3 +63,28 @@ test('pincer and relocation do not create an impossible goal if all endpoints ar
  assert.equal(escape.choose(153,a,foe,[foe],[foe],true,()=>false),null);
  assert.equal(escape.snapshot().plan,null);
 });
+
+test('anti-stuck relocation is cancelled when the selected opponent changes',()=>{
+ const e=new EscapeState(7,0);
+ for(let i=0;i<153;i++)e.observe(0,true,false,true);
+ const prior=e.choose(153,a,foe,[foe],[foe],true);
+ assert.equal(prior?.mode,'relocate');
+ // A persistent target keeps its previously committed movement goal.
+ assert.strictEqual(e.choose(154,a,foe,[foe],[foe],true),prior);
+ const replacement={...foe,id:3};
+ assert.equal(e.choose(155,a,replacement,[replacement],[replacement],true),null);
+ assert.equal(e.snapshot().plan,null);
+});
+
+test('pincer escape preserves threat-set identity across sorting and drops a stale pair',()=>{
+ const pair=[{...foe,x:-.9,z:-.65,yaw:Math.atan2(.9,-.65)},{...foe,id:2,x:.9,z:-.65,yaw:Math.atan2(-.9,-.65)}];
+ assert.equal(pincerThreats(a,pair).length,2);
+ const e=new EscapeState(7,0),prior=e.choose(0,a,pair[0],pair,pair,true);
+ assert.equal(prior?.mode,'pincer');
+ // Sorting by distance/order is not a reason to interrupt a valid manoeuvre.
+ assert.strictEqual(e.choose(1,a,pair[0],[pair[1],pair[0]],pair,true),prior);
+ const switched=[pair[0],{...pair[1],id:3}];
+ assert.equal(pincerThreats(a,switched).length,2);
+ assert.equal(e.choose(2,a,pair[0],switched,switched,true),null);
+ assert.equal(e.snapshot().plan,null);
+});
