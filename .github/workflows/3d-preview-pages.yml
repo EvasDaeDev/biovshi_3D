@@ -27,6 +27,13 @@ jobs:
         run: node 3d/core/scripts/benchmark-ragdoll.mjs
       - name: Audit full combat cycles with Rapier (six seeded cases)
         run: node 3d/core/scripts/audit-combat-cycle.mjs
+      - name: Upload P3 integrated combat audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combat-audit
+          path: 3d/core/combat-audit-report.json
+          if-no-files-found: warn
       - run: npm --prefix 3d/core run preview:stage
       - run: npx --prefix 3d/core playwright install --with-deps chromium
       - run: npm --prefix 3d/core run preview:smoke
