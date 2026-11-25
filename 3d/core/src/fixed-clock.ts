@@ -2,6 +2,8 @@
 export const FIXED_DT = 1 / 60;
 export class FixedClock {
   private debt = 0;
+  /** Fraction from the previous completed simulation tick to the current one. */
+  get alpha():number { return Math.min(1,Math.max(0,this.debt/FIXED_DT)); }
   reset(): void { this.debt = 0; }
   advance(elapsed: number, step: (dt: number) => void, paused = false): number {
     if (!Number.isFinite(elapsed) || elapsed < 0) throw new RangeError('Invalid elapsed time');

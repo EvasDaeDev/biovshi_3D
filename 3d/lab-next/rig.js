@@ -47,6 +47,9 @@ function drawSupport(state){supportGroup.visible=supportDebug.checked;if(!suppor
 const terrainDebug=document.getElementById('terrain-debug'),bodyConeMaterial=new THREE.MeshBasicMaterial({color:0xffca62,wireframe:true});
 const moundMeshes=new Map(),cone=new THREE.ConeGeometry(1,1,14),moundMaterial=new THREE.MeshStandardMaterial({color:0x4d574c,roughness:1,flatShading:true});
 let paused=false,last=null,frameRequest=0,checkSnapshot=true,floorOperation=0;
+let previousFrame=null,currentFrame=null;
+const captureFrame=()=>({state:core.getSnapshot(),debris:debris.snapshot()});
+function resetFrameHistory(){previousFrame=currentFrame=captureFrame();}
 const query=new URLSearchParams(location.search);
 const requestedSession=query.get('session');
 const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:'lab-preview';
@@ -126,7 +129,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -134,7 +137,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
 const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
-addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();clock.reset();last=null;});
+addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();clock.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight'),jump:!!has('Space')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
 document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};
@@ -188,16 +191,38 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
  };
 
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
-const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4();
-function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;},paused||document.hidden);const s=core.getSnapshot();if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
+const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4(),priorRotation=new THREE.Quaternion();
+function frameRotation(f,out){return out.setFromRotationMatrix(basis.makeBasis(v(f.x),v(f.y),v(f.z)));}
+function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{previousFrame=currentFrame;advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();},paused||document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=paused?1:clock.alpha;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;
- s.rigSegments.forEach((parts,i)=>parts.forEach(p=>{const key=s.fighterIds[i]+':'+p.id;const f=boneFrame(p.a,p.b,[Math.sin(s.roots[i*4+3]),0,-Math.cos(s.roots[i*4+3])]);let m=meshes.get(key);if(!m){m=new THREE.Mesh(f.length>1e-8?cylinder:sphere,materials[i===0?0:1]);meshes.set(key,m);scene.add(m);}m.visible=true;m.position.copy(v(f.center));if(f.length>1e-8){basis.makeBasis(v(f.x),v(f.y),v(f.z));m.quaternion.setFromRotationMatrix(basis);m.scale.set(p.radius,f.length,p.radius);}else m.scale.setScalar(p.radius);}));
- const falling=debris.snapshot(),active=new Set(falling.map(d=>d.id));
+ s.rigSegments.forEach((parts,i)=>{
+  const j=prior.fighterIds.indexOf(s.fighterIds[i]),oldParts=j>=0?prior.rigSegments[j]:null;
+  // Never resurrect severed anatomy or interpolate across an ownership handoff.
+  const compatible=oldParts&&oldParts.length===parts.length&&prior.lifeStates[j]===s.lifeStates[i]&&parts.every(p=>oldParts.some(q=>q.id===p.id));
+  for(const p of parts){
+   const key=s.fighterIds[i]+':'+p.id,f=boneFrame(p.a,p.b,[Math.sin(s.roots[i*4+3]),0,-Math.cos(s.roots[i*4+3])]);
+   let m=meshes.get(key);if(!m){m=new THREE.Mesh(f.length>1e-8?cylinder:sphere,materials[i===0?0:1]);meshes.set(key,m);scene.add(m);}
+   m.visible=true;m.position.copy(v(f.center));
+   if(f.length>1e-8){frameRotation(f,m.quaternion);m.scale.set(p.radius,f.length,p.radius);}else m.scale.setScalar(p.radius);
+   const old=compatible&&alpha<1?oldParts.find(q=>q.id===p.id):null;
+   if(old){
+    const o=boneFrame(old.a,old.b,[Math.sin(prior.roots[j*4+3]),0,-Math.cos(prior.roots[j*4+3])]);
+    m.position.copy(v(o.center)).lerp(v(f.center),alpha);
+    if(f.length>1e-8&&o.length>1e-8){frameRotation(o,priorRotation);m.quaternion.slerp(priorRotation,1-alpha);}
+   }
+  }
+ });
+ const falling=currentFrame.debris,oldDebris=new Map(previousFrame.debris.map(d=>[d.id,d])),active=new Set(falling.map(d=>d.id));
  for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);debrisMeshes.delete(id);}
  for(const d of falling){
   let m=debrisMeshes.get(d.id);
   if(!m){m=new THREE.Mesh(d.length?cylinder:sphere,materials[d.fighterId===0?0:1]);debrisMeshes.set(d.id,m);scene.add(m);if(d.length)m.scale.set(d.radius,d.length,d.radius);else m.scale.setScalar(d.radius);}
   m.position.set(d.position.x,d.position.y,d.position.z);m.quaternion.set(d.rotation.x,d.rotation.y,d.rotation.z,d.rotation.w);
+  const old=oldDebris.get(d.id);
+  if(old&&old.settled===d.settled&&alpha<1){
+   m.position.set(old.position.x,old.position.y,old.position.z).lerp(new THREE.Vector3(d.position.x,d.position.y,d.position.z),alpha);
+   priorRotation.set(old.rotation.x,old.rotation.y,old.rotation.z,old.rotation.w);m.quaternion.slerp(priorRotation,1-alpha);
+  }
  }
  for(const d of debris.moundSnapshot()){
   let m=moundMeshes.get(d.id);if(!m){m=new THREE.Mesh(cone,d.source==='body'||d.source==='branch'||d.source==='segment'?bodyConeMaterial:moundMaterial);m.position.set(d.x,d.height/2,d.z);m.scale.set(d.radius,d.height,d.radius);scene.add(m);moundMeshes.set(d.id,m);}m.visible=(d.source!=='body'&&d.source!=='branch'&&d.source!=='segment')||terrainDebug.checked;

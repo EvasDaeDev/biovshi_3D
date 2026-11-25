@@ -1,4 +1,5 @@
 import type {AuthoredMotion} from './authored-motion.js';
+import {EXPRESSION_SLOTS,PoseTransition} from '../animation/pose-transition.js';
 import type { Vec3 } from '../types.js';
 import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
@@ -22,6 +23,28 @@ export class PatientGait {
   private moveAmount=0; private next=0;private stepWait=0;private steps=0;private runAmount=0;private signedSpeed=0;
   get stepCount():number{return this.steps;}
   get footStates(){return this.feet.map(f=>({moving:f.moving,target:[...f.target] as Vec3,point:[...f.plant] as Vec3}));}
+  private expression=new PoseTransition();
+  private expressive:ReadonlyMap<string,RigPose>|undefined;
+  /** Resolve expressive targets once per fixed tick. IK still owns lengths and supports. */
+  advanceExpression(dt:number,hurt=false):void{
+    if(!this.authored)return;
+    const slot=hurt?'hurt':this.hopSample.phase==='flight'?'jump':this.mobility.mode==='single-support'?'balance':'stance';
+    this.expression.advance(slot,dt);
+    const weights=this.expression.weights,base=this.authored.stance;
+    const mixed=new Map<string,RigPose>();
+    for(const def of LAB_SEGMENTS){
+      const fallback=base?.get(def.id);
+      const a:[number,number,number]=[0,0,0],b:[number,number,number]=[0,0,0];let weight=0,radius=def.radius;
+      for(let i=0;i<EXPRESSION_SLOTS.length;i++){
+        const w=weights[i]!,part=this.authored[EXPRESSION_SLOTS[i]!]?.get(def.id)??fallback;
+        if(!part||w===0)continue;
+        for(const axis of [0,1,2] as const){a[axis]+=part.a[axis]*w;b[axis]+=part.b[axis]*w;}
+        weight+=w;radius=part.radius;
+      }
+      if(weight>0)mixed.set(def.id,{id:def.id,a:[a[0]/weight,a[1]/weight,a[2]/weight],b:[b[0]/weight,b[1]/weight,b[2]/weight],radius});
+    }
+    this.expressive=mixed;
+  }
   private supportDrop=0;
   private hop:HopCycle;
   private leap=new HopCycle(.18,.42);
@@ -77,7 +100,7 @@ export class PatientGait {
       const x=reference?side*.10+reference[0]*.4:side*.18,z=reference?reference[2]*.4:0;
       const p=add(root,[Math.cos(yaw)*x-Math.sin(yaw)*z,FOOT_RADIUS,Math.sin(yaw)*x+Math.cos(yaw)*z]);
       return {plant:p,start:p,target:p,phase:0,moving:false,duration:.32,lift:.085};};
-    this.feet=[foot(-1),foot(1)];
+    this.feet=[foot(-1),foot(1)];this.expressive=authored?.stance;
   }
   advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false):void{
     this.mobility=mobility;this.active=active;this.ground=ground;
@@ -149,7 +172,7 @@ export class PatientGait {
       }
     }
   }
-  pose(id:number,root:Vec3,yaw:number,t:number,hurt=false,look=0):readonly RigPose[]{
+  pose(id:number,root:Vec3,yaw:number,t:number,_hurt=false,look=0):readonly RigPose[]{
     const moving=this.moveAmount,sway=Math.sin(t*.88+id*1.4),sway2=Math.sin(t*1.37+id*.9),breathing=Math.sin(t*1.95+id*.6);
     const lateral=(.018*sway+.009*sway2)*(1-moving*.42),roll=(.045*Math.sin(t*.88+id*.9)+.019*sway2)*(1-moving*.35);
     const forwardZ=(p:Vec3)=>-Math.sin(yaw)*(p[0]-root[0])+Math.cos(yaw)*(p[2]-root[2]);
@@ -158,8 +181,7 @@ export class PatientGait {
     const preload=this.hopSample.crouch??0;
     const stanceDrop=preload+(this.groundedStride?moving*(.012+.018*this.runAmount):this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0);
     const base=this.authored?.stance;
-    const expressive=hurt?this.authored?.hurt:this.hopSample.phase==='flight'?this.authored?.jump:
-      this.mobility.mode==='single-support'?this.authored?.balance:base;
+    const expressive=this.expressive??base;
     const center=(part:RigPose):Vec3=>mix(part.a,part.b,.5);
     const baseHip=base?.get('pelvis'),baseChest=expressive?.get('chest'),poseHip=expressive?.get('pelvis');
     const spineX=baseChest&&poseHip?Math.max(-.12,Math.min(.12,center(baseChest)[0]-center(poseHip)[0]))*.55:0;
