@@ -60,10 +60,16 @@ addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
 document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};
+ function suspendRound(message){
+  if(frameRequest)cancelAnimationFrame(frameRequest);
+  frameRequest=0;last=null;keys.clear();
+  window.labStartup.show(message);
+ }
  // Reuse v1's persisted-floor contract: load by session and arena; a plain
  // Reset is an explicit deletion, while switching scenarios reloads its scope.
  async function restoreScenario(){
   const operation=++floorOperation,arena=scenario.value;
+  suspendRound('Восстановление состояния арены…');
   let saved=null,warning='';
   try{saved=await loadFloorHistory(floorSession,arena);}
   catch(error){warning='Хранилище пола недоступно ('+error.message+'). Сцена работает без восстановления.';}
@@ -73,6 +79,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
  }
  document.getElementById('reset').onclick=async()=>{
   const operation=++floorOperation,arena=scenario.value;
+  suspendRound('Очистка сохранённого пола…');
   let warning='';
   try{await clearFloorHistory(floorSession,arena);}
   catch(error){warning='Сброс выполнен, но удалить сохранённый пол не удалось: '+error.message;}
@@ -87,6 +94,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
    const state=core.getSnapshot();
    if(!state.fight.ended)throw new Error('Сначала необходимо завершить бой.');
    const saved=debris.exportSettledFloor(arena,state.oilMarks);
+   suspendRound('Сохранение пола перед следующим раундом…');
    let warning='';
    try{await saveFloorHistory(floorSession,arena,saved);}
    catch(error){warning='Следующий раунд запущен, но запись пола не удалась: '+error.message;}
