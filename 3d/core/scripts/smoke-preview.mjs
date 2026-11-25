@@ -106,6 +106,45 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
  const release=await page.locator('#stats').getAttribute('data-build');
  assert.match(release,/^[a-f0-9]{20}$/);
+ // Real IndexedDB persistence across reload, session and arena switches.
+ // A synthetic settled remain avoids spending another 60 seconds waiting for
+ // a complete simulated round just to exercise browser storage.
+ const floorSession='ci-floor-'+release;
+ const floorUrl=base+'/3d/lab-next/rig.html?scenario=one-arm&session='+encodeURIComponent(floorSession);
+ await page.goto(floorUrl,{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='0';},{},{timeout:45000});
+ const archived={
+  schemaVersion:1,arenaId:'one-arm',
+  mounds:[{id:'stored',source:'segment',x:1,z:1,radius:.35,height:.16}],
+  visuals:[{id:1,fighterId:0,segmentId:'L.hand',settled:true,length:0,radius:.08,
+   position:{x:1,y:.08,z:1},rotation:{x:0,y:0,z:0,w:1}}],
+  oilMarks:[{id:1,fighterId:0,tick:12,point:[1,.01,1]}],
+ };
+ await page.evaluate(async({release,session,archived})=>{
+  const storage=await import('/releases/'+release+'/3d/lab-next/floor-storage.js');
+  await storage.saveFloorHistory(session,'one-arm',archived);
+ },{release,session:floorSession,archived});
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
+  return d?.state==='running'&&d.floorVisuals==='1'&&d.floorMounds==='1'&&d.oil==='1'&&d.visibleCones==='0';},{},{timeout:45000});
+ assert.match(await page.locator('#floor-status').innerText(),/Пол сохранён/);
+ await page.locator('#scenario').selectOption('walk');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.floorVisuals==='0');
+ await page.locator('#scenario').selectOption('one-arm');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.floorVisuals==='1');
+ await page.goto(base+'/3d/lab-next/rig.html?scenario=one-arm&session='+encodeURIComponent(floorSession+'-other'),{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='0';},{},{timeout:45000});
+ await page.goto(floorUrl,{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='1';},{},{timeout:45000});
+ await page.locator('#reset').click();
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='0';},{},{timeout:45000});
+ const deleted=await page.evaluate(async({release,session})=>{
+  const storage=await import('/releases/'+release+'/3d/lab-next/floor-storage.js');
+  return await storage.loadFloorHistory(session,'one-arm');
+ },{release,session:floorSession});
+ assert.equal(deleted,null,'clean Reset deletes persisted floor, not only in-memory meshes');
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.floorVisuals==='0';},{},{timeout:45000});
  assert.ok(modules.length>0);assert.ok(modules.every(url=>url.includes('/releases/'+release+'/')),JSON.stringify(modules));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Browser smoke passed: offline modules, WebGL first frame, fixed ticks, pause and reset.');
