@@ -9,7 +9,7 @@ test('P4 original maze 1.3 m corridor remains passable for a 0.5 m root',async()
  const nav=new PolygonNavigation(maze);
  assert.equal(nav.routePad,.55);
  assert.equal(new ArenaNavigation().routePad,.65,'P3 legacy route clearance must not change');
- const left={x:-2.5,z:.15},right={x:-.5,z:.15};
+ const left={x:-2.25,z:.15},right={x:-.5,z:.15};
  assert.equal(nav.clear(left,right,.65),false,'old 65cm route blocks the gate');
  assert.equal(nav.clear(left,right,nav.routePad),true,'55cm route permits the real 1.3m gate');
  const route=new RouteState();
