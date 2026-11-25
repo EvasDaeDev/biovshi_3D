@@ -129,7 +129,7 @@ export class LabSimulationCore implements SimulationCore {
 
   private actorPose(a:Actor):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
-    const pose=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,a.impact.active,a.perception.gaze(a.yaw)-a.yaw).filter(p=>a.segments.includes(p.id));
+    const pose=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,a.impact.active,a.perception.gaze(a.yaw)-a.yaw,this.authored?.stalk?a.impact.reaction:undefined).filter(p=>a.segments.includes(p.id));
     const strike=a.strike.punch;
     const posed=strike&&!a.knockdown.blocked?punchPose(pose,{...strike,aim:this.gaitPoint(strike.aim)},this.tick,this.gaitGround(a),this.authored):pose;
     const world=this.worldPose(posed);
@@ -186,7 +186,7 @@ export class LabSimulationCore implements SimulationCore {
       const source=this.actors.find(v=>v.id===attackerId&&v.id!==a.id);
       let dx=source?a.x-source.x:-Math.sin(a.yaw),dz=source?a.z-source.z:Math.cos(a.yaw);
       if(Math.hypot(dx,dz)<1e-8){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
-      a.impact.hit(segmentId,dx,dz);
+      a.impact.hit(segmentId,dx,dz,result.critical);
     }
     return true;
   }
@@ -525,7 +525,7 @@ export class LabSimulationCore implements SimulationCore {
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
-      const parts=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
+      const parts=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,false,this.authored?.stalk?a.perception.gaze(a.yaw)-a.yaw:0,this.authored?.stalk?a.impact.reaction:undefined).filter(p=>a.segments.includes(p.id));
       const world=this.worldPose(parts);
       const support=analyzeSupport(this.gradeContact?.(world,a.baseY)??world,(x,z)=>this.ground(a,x,z));
       if(a.knockdown.observe(displacement,support.margin,true)){
