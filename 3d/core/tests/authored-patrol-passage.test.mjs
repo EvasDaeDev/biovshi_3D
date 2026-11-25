@@ -18,6 +18,18 @@ test('P4 original maze 1.3 m corridor remains passable for a 0.5 m root',async()
  assert.ok(gap(moved,left)>.35,'root must be able to advance into the real gate');
  assert.equal(nav.clear(moved,moved,.49),true);
 });
+test('P4 ward corridor routes toward the observed remaining opponent',async()=>{
+ const {ward}=await buildLocationCatalog(),nav=new PolygonNavigation(ward);
+ const stranded={x:-2.76568913,z:-2.31573462},opponent={x:-2.07119060,z:-.82586801};
+ assert.equal(nav.clear(stranded,stranded,.49),true);
+ const path=nav.plan(stranded,opponent,nav.routePad);
+ assert.ok(path.length>=1,'the ward route must not vanish');
+ assert.ok(gap(path.at(-1),opponent)<.45,'route ends near actual opponent');
+ const waypoint=new RouteState().waypoint(nav,stranded,opponent,3600);
+ const moved=nav.move(stranded,waypoint,.5);
+ assert.ok(gap(moved,stranded)>.005,'ward root must leave its measured stuck position');
+ assert.equal(nav.clear(moved,moved,.49),true);
+});
 test('P4 reuses only reachable original authored patrol points and renews goals',()=>{
  const p=new PatientPerception(19,1),here={x:-3,z:0};
  const legacy=[{x:1,z:-1},{x:-2,z:.4},{x:2,z:1}];
