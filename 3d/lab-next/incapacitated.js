@@ -4,7 +4,7 @@ import {createRagdoll,ragdollPose,ragdollMotion,removeRagdoll,relaxRagdoll,nudge
 /** Physics-driven articulated fall, followed by static visible anatomy
  * and a small number of invisible walkable cone colliders. */
 export class IncapacitatedBodies{
- constructor(R,world){this.R=R;this.world=world;this.bodies=new Map();}
+ constructor(R,world,baseHeight=()=>0){this.R=R;this.world=world;this.baseHeight=baseHeight;this.bodies=new Map();}
  accept(event){
   if(event.type!=='fighter-incapacitated'||!event.bodyPose?.length||this.bodies.has(event.fighterId))return;
   const direction=event.fallDirection??[Math.sin(event.fighterId*2.399963),0,Math.cos(event.fighterId*2.399963)];
@@ -18,7 +18,7 @@ export class IncapacitatedBodies{
   for(const [fighterId,b] of this.bodies){
    if(b.settled)continue;
    const parts=this.worldPose(b),rag=b.rag,{sleeping,speed}=ragdollMotion(rag);
-   const near=parts.some(p=>[p.a,p.a.map((v,i)=>(v+p.b[i])*.5),p.b].some(q=>q[1]-p.radius<=terrainHeight(q[0],q[2],terrain)+.08));
+   const near=parts.some(p=>[p.a,p.a.map((v,i)=>(v+p.b[i])*.5),p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],terrain)+.08));
    const bottom=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
    const top=Math.max(...parts.map(p=>Math.max(p.a[1],p.b[1])+p.radius));
    const pelvis=parts.find(p=>p.id==='pelvis'),chest=parts.find(p=>p.id==='chest');
@@ -51,10 +51,10 @@ export class IncapacitatedBodies{
    }
    b.motion={age:b.age,near,lying,speed,sleeping,still:b.still,quiet:b.quiet,bottom,top,attempts:b.attempts};
    if(b.still<60&&!(b.age>=360&&b.quiet>=60))continue;
-   b.settled=parts;b.mounds=bodyTerrain(parts).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
+   b.settled=parts;b.mounds=bodyTerrain(parts,this.baseHeight).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
    removeRagdoll(this.world,rag);b.rag=null;
    for(const m of b.mounds){
-    const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
+    const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,this.baseHeight(m.x,m.z)+m.height/2,m.z));
     this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
    }
   }
