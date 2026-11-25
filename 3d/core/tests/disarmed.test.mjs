@@ -80,7 +80,7 @@ test('disarmed perception does not see through walls or at headless long distanc
 
 test('disarmed upper-arm stump can crawl away without inventing a missing forearm attack',()=>{
  const c=new LabSimulationCore();
- const stump=defenseless.filter(s=>!/\\.(upperLeg|lowerLeg|foot)$/.test(s)).concat('L.upperArm');
+ const stump=defenseless.filter(s=>!s.endsWith('.upperLeg')&&!s.endsWith('.lowerLeg')&&!s.endsWith('.foot')).concat('L.upperArm');
  const fighters=[{...base.fighters[0],origin:[0,0,.6],segmentIds:stump},{...base.fighters[1],origin:[0,0,0]}];
  try{
   c.initialize({seed:7,fighters,combatEnabled:true,expandedStrikes:true,tacticalCombat:true});
