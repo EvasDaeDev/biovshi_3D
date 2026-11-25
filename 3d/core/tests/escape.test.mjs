@@ -101,3 +101,27 @@ test('tactical escape skips a clear but unreachable point behind a separating wa
  assert.ok(corrected.x<-.9,'do not cross partition');
  assert.notDeepEqual(corrected,endpointOnly);
 });
+
+test('committed relocation is cancelled when another patient occupies its destination',()=>{
+ const e=new EscapeState(7,0);
+ for(let i=0;i<153;i++)e.observe(0,true,false,true);
+ const plan=e.choose(153,a,foe,[foe],[foe],true);
+ assert.equal(plan?.mode,'relocate');
+ // A passerby far from the reserved goal must not interrupt movement.
+ assert.strictEqual(e.choose(154,a,foe,[foe],[foe,{x:plan.goal.x+1.2,z:plan.goal.z}],true),plan);
+ const intruder={x:plan.goal.x,z:plan.goal.z};
+ assert.equal(e.choose(155,a,foe,[foe],[foe,intruder],true),null);
+ assert.equal(e.snapshot().plan,null);
+ // Removal of the intruder does not manufacture a new manoeuvre immediately.
+ assert.equal(e.choose(156,a,foe,[foe],[foe],true),null);
+});
+
+test('pincer plan abandons a newly occupied destination without bypassing cooldown',()=>{
+ const pair=[{...foe,x:-.9,z:-.65,yaw:Math.atan2(.9,-.65)},{...foe,id:2,x:.9,z:-.65,yaw:Math.atan2(-.9,-.65)}];
+ const e=new EscapeState(7,0),plan=e.choose(0,a,pair[0],pair,pair,true);
+ assert.equal(plan?.mode,'pincer');
+ assert.strictEqual(e.choose(1,a,pair[0],pair,[...pair,{x:plan.goal.x+.7,z:plan.goal.z}],true),plan,'pincer keeps its original 26-unit clearance');
+ assert.equal(e.choose(2,a,pair[0],pair,[...pair,plan.goal],true),null);
+ assert.equal(e.snapshot().plan,null);
+ assert.equal(e.choose(3,a,pair[0],pair,pair,true),null,'original 7-11 second cooldown stays in force');
+});
