@@ -64,3 +64,30 @@ test('when no opponent has an attack source, disarmed AI searches rather than bl
   assert.equal(c.getSnapshot().tactics[1].mode,'search');
  }finally{c.dispose();}
 });
+
+test('disarmed perception does not see through walls or at headless long distance',()=>{
+ const c=new LabSimulationCore(),ids=defenseless.filter(s=>s!=='R.foot');
+ const config=(distance)=>({seed:7,fighters:[{...base.fighters[0],origin:[0,0,distance],segmentIds:ids},{...base.fighters[1],origin:[0,0,0]}],combatEnabled:true,expandedStrikes:true,tacticalCombat:true,perceptionCombat:true});
+ try{
+  c.initialize(config(2));
+  c.planCombat(new Map());
+  assert.equal(c.getSnapshot().tactics[0].mode,'search','headless fighter cannot know distant armed location');
+  c.initialize(config(.4));
+  c.planCombat(new Map());
+  assert.equal(c.getSnapshot().tactics[0].mode,'retreat','nearby body contact is enough to sense danger');
+ }finally{c.dispose();}
+});
+
+test('disarmed upper-arm stump can crawl away without inventing a missing forearm attack',()=>{
+ const c=new LabSimulationCore();
+ const stump=defenseless.filter(s=>!/\\.(upperLeg|lowerLeg|foot)$/.test(s)).concat('L.upperArm');
+ const fighters=[{...base.fighters[0],origin:[0,0,.6],segmentIds:stump},{...base.fighters[1],origin:[0,0,0]}];
+ try{
+  c.initialize({seed:7,fighters,combatEnabled:true,expandedStrikes:true,tacticalCombat:true});
+  const commands=new Map();c.planCombat(commands);
+  assert.equal(c.getSnapshot().mobilityModes[0],'arm-crawl');
+  assert.equal(c.getSnapshot().tactics[0].mode,'retreat');
+  assert.equal(commands.get(0).sprint,false);
+  assert.equal(c.getSnapshot().strikes[0].phase,'idle');
+ }finally{c.dispose();}
+});
