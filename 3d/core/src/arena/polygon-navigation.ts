@@ -149,7 +149,7 @@ export class PolygonNavigation extends ArenaNavigation{
    const gap=edgeDistance(start,poly).gap,inside=polygonInside(poly,start);
    if(!inside&&gap<=pad+EPS&&gap>EPS){
     const nearest=edgeDistance(start,poly).point,away=sub(start,nearest),movement=sub(end,start);
-    if(dot(away,movement)>0&&polygonHit(start,end,poly,0)===null)continue;
+    if(dot(away,movement)>=-EPS&&polygonHit(start,end,poly,0)===null)continue;
    }
    const hit=polygonHit(start,end,poly,pad);
    if(hit!==null)t=Math.min(t,Math.max(0,hit-1e-5));
