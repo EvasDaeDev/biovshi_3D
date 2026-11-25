@@ -64,7 +64,10 @@ export class EscapeState{
   // An escape is a response to specific opponents, not a generic destination.
   // When a target dies or attention switches, do not spend the remainder of
   // the four-second manoeuvre running toward a stale goal.
-  if(this.plan&&(tick>=this.plan.until||distance(a,this.plan.goal)<ESCAPE.arrival||
+  // A goal can become occupied after the manoeuvre begins. Recheck moving
+  // patients each tick; static wall reachability remains checked at creation.
+  const blockedGoal=this.plan&&occupied.some(o=>distance(o,this.plan!.goal)<metres(this.plan!.mode==='pincer'?26:35));
+  if(this.plan&&(tick>=this.plan.until||distance(a,this.plan.goal)<ESCAPE.arrival||blockedGoal||
    (this.plan.mode==='relocate'&&this.relocationTarget!==foe.id)||
    (this.plan.mode==='pincer'&&(threatIds.length!==this.pincerTargets.length||
     threatIds.some((id,i)=>id!==this.pincerTargets[i])))))this.clearPlan();
