@@ -2,12 +2,17 @@ import {cp,mkdir,readFile,writeFile,rm,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {buildLocationCatalog} from './catalog-locations.mjs';
 const core=resolve(dirname(fileURLToPath(import.meta.url)),'..'),repo=resolve(core,'../..');
 const site=resolve(repo,'_site'),lab=resolve(site,'3d/lab-next'),vendor=resolve(lab,'vendor');
 await rm(site,{recursive:true,force:true});
 await mkdir(resolve(site,'3d/core'),{recursive:true});
 for(const dir of ['lab','lab-next'])await cp(resolve(repo,'3d',dir),resolve(site,'3d',dir),{recursive:true});
 await cp(resolve(core,'dist'),resolve(site,'3d/core/dist'),{recursive:true});
+// v1 authored polygons, vetted spawns and patrols become a static native JSON
+// asset before computing the content-addressed release. Never ship v1 runtime.
+const catalog=await buildLocationCatalog();
+await writeFile(resolve(lab,'location-catalog.json'),JSON.stringify(catalog));
 await mkdir(vendor,{recursive:true});
 for(const file of ['three.module.js','three.core.js'])await cp(resolve(core,'node_modules/three/build',file),resolve(vendor,file));
 await cp(resolve(core,'node_modules/@dimforge/rapier3d-compat/rapier.es.js'),resolve(vendor,'rapier.es.js'));
