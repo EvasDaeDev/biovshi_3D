@@ -56,14 +56,27 @@ export class PatientPerception{
  }
  /** v1 patrol: 30 medium-range samples, prefer interior, 3.5–5.5 s.
   * Convex arena, no interior opaque walls; cones remain traversable. */
- patrol(tick:number,here:PointXZ):PointXZ{
+ /** Keep P3 random roaming unchanged. On P4 authored maps choose a
+  * validated original patrol point that a 50cm patient can truly reach.
+  * A sampled goal inside a wall would otherwise leave the patient spinning. */
+ patrol(tick:number,here:PointXZ,authored?:readonly PointXZ[],reachable:(p:PointXZ)=>boolean=()=>true):PointXZ{
+  if(this.goal&&!reachable(this.goal))this.goal=null;
   if(!this.goal||tick>this.goalUntil||distance(here,this.goal)<metres(28)){
-   const bound=5.65-metres(55),candidates:PointXZ[]=[];
-   for(let i=0;i<30;i++){
-    const p={x:(this.random()*2-1)*bound,z:(this.random()*2-1)*bound},d=distance(here,p);
-    if(d>metres(90)&&d<metres(290))candidates.push(p);
+   if(authored?.length){
+    const safe=authored.filter(p=>distance(here,p)>VISION.arrival&&reachable(p));
+    // Cycle a deterministic, seed-dependent initial offset through the
+    // authored points; no second synthetic arena waypoint generator.
+    if(safe.length)this.goal={...safe[Math.floor(this.random()*safe.length)]!};
    }
-   this.goal=candidates.sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z))[0]??{x:here.x*.55,z:here.z*.55};
+   if(!this.goal){
+    const bound=5.65-metres(55),candidates:PointXZ[]=[];
+    for(let i=0;i<30;i++){
+     const p={x:(this.random()*2-1)*bound,z:(this.random()*2-1)*bound},d=distance(here,p);
+     if(d>metres(90)&&d<metres(290)&&reachable(p))candidates.push(p);
+    }
+    const fallback={x:here.x*.55,z:here.z*.55};
+    this.goal=candidates.sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z))[0]??(reachable(fallback)?fallback:{...here});
+   }
    this.goalUntil=tick+ticks(3.5+this.random()*2);
   }
   return {...this.goal};
