@@ -1,3 +1,5 @@
+import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
+import {terrainHeight} from '../core/dist/collision/terrain.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 const sub=(a,b)=>a.map((v,i)=>v-b[i]);
 const add=(a,b)=>a.map((v,i)=>v+b[i]);
@@ -11,7 +13,7 @@ function orientation(axis){
  return n>1e-8?{x:z/n,y:0,z:-x/n,w:(1+y)/n}:{x:1,y:0,z:0,w:0};
 }
 /** Compound body keeps the final rig pose, with one rigid body per patient.
- * No joint solver, no separate debris items, and no mound conversion. */
+ * On settling, remove capsule colliders and retain visual pose over cones. */
 export class IncapacitatedBodies{
  constructor(R,world){this.R=R;this.world=world;this.bodies=new Map();}
  accept(event){
@@ -30,12 +32,33 @@ export class IncapacitatedBodies{
   // Tiny initial angular perturbation avoids a perfectly symmetric upright
   // compound balancing indefinitely on the rounded feet.
   rb.setAngvel({x:.65,y:0,z:.15},true);
-  this.bodies.set(event.fighterId,{rb,parts});
+  this.bodies.set(event.fighterId,{rb,parts,still:0,age:0,settled:null,mounds:[]});
  }
+ worldPose(b){
+  if(b.settled)return b.settled;
+  const t=b.rb.translation(),q=b.rb.rotation(),origin=[t.x,t.y,t.z];
+  return b.parts.map(p=>({id:p.id,a:add(origin,rotate(p.a,q)),b:add(origin,rotate(p.b,q)),radius:p.radius}));
+ }
+ settle(terrain){
+  for(const [fighterId,b] of this.bodies){
+   if(b.settled)continue;
+   const v=b.rb.linvel(),w=b.rb.angvel(),parts=this.worldPose(b);
+   const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=terrainHeight(q[0],q[2],terrain)+.06));
+   const bottom=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
+   const top=Math.max(...parts.map(p=>Math.max(p.a[1],p.b[1])+p.radius));
+   const lying=top-bottom<.90;
+   b.age++;b.still=near&&lying&&(b.rb.isSleeping()||Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.4<.16)?b.still+1:0;
+   if(b.still<60&&!(b.age>720&&near&&lying))continue;
+   b.settled=parts;b.mounds=bodyTerrain(parts).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
+   this.world.removeRigidBody(b.rb);b.rb=null;
+   for(const m of b.mounds){
+    const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
+    this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
+   }
+  }
+ }
+ moundSnapshot(){return [...this.bodies.values()].flatMap(b=>b.mounds.map(m=>({...m})));}
  snapshot(){
-  return [...this.bodies].map(([fighterId,{rb,parts}])=>{
-   const t=rb.translation(),q=rb.rotation(),origin=[t.x,t.y,t.z];
-   return {fighterId,parts:parts.map(p=>({id:p.id,a:add(origin,rotate(p.a,q)),b:add(origin,rotate(p.b,q)),radius:p.radius})),sleeping:rb.isSleeping()};
-  });
+  return [...this.bodies].map(([fighterId,b])=>({fighterId,parts:this.worldPose(b).map(p=>({...p,a:[...p.a],b:[...p.b]})),settled:!!b.settled,sleeping:b.settled?true:b.rb.isSleeping()}));
  }
 }

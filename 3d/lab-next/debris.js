@@ -36,11 +36,12 @@ export class DebrisWorld {
  step(dt){
   if(dt!==1/60)throw new RangeError('Debris requires fixed 60 Hz');
   this.world.step();
+  this.incapacitated.settle(this.moundSnapshot());
   for(let i=this.items.length-1;i>=0;i--){
    const d=this.items[i],t=d.rb.translation(),q=d.rb.rotation(),v=d.rb.linvel(),w=d.rb.angvel();
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.12;
    const bottom=t.y-(capsuleVerticalHalfExtent(d.length,d.radius,q));
-   const nearGround=bottom<=terrainHeight(t.x,t.z,this.mounds)+.045;
+   const nearGround=bottom<=terrainHeight(t.x,t.z,this.moundSnapshot())+.045;
    d.age++;d.still=(speed<.20&&(nearGround||d.rb.isSleeping()))?d.still+1:0;
    if(d.still>=60||(d.age>720&&nearGround)){
     const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y,q),R=this.R;
@@ -52,7 +53,7 @@ export class DebrisWorld {
   }
  }
  bodySnapshot(){return this.incapacitated.snapshot();}
- moundSnapshot(){return this.mounds.map(m=>({...m}));}
+ moundSnapshot(){return [...this.mounds.map(m=>({...m})),...this.incapacitated.moundSnapshot()];}
  snapshot(){return this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,fighterId:d.fighterId,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));}
  dispose(){this.world?.free();this.world=null;this.items=[];this.mounds=[];this.incapacitated=null;}
 }

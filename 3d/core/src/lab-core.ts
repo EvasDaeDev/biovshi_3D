@@ -17,7 +17,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; physicsPose:readonly RigPose[];
+  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -58,7 +58,7 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
     this.mounds=[];
@@ -91,7 +91,7 @@ export class LabSimulationCore implements SimulationCore {
   }
   /** External physics owns body transforms after handoff. Copy them at the
    * fixed-step boundary; no Rapier types leak into the core. */
-  setIncapacitatedPose(fighterId:number,parts:readonly PhysicsSegmentPose[]):void{
+  setIncapacitatedPose(fighterId:number,parts:readonly PhysicsSegmentPose[],settled=false):void{
     this.requireReady();const a=this.actors.find(a=>a.id===fighterId);
     if(!a?.fixed)throw new RangeError('Fighter is not incapacitated');
     if(parts.length!==a.physicsPose.length||parts.some((p,i)=>{
@@ -100,7 +100,7 @@ export class LabSimulationCore implements SimulationCore {
        ![...p.a,...p.b].every(Number.isFinite)||
        Math.abs(Math.hypot(p.a[0]-p.b[0],p.a[1]-p.b[1],p.a[2]-p.b[2])-Math.hypot(old.a[0]-old.b[0],old.a[1]-old.b[1],old.a[2]-old.b[2]))>1e-5;
     }))throw new RangeError('Invalid physics pose');
-    a.physicsPose=this.copyPose(parts);
+    a.physicsPose=this.copyPose(parts);a.terrainOnly||=settled;
     const pelvis=parts.find(p=>p.id==='pelvis')??parts[0];
     if(pelvis){a.x=(pelvis.a[0]+pelvis.b[0])/2;a.z=(pelvis.a[2]+pelvis.b[2])/2;
       a.y=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));}
@@ -168,7 +168,7 @@ export class LabSimulationCore implements SimulationCore {
     this.tick++;
     const hits:SegmentContact[] = [];
     const before=this.dynamicBalance?this.actors.map(a=>[a.x,a.z] as const):[];
-    this.collisionStats = resolveCollisions(this.actors,a=>this.actorPose(a),this.fracture?hits:undefined);
+    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined);
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
@@ -204,6 +204,7 @@ export class LabSimulationCore implements SimulationCore {
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
+      bodyTerrainStates:this.actors.map(a=>a.terrainOnly),
       lifeStates:this.actors.map(a=>a.fixed?'incapacitated':'active'),
       balanceStates:this.actors.map(a=>a.knockdown.phase),
       stepCounts:this.actors.map(a=>a.gait.stepCount),footStates:this.actors.map(a=>a.gait.footStates),

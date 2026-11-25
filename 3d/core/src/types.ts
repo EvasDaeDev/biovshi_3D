@@ -44,6 +44,8 @@ export interface WorldSnapshot {
   readonly residualTraction?: readonly (ResidualTraction|null)[];
   readonly crawlAnchors?: readonly (readonly CrawlAnchor[])[];
   readonly supports?: readonly SupportState[];
+  /** True when a settled body is represented only by walkable terrain. */
+  readonly bodyTerrainStates?: readonly boolean[];
   readonly lifeStates?: readonly ('active'|'incapacitated')[];
   readonly balanceStates?: readonly BalancePhase[];
   readonly stepCounts?: readonly number[];

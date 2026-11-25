@@ -39,6 +39,9 @@ try{
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)>2);
  await page.locator('#scenario').selectOption('corpse');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.incapacitated==='1'&&d.bodySegments==='17'&&Number(d.tick)>60;},{},{timeout:30000});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settled==='1'&&Number(d.bodyCones)>0&&Number(d.bodyCones)<=4;},{},{timeout:45000});
+ await page.locator('#terrain-debug').check();
+ await page.locator('#terrain-debug').uncheck();
  await page.locator('#scenario').selectOption('fall');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.incapacitated==='0');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&['falling','down','rising'].includes(d.balance);},{},{timeout:30000});
