@@ -37,3 +37,5 @@ export type {FloorHistory,FloorMound,FloorVisual,FloorOilMark} from './arena/flo
 
 export {adaptLegacyLocation} from './arena/location-adapter.js';
 export type {LegacyLocationInput,NativeLocation,NativePolygon,NativePoint} from './arena/location-adapter.js';
+
+export {PolygonNavigation} from './arena/polygon-navigation.js';
