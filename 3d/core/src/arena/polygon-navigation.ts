@@ -116,7 +116,7 @@ export class PolygonNavigation extends ArenaNavigation{
  private approachGoal(goal:PointXZ,pad:number):NativePoint|null{
   if(this.pointClear(goal,pad))return {...goal};
   if(!this.boundaryClear(goal,0)||this.shapes.some(poly=>polygonInside(poly,goal)))return null;
-  const q:NativePoint={...goal},clearance=pad+.025;
+  const q:{x:number;z:number}={...goal},clearance=pad+.025;
   for(let attempt=0;attempt<12;attempt++){
    let changed=false;
    for(let i=0;i<this.perimeter.length;i++){
