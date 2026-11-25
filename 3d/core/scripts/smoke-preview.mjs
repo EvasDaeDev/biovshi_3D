@@ -42,7 +42,7 @@ try{
  await page.locator('#scenario').selectOption('duel-mixed');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('duel-prone');
- await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.posture==='prone'&&Number(d.hits)>0;},{},{timeout:45000});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='ring'&&d.posture==='prone'&&Number(d.hits)>0;},{},{timeout:45000});
  assert.deepEqual(await page.locator('#scenario option[value^="location-"]').evaluateAll(options=>options.map(o=>o.value)),['location-ring']);
  await page.locator('#scenario').selectOption('location-ring');
  await page.locator('#vision-debug').check();
