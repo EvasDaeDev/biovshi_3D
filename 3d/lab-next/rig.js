@@ -8,6 +8,8 @@ import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
 import {LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
+import {HEAD_CAMERA_CLEARANCE} from '../core/dist/rig/head-frame.js';
+import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
 window.labStartup.show('Импорт авторских 3D арен…');
@@ -18,7 +20,8 @@ window.labStartup.show('Создание физического мира…');
 const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
 const core=new LabSimulationCore(),clock=new FixedClock(),keys=new Set();
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x09100e);const oilMarks=new OilMarks(THREE,scene);
-const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,60);camera.position.set(8,6,9);camera.lookAt(0,1,0);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,60);
+const cameraControl=new LabCamera(THREE,camera,document.getElementById('camera-mode'),document.getElementById('camera-patient'),document.getElementById('camera-fov'));
 window.labStartup.show('Инициализация WebGL…');
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));document.body.append(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);scene.add(lamp);
@@ -98,8 +101,8 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
   ?'Ринг ⌀ 7 м · деление 1 м · рост пациента 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
  floor.visible=grid.visible=location?.shape!=='circle';
- camera.position.set(...(location?.shape==='circle'?[5,6.4,7.4]:[8,6,9]));
- camera.lookAt(0,location?.shape==='circle'?.55:1,0);
+ cameraControl.setArena(location?.shape==='circle');
+ 
  if(location?.shape==='circle'){
   const mat=floor.material;
   const surface=new THREE.Mesh(new THREE.CircleGeometry(location.width/2,location.boundary.length),mat);
@@ -129,7 +132,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -190,7 +193,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
   }catch(error){if(arena===floorArenaId())floorStatus.textContent=error.message;}
  };
 
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+addEventListener('resize',()=>{cameraControl.resize(innerWidth/innerHeight);renderer.setSize(innerWidth,innerHeight);});
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4(),priorRotation=new THREE.Quaternion();
 function frameRotation(f,out){return out.setFromRotationMatrix(basis.makeBasis(v(f.x),v(f.y),v(f.z)));}
 function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{previousFrame=currentFrame;advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();},paused||document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=paused?1:clock.alpha;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
@@ -212,6 +215,7 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
    }
   }
  });
+ cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE);stats.dataset.camera=cameraControl.mode;
  const falling=currentFrame.debris,oldDebris=new Map(previousFrame.debris.map(d=>[d.id,d])),active=new Set(falling.map(d=>d.id));
  for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);debrisMeshes.delete(id);}
  for(const d of falling){

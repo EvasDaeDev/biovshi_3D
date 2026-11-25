@@ -3,6 +3,7 @@ import type {Vec3} from './types.js';
 import { ArenaNavigation,RouteState } from './arena/navigation.js';
 import { PolygonNavigation } from './arena/polygon-navigation.js';
 import type { PointXZ } from './combat/escape.js';
+import {headFrame} from './rig/head-frame.js';
 import { PatientPerception,notices,type VisionBody } from './combat/perception.js';
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
 import { usableStrike } from './combat/strike.js';
@@ -555,6 +556,7 @@ export class LabSimulationCore implements SimulationCore {
       oil:this.actors.map(a=>a.oil.snapshot()),oilMarks:this.oilMarks.map(m=>({...m,point:[...m.point]})),impacts:this.actors.map(a=>a.impact.snapshot()),
       routes:this.actors.map(a=>a.route.snapshot()),
       perception:this.actors.map(a=>a.perception.snapshot(a.yaw)),
+      headFrames:this.actors.map((a,i)=>a.fixed?null:headFrame(rigSegments[i]!,a.perception.gaze(a.yaw))),
       escapes:this.actors.map(a=>a.escape.snapshot()),
       tactics:this.actors.map(a=>a.tactics.snapshot()),
       patientTraits:this.actors.map(a=>a.behavior.snapshot()),
