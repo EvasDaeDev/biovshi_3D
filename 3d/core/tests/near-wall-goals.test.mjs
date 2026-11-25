@@ -16,6 +16,11 @@ test('P4 annulus 60-second survivors can pursue around the central obstacle with
  const last=path.at(-1);
  assert.ok(distance(last,b)>.05&&distance(last,b)<.38,'approach point must stay near the real foe: '+JSON.stringify(path));
  assert.equal(nav.clear(last,last,.65),true,'the route must end at a navigable approach point');
+ const first=nav.move(a,path[0],.50);
+ assert.ok(distance(first,a)>.025,'the first clearance step must advance the physical root');
+ assert.equal(nav.clear(first,first,.49),true,'the first step may not clip the real obstacle');
+ for(let i=1;i<path.length;i++)
+  assert.equal(nav.clear(path[i-1],path[i],.65),true,'graph link cuts inside the 65cm route clearance');
  // The tactical escape contract is deliberately more restrictive: a
  // non-navigable original target is not reported as fully reachable.
  assert.equal(nav.reachable(a,b),false);
