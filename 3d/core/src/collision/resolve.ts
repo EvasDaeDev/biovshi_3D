@@ -5,6 +5,7 @@ import type { RigPose } from '../rig/gait.js';
 export interface CollisionActor { readonly id:number; x:number; y:number; z:number; readonly fixed?:boolean }
 export interface CollisionStats { tests:number; contacts:number; wallContacts:number }
 const clamp=(n:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,n));
+const central=new Set(['pelvis','abdomen','chest','neck','head']);
 const point=(p:Vec3)=>({x:p[0],y:p[1],z:p[2]});
 function prepare(p:RigPose){
  const cap:Capsule={a:point(p.a),b:point(p.b),r:p.radius};
@@ -12,7 +13,7 @@ function prepare(p:RigPose){
 }
 /** Three bounded passes. Pose callback must be pure; never advances gait.
  * Rebuild after root corrections; planted feet stay in world coordinates. */
-export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[],hits?:SegmentContact[]):CollisionStats{
+export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],pose:(a:T)=>readonly RigPose[],hits?:SegmentContact[],combatBodyCorrection=false):CollisionStats{
  const stats:CollisionStats={tests:0,contacts:0,wallContacts:0};
  const move=(a:T,x:number,z:number)=>{if(a.fixed)return;a.x=clamp(a.x+clamp(x,-.10,.10),-5.65,5.65);a.z=clamp(a.z+clamp(z,-.10,.10),-5.65,5.65);};
  for(let iteration=0;iteration<3;iteration++){
@@ -37,6 +38,12 @@ export function resolveCollisions<T extends CollisionActor>(actors:readonly T[],
     if((ac.x-bc.x)**2+(ac.z-bc.z)**2>(ac.r+bc.r)**2)continue;
     stats.tests++;const c=capsuleContact(ac.cap,bc.cap);if(!c)continue;stats.contacts++;
     if(iteration===0&&hits){hits.push({fighterId:a.id,segmentId:ac.id,otherId:b.id},{fighterId:b.id,segmentId:bc.id,otherId:a.id});}
+    // A limb contact is real geometry for strikes, but translating both
+    // complete actors for every distal overlap creates a reach lock: the
+    // planted feet can remain overlapped while the roots are pushed apart.
+    // Combat uses central body separation; fixed/falling physical obstacles
+    // retain the existing full-capsule response.
+    if(combatBodyCorrection&&!a.fixed&&!b.fixed&&(!central.has(ac.id)||!central.has(bc.id)))continue;
     let nx=c.dx,nz=c.dz,len=Math.hypot(nx,nz);
     if(c.dist>1e-5&&len/c.dist<.23)continue;
     if(len<1e-5){nx=a.x-b.x;nz=a.z-b.z;len=Math.hypot(nx,nz);}

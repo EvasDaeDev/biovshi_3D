@@ -290,7 +290,7 @@ export class LabSimulationCore implements SimulationCore {
     if(previous)this.resolveStrikes(previous);
     const hits:SegmentContact[] = [];
     const before=this.dynamicBalance?this.actors.map(a=>[a.x,a.z] as const):[];
-    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined);
+    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat);
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
