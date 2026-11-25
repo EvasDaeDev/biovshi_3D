@@ -8,6 +8,10 @@ import {LabSimulationCore,createLabConfig,createArenaCombatConfig,createNavigati
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
+window.labStartup.show('Импорт авторских 3D арен…');
+const catalogResponse=await fetch(new URL('./location-catalog.json',import.meta.url));
+if(!catalogResponse.ok)throw Error('Каталог локаций: HTTP '+catalogResponse.status);
+const authoredLocations=await catalogResponse.json();
 window.labStartup.show('Создание физического мира…');
 const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
 const core=new LabSimulationCore(),clock=new FixedClock(),keys=new Set();
@@ -51,14 +55,45 @@ const queueDamage=amount=>{if(scenario.value==='damage'&&!paused)pendingDamage={
 document.getElementById('damage-hit').onclick=()=>queueDamage(1);document.getElementById('damage-crit').onclick=()=>queueDamage(2);
 const requestedScenario=new URLSearchParams(location.search).get('scenario');
 if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario))scenario.value=requestedScenario;
-function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;if(mode==='arena-navigation')return createNavigationCombatConfig(7);if(mode.startsWith('arena'))return createArenaCombatConfig(7,mode!=='arena',mode==='arena-vision');if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
-function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();debris.reset(config.walls??[],savedFloor,scenario.value);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize(config);pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
+function selectedLocation(){return scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
+function floorArenaId(){return selectedLocation()?.id??scenario.value;}
+function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;
+ if(mode.startsWith('location-')){
+  const location=selectedLocation();if(!location)throw Error('Неизвестная авторская 3D арена');
+  const base=createArenaCombatConfig(7,true,true);
+  const count=Math.min(4,location.capacity,location.spawns.length);
+  const fighters=base.fighters.slice(0,count).map((f,i)=>{
+   const origin=location.spawns[i];return {...f,origin,yawRad:Math.atan2(-origin[0],origin[2])};
+  });
+  return {...base,fighters,walls:location.walls};
+ }
+if(mode==='arena-navigation')return createNavigationCombatConfig(7);if(mode.startsWith('arena'))return createArenaCombatConfig(7,mode!=='arena',mode==='arena-vision');if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
+function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();debris.reset(config.walls??[],savedFloor,floorArenaId(),selectedLocation());oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;const location=selectedLocation();
+ if(location){
+  for(const object of location.objects){
+   const shape=new THREE.Shape();
+   object.points.forEach((p,i)=>i?shape.lineTo(p.x,-p.z):shape.moveTo(p.x,-p.z));
+   shape.closePath();
+   const geometry=new THREE.ExtrudeGeometry(shape,{depth:object.height,bevelEnabled:false,steps:1});
+   geometry.rotateX(-Math.PI/2);
+   const mesh=new THREE.Mesh(geometry,wallMaterial);scene.add(mesh);wallMeshes.push(mesh);
+  }
+  for(let i=0;i<location.boundary.length;i++){
+   const a=location.boundary[i],b=location.boundary[(i+1)%location.boundary.length];
+   const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
+   const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,2.8,.20),wallMaterial);
+   mesh.position.set((a.x+b.x)/2,1.4,(a.z+b.z)/2);
+   mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
+  }
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize(config);pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());
+  stats.dataset.location=selectedLocation()?.id??'';
+  stats.dataset.authoredObjects=String(selectedLocation()?.objects.length??0);
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
 const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
 addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();clock.reset();last=null;});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
-const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
+const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
 document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};
  function suspendRound(message){
   if(frameRequest)cancelAnimationFrame(frameRequest);
@@ -68,22 +103,22 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
  // Reuse v1's persisted-floor contract: load by session and arena; a plain
  // Reset is an explicit deletion, while switching scenarios reloads its scope.
  async function restoreScenario(){
-  const operation=++floorOperation,arena=scenario.value;
+  const operation=++floorOperation,arena=floorArenaId();
   suspendRound('Восстановление состояния арены…');
   let saved=null,warning='';
   try{saved=await loadFloorHistory(floorSession,arena);}
   catch(error){warning='Хранилище пола недоступно ('+error.message+'). Сцена работает без восстановления.';}
-  if(operation!==floorOperation||arena!==scenario.value)return;
+  if(operation!==floorOperation||arena!==floorArenaId())return;
   reset(saved);
   if(warning)floorStatus.textContent=warning;
  }
  document.getElementById('reset').onclick=async()=>{
-  const operation=++floorOperation,arena=scenario.value;
+  const operation=++floorOperation,arena=floorArenaId();
   suspendRound('Очистка сохранённого пола…');
   let warning='';
   try{await clearFloorHistory(floorSession,arena);}
   catch(error){warning='Сброс выполнен, но удалить сохранённый пол не удалось: '+error.message;}
-  if(operation!==floorOperation||arena!==scenario.value)return;
+  if(operation!==floorOperation||arena!==floorArenaId())return;
   reset();
   if(warning)floorStatus.textContent=warning;
  };
@@ -91,7 +126,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
  document.getElementById('next-round').onclick=async()=>{
   // A premature click must not invalidate an in-flight load or clear.
   if(stats.dataset.state!=='running'){floorStatus.textContent='Дождитесь загрузки арены.';return;}
-  const arena=scenario.value;
+  const arena=floorArenaId();
   try{
    const state=core.getSnapshot();
    if(!state.fight.ended)throw new Error('Сначала необходимо завершить бой.');
@@ -101,11 +136,11 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
    let warning='';
    try{await saveFloorHistory(floorSession,arena,saved);}
    catch(error){warning='Следующий раунд запущен, но запись пола не удалась: '+error.message;}
-   if(operation!==floorOperation||arena!==scenario.value)return;
+   if(operation!==floorOperation||arena!==floorArenaId())return;
    reset(saved);
    if(warning)floorStatus.textContent=warning;
    else floorStatus.textContent+=' Сохранено в IndexedDB ('+floorSession+').';
-  }catch(error){if(arena===scenario.value)floorStatus.textContent=error.message;}
+  }catch(error){if(arena===floorArenaId())floorStatus.textContent=error.message;}
  };
 
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
