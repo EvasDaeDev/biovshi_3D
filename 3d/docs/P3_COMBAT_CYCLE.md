@@ -44,3 +44,23 @@ When P3 perception is enabled, fleeing reacts only to visible threats or a recen
 Focused regression module: `3d/core/tests/disarmed.test.mjs` (anatomical sources; headless sight; one-leg fleeing; stump crawl; multi-opponent avoidance; no-weapon patrol). The new pure helper passed isolated strict TypeScript checks and Node assertions; the native-core regression and six integrated TS+Rapier combat cycles still require CI. A scoped 1000-plan wall/navigation microbenchmark ran at approximately 37 ms median with three threats; **not** a full step p95 or client FPS measurement. Full client build was not run locally.
 
 Critical unresolved case: when multiple survivors are all disarmed, the game must not silently invent a loser. Examine actual six-case reports before changing outcome rules. See [P3_DISARMED.md](P3_DISARMED.md) for source mapping, limitations, and tests.
+
+
+## Verified six-case integrated baseline and 25 November 2026 CI repair
+
+**Observed green baseline:** GitHub Actions [run 45616725341](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45616725341), commit `2afede3702cd68db41b5b1186869b984a69c1430`. Core tests **138/138 passed**, six combined TypeScript + Rapier scenarios **6/6 complete**, all ragdolls/debris settled, and the offline browser smoke + Pages deployment succeeded. This is verified from actual Actions job logs, not inferred from core-only benchmarks.
+
+| Combat mode | Seed | Outcome | Combat seconds | Damage hits | No-hit maximum (s) | Physics CPU p95 (ms) |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| vision | 7 | winner 2 | 32.22 | 109 | 1.78 | 3.04 |
+| vision | 19 | winner 4 | 44.92 | 123 | 3.12 | 2.07 |
+| vision | 42 | winner 1 | 41.67 | 101 | 6.53 | 1.83 |
+| navigation | 7 | draw, no active fighters | 41.92 | 119 | 3.93 | 2.04 |
+| navigation | 19 | winner 7 | 38.82 | 121 | 4.88 | 2.00 |
+| navigation | 42 | winner 6 | 27.87 | 101 | 2.23 | 1.92 |
+
+A draw with zero living fighters is a legitimate terminal outcome. The CPU percentiles are measurements of the headless integrated audit on the GitHub runner, not browser FPS. All six had zero `combat-open`, zero `physics-open`, zero unsettled bodies and debris.
+
+**Next failed run:** [45622709251](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45622709251) at commit `8204ff6535c482c765eb0984434a68c415fb845c`. TypeScript build succeeded and **144/145 core tests passed**, but `engagement.test.mjs` expected an armless tactical patient to approach at a 0.4 m root gap. The subsequent P3 disarmed behavior intentionally makes that same patient **avoid** armed opponents, as in `src/systems/ai.js:fighterIntent`. This was an incompatible test fixture, not evidence of a broken collision or strike. CI stopped before the Rapier audit and Pages smoke, so the six-case completion rate **cannot yet be extended** to commit `8204ff6`.
+
+The corrective regression explicitly tests arm-only close-range failed-preview pursuit with `tacticalCombat:false`, and independently asserts that the *same* anatomy enters retreat with `tacticalCombat:true`. It preserves both intended behaviors and leaves movement, strike geometry, injury rules and AI timing unchanged. Run focused core tests and recheck the six-case audit; do not declare the current head green until new GitHub Actions evidence arrives. The full client was not built manually.
