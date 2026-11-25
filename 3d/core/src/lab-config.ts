@@ -8,8 +8,8 @@ export function createLabConfig(seed: number): WorldConfig {
 }
 
 /** Eight-patient native free-for-all, same arena and seeded traits. */
-export function createArenaCombatConfig(seed:number,escapeCombat=false):WorldConfig{
+export function createArenaCombatConfig(seed:number,escapeCombat=false,perceptionCombat=false):WorldConfig{
  const base=createLabConfig(seed);
- return {...base,combatEnabled:true,expandedStrikes:true,tacticalCombat:true,escapeCombat,
+ return {...base,combatEnabled:true,expandedStrikes:true,tacticalCombat:true,escapeCombat,perceptionCombat,
   fighters:base.fighters.map(f=>({...f,profile:f.id%3===0?{movement:4,critical:2,turning:3,temperament:'impulsive'}:f.id%3===1?{movement:2,critical:4,turning:3,temperament:'hesitant'}:{movement:3,critical:3,turning:3,temperament:'balanced'}}))};
 }

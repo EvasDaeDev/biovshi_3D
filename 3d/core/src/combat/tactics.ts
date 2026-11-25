@@ -2,7 +2,7 @@ import { FIXED_DT } from '../fixed-clock.js';
 import type { PatientTraits } from './patient-profile.js';
 const ticks=(s:number)=>Math.ceil(s/FIXED_DT-1e-9);
 export interface Opponent {readonly id:number;readonly distance:number}
-export interface TacticalSnapshot {readonly targetId:number|null;readonly commitmentUntil:number;readonly mode:'search'|'pursuit'|'retreat'|'strike'|'inactive'|'relocate'|'pincer';readonly retaliationId:number|null}
+export interface TacticalSnapshot {readonly targetId:number|null;readonly commitmentUntil:number;readonly mode:'search'|'pursuit'|'retreat'|'strike'|'inactive'|'relocate'|'pincer'|'memory';readonly retaliationId:number|null}
 const nearest=(opponents:readonly Opponent[]):Opponent|undefined=>opponents.reduce<Opponent|undefined>((best,o)=>!best||o.distance<best.distance||(o.distance===best.distance&&o.id<best.id)?o:best,undefined);
 /** Bounded, imperfect attention: lock a target, notice a new attacker with
  * a delay, and briefly back away after a hard hit. No omniscient path search. */
@@ -24,8 +24,8 @@ export class CombatTactics {
    this.retreatUntil=tick+ticks(.75);this.retreatCooldown=tick+ticks(4);
   }
  }
- choose(tick:number,opponents:readonly Opponent[],lockedId?:number):number|null{
-  if(this.threat&&(tick>=this.threat.expires||!opponents.some(o=>o.id===this.threat!.id)))this.threat=null;
+ choose(tick:number,opponents:readonly Opponent[],lockedId?:number,activeIds?:readonly number[]):number|null{
+  if(this.threat&&(tick>=this.threat.expires||!(activeIds??opponents.map(o=>o.id)).includes(this.threat.id)))this.threat=null;
   const current=opponents.find(o=>o.id===this.target),preferred=nearest(opponents);
   const locked=opponents.find(o=>o.id===lockedId);
   const threat=this.threat&&tick>=this.threat.ready?opponents.find(o=>o.id===this.threat!.id&&o.distance<3):undefined;

@@ -25,3 +25,6 @@ export {CombatTactics} from './combat/tactics.js';
 export type {TacticalSnapshot,Opponent} from './combat/tactics.js';
 
 export {EscapeState,ESCAPE,tacticalEscape,pincerThreats,pincerGoal} from './combat/escape.js';
+
+export {PatientPerception,VISION,notices} from './combat/perception.js';
+export type {VisionBody,VisionMemory,PerceptionSnapshot,SightClear} from './combat/perception.js';
