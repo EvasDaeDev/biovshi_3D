@@ -64,14 +64,14 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
    assert.equal(next.moundSnapshot().length,saved.mounds.length);
    assert.deepEqual(next.moundSnapshot(),saved.mounds);
    assert.deepEqual(next.archivedOilSnapshot(),saved.oilMarks);
-   assert.equal(next.world.bodies.len()>0,true);
+   assert.ok(next.world.colliders.len()>=saved.mounds.length+5,'old low cones are real Rapier colliders');
    assert.throws(()=>next.reset([],json,'ring'),/Invalid floor version/);
    assert.deepEqual(next.moundSnapshot(),saved.mounds,'invalid import must not destroy the current world');
    const hit={type:'segment-detached',fighterId:0,tick:1,detachedPose:{id:'R.hand',a:[2,1.2,0],b:[2,1.2,0],radius:.083}};
    next.accept(hit);
    const fresh=next.snapshot().find(d=>d.segmentId==='R.hand'&&!d.settled);
    assert.equal(typeof fresh.id,'number');
-   assert.ok(next.snapshot().every(d=>d.id!==fresh.id||d===fresh||d.settled===false));
+   assert.equal(new Set(next.snapshot().map(d=>d.id)).size,next.snapshot().length,'old and new mesh IDs are disjoint');
    const initial=next.snapshot().length;
    for(let i=0;i<950;i++)next.step(FIXED_DT);
    assert.equal(next.snapshot().length,initial,'archived geometry is never deleted by later rounds');
