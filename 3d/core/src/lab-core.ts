@@ -195,7 +195,12 @@ export class LabSimulationCore implements SimulationCore {
       if(!target){if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
       const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
       if(!command)commands.set(a.id,{fighterId:a.id,forward:distance>.46?Math.max(0,Math.cos(turn)):0,turn:clamp(turn*2,-1,1),sprint:false});
-      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<(this.expandedStrikes&&(prone||target.gait.posture==='prone')?1.65:this.expandedStrikes?1.05:.82)&&a.strike.ready(this.tick)){
+      // Prone rigs extend almost a metre in front of their pelvis. Two
+      // touching heads can leave the pelvis roots more than two metres apart.
+      // This is only a broad phase; each source still has to pass IK/contact.
+      const groundedPair=this.expandedStrikes&&(prone||target.gait.posture==='prone');
+      const previewRange=groundedPair?2.65:this.expandedStrikes?1.05:.82;
+      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)){
         const pose=this.actorPose(a),victim=this.actorPose(target),eligible=(id:string)=>target.health.canDamage(id,this.tick);
         const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
         const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];

@@ -18,7 +18,10 @@ export function chooseProneStrike(pose:readonly PhysicsSegmentPose[],ids:readonl
     const a=before.find(v=>v.id===source)!,b=after.find(v=>v.id===source)!;
     moved||=Math.hypot(a.b[0]-b.b[0],a.b[1]-b.b[1],a.b[2]-b.b[2])>.005;
     const contactId=firstStrikeContact(before,after,victim,victim,side,kind);
-    if(contactId){if(moved&&eligible(contactId))choices.push({side,id:part.id,aim,contactId,distance});break;}
+    // At the start of thrust a constrained chain may still be on the
+    // ground and touching the opponent. Inspect the remaining thrust before
+    // discarding an otherwise reachable candidate with no source movement.
+    if(contactId&&moved){if(eligible(contactId))choices.push({side,id:part.id,aim,contactId,distance});break;}
     before=after;
    }
   }
