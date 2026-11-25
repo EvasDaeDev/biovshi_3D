@@ -2,7 +2,7 @@ import {solveTwoBone} from '../core/dist/rig/two-bone.js';
 import {TransformControls} from './vendor/TransformControls.js';
 import * as THREE from 'three';
 import {LAB_SEGMENTS} from '../core/dist/rig/anatomy.js';
-import {buildEditedPose,POSE_SLOTS,readPoseDocument,referencePose} from '../core/dist/rig/pose-editor.js';
+import {buildEditedPose,POSE_SLOTS,readPoseDocument} from '../core/dist/rig/pose-editor.js';
 
 const element=id=>document.getElementById(id);
 const poseSelect=element('pose'),segmentSelect=element('segment'),status=element('status');
@@ -22,7 +22,19 @@ try{
  if(saved)data=readPoseDocument(JSON.parse(saved));
  status.textContent='Правки сохраняются в этом браузере.';
 }catch(error){status.textContent='Исходная поза загружена. Черновик недоступен.';}
-const current=()=>data.slots[poseSelect.value]??referencePose(poseSelect.value);
+async function loadDefaults(){
+ const response=await fetch(new URL('./patient-poses.json',import.meta.url));
+ if(!response.ok)throw new Error('Не удалось загрузить исходные позы.');
+ const slots=readPoseDocument(await response.json()).slots;
+ if(Object.keys(slots).length!==Object.keys(POSE_SLOTS).length)
+  throw new Error('Неполный набор исходных поз.');
+ return slots;
+}
+const defaults=await loadDefaults().catch(error=>{
+ status.textContent=error.message;
+ throw error;
+});
+const current=()=>data.slots[poseSelect.value]??defaults[poseSelect.value];
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x101715);
