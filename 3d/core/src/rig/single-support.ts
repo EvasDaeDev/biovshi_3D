@@ -11,7 +11,7 @@ const bound=(x:number,z:number,max:number):readonly [number,number]=>{const n=Ma
  * and solve legs again without changing the supporting foot's world target.
  * Tilt is preferred to translation; the latter handles residual reach error.
  * No dynamic angular momentum or forces are integrated here. */
-export function balanceSingleSupport(pose:readonly RigPose[],active:readonly string[],side:'L'|'R',plant:Vec3,ground:(x:number,z:number)=>number):readonly RigPose[]{
+export function balanceSingleSupport(pose:readonly RigPose[],active:readonly string[],side:'L'|'R',plant:Vec3,ground:(x:number,z:number)=>number,swingTarget?:Vec3):readonly RigPose[]{
  const ids=new Set(active),index=new Map(pose.map((p,i)=>[p.id,i]));
  const get=(id:string)=>pose[index.get(id)!]!;
  const hip=get('pelvis'),pivot=center(hip),uid=side+'.upperLeg',lid=side+'.lowerLeg',fid=side+'.foot';
@@ -37,7 +37,7 @@ export function balanceSingleSupport(pose:readonly RigPose[],active:readonly str
    const u=k+'.upperLeg',l=k+'.lowerLeg',f=k+'.foot',upper=get(u),lower=get(l),foot=get(f);
    const root=k==='L'?pelvis.a:pelvis.b;
    const footOffset=sub(lower.b,foot.a);
-   const raw=transform(foot.a);
+   const raw=swingTarget&&k!==side?swingTarget:transform(foot.a);
    // The other, incomplete leg can follow the body, but cannot drive
    // the correction or be counted as an additional supporting foot.
    const end:Vec3=k===side?ankle:add([raw[0],Math.max(raw[1],ground(raw[0],raw[2])+foot.radius),raw[2]],footOffset);

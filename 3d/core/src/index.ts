@@ -14,6 +14,6 @@ export { OIL,OilState,hasWorkingLimb } from './combat/oil.js';
 export { IMPACT,ImpactState } from './combat/impact.js';
 export type { OilSnapshot,OilMark } from './combat/oil.js';
 
-export {STRIKE,StrikeState,punchPose} from './combat/strike.js';
+export {STRIKE,StrikeState,punchPose,usableStrike,strikeSource} from './combat/strike.js';
 export {sweptContact,firstStrikeContact} from './combat/swept-contact.js';
-export type {Punch,StrikePhase,StrikeSnapshot} from './combat/strike.js';
+export type {Punch,StrikePhase,StrikeSnapshot,StrikeKind} from './combat/strike.js';

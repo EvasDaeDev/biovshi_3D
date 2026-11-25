@@ -54,7 +54,7 @@ export class PatientGait {
     const foot=(side:number):Foot=>{const p=add(root,[Math.cos(yaw)*side*.18,FOOT_RADIUS,Math.sin(yaw)*side*.18]);return {plant:p,start:p,target:p,phase:0,moving:false,duration:.32,lift:.085};};
     this.feet=[foot(-1),foot(1)];
   }
-  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number):void{
+  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false):void{
     this.mobility=mobility;this.active=active;this.ground=ground;
     const support=mobility.support;
     if(forcedProne!==undefined){
@@ -101,7 +101,7 @@ export class PatientGait {
       if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
     }
     const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+FOOT_RADIUS,z];};
-    if(support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&this.stepWait<=1e-8){
+    if(!holdFeet&&support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&this.stepWait<=1e-8){
       const moving=Math.abs(speed)>.055,lead=moving?plan.lead:0;
       const error=(i:number)=>{const f=this.feet[i]!,p=ideal(i===0?-1:1,0);return Math.hypot(f.plant[0]-p[0],f.plant[2]-p[2]);};
       let index=this.next;

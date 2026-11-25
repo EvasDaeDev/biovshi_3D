@@ -1,5 +1,6 @@
+import { chooseExtra } from './combat/extra-choice.js';
 import { choosePunch,closestAim } from './combat/punch-choice.js';
-import { StrikeState,punchPose } from './combat/strike.js';
+import { StrikeState,punchPose,strikeSource,strikeOrigin,type StrikeKind } from './combat/strike.js';
 import { firstStrikeContact } from './combat/swept-contact.js';
 import { ImpactState } from './combat/impact.js';
 import { OilState,OIL,type OilMark } from './combat/oil.js';
@@ -47,7 +48,7 @@ export class LabSimulationCore implements SimulationCore {
   private events: SimulationEvent[] = [];
   private fracture = false;
   private dynamicBalance=false;
-  private combat=false;private fightEnded=false;private winnerId:number|null=null;
+  private combat=false;private expandedStrikes=false;private fightEnded=false;private winnerId:number|null=null;
   private hitCount = 0;
   private detachedCount = 0;
   private collisionStats: CollisionStats = {tests:0,contacts:0,wallContacts:0};
@@ -73,7 +74,7 @@ export class LabSimulationCore implements SimulationCore {
     this.tick = 0;
     this.rng = config.seed;
     this.oilRng=(config.seed^0x9e3779b9)>>>0;this.oilMarks=[];this.nextMark=0;
-    this.combat=config.combatEnabled===true;this.fightEnded=false;this.winnerId=null;
+    this.combat=config.combatEnabled===true;this.expandedStrikes=this.combat&&config.expandedStrikes===true;this.fightEnded=false;this.winnerId=null;
     this.fracture = !this.combat&&config.labContactFracture === true;
     this.dynamicBalance=config.labDynamicBalance===true;
     this.episodes.reset();this.events=[];this.hitCount=0;this.detachedCount=0;
@@ -85,7 +86,7 @@ export class LabSimulationCore implements SimulationCore {
   private actorPose(a:Actor):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const pose=a.gait.pose(a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT).filter(p=>a.segments.includes(p.id));
-    const strike=a.strike.punch;return strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick):pose;
+    const strike=a.strike.punch;return strike&&!a.knockdown.blocked?punchPose(pose,strike,this.tick,(x,z)=>a.baseY+terrainHeight(x,z,this.mounds)):pose;
   }
   private copyPose(parts:readonly PhysicsSegmentPose[]):readonly RigPose[]{
     return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius}));
@@ -191,9 +192,18 @@ export class LabSimulationCore implements SimulationCore {
       if(!target){if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
       const dx=target.x-a.x,dz=target.z-a.z,distance=Math.hypot(dx,dz),turn=wrap(Math.atan2(dx,-dz)-a.yaw);
       if(!command)commands.set(a.id,{fighterId:a.id,forward:distance>.46?Math.max(0,Math.cos(turn)):0,turn:clamp(turn*2,-1,1),sprint:false});
-      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<.82&&a.strike.ready(this.tick)){
-        const best=choosePunch(this.actorPose(a),a.segments,this.actorPose(target),a.yaw,id=>target.health.canDamage(id,this.tick),a.strike.attempts+a.id);
-        if(best&&a.strike.start(this.tick,best.side,target.id,best.aim,a.yaw,best.id))this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:best.side+'.lowerArm'});
+      if(allowed&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<(this.expandedStrikes?1.05:.82)&&a.strike.ready(this.tick)){
+        const pose=this.actorPose(a),victim=this.actorPose(target),eligible=(id:string)=>target.health.canDamage(id,this.tick);
+        const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
+        const order:StrikeKind[]=this.expandedStrikes?(command?.attackKind?[command.attackKind]:['arm','leg','head']):['arm'];
+        if(this.expandedStrikes&&!command&&order.length>1){const shift=(a.strike.attempts+a.id)%order.length;order.push(...order.splice(0,shift));}
+        for(const kind of order){
+          if(kind==='leg'&&(a.gait.footStates.some(f=>f.moving)||Math.abs(a.speed)>.10))continue;
+          const best=kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground);
+          if(best&&a.strike.start(this.tick,best.side,target.id,best.aim,a.yaw,best.id,kind)){
+            this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side),strikeKind:kind});break;
+          }
+        }
       }
       const punch=a.strike.punch;
       if(punch){
@@ -201,11 +211,11 @@ export class LabSimulationCore implements SimulationCore {
         const windup=a.strike.phase(this.tick)==='windup';
         if(windup&&victim&&punch.targetSegment){
           const part=this.actorPose(victim).find(p=>p.id===punch.targetSegment);
-          const shoulder=this.actorPose(a).find(p=>p.id===punch.side+'.upperArm');
+          const shoulder=this.actorPose(a).find(p=>p.id===strikeOrigin(punch.kind??'arm',punch.side));
           if(part&&shoulder)a.strike.track(this.tick,closestAim(shoulder.a,part));
         }
         const gap=victim?Math.hypot(victim.x-a.x,victim.z-a.z):0;
-        commands.set(a.id,{fighterId:a.id,forward:windup&&!command&&gap>.60?.55:0,turn:0,sprint:false});
+        commands.set(a.id,{fighterId:a.id,forward:windup&&!command&&gap>.60&&(punch.kind??'arm')==='arm'?.55:0,turn:0,sprint:false});
       }
     }
   }
@@ -218,8 +228,8 @@ export class LabSimulationCore implements SimulationCore {
       const b=this.actors.find(v=>v.id===p.targetId&&!v.fixed);
       const a0=previous.get(a.id),a1=current.get(a.id),b0=b&&previous.get(b.id),b1=b&&current.get(b.id);
       if(!b||!a0||!a1||!b0||!b1)continue;
-      const id=firstStrikeContact(a0,a1,b0,b1,p.side);
-      if(id){a.strike.resolve();requests.push({fighterId:b.id,segmentId:id,attackerId:a.id,amount:1});}
+      const id=firstStrikeContact(a0,a1,b0,b1,p.side,p.kind??'arm');
+      if(id){a.strike.resolve();this.events.push({tick:this.tick,type:'strike-contact',fighterId:b.id,attackerId:a.id,segmentId:id,sourceSegment:strikeSource(p.kind??'arm',p.side),strikeKind:p.kind??'arm'});requests.push({fighterId:b.id,segmentId:id,attackerId:a.id,amount:1});}
     }
     for(const request of requests)this.applyDamage(request);
   }
@@ -238,7 +248,7 @@ export class LabSimulationCore implements SimulationCore {
     for (const c of input.commands) {
       if (commands.has(c.fighterId) || !this.actors.some(a=>a.id===c.fighterId) ||
           !Number.isFinite(c.forward) || Math.abs(c.forward)>1 ||
-          !Number.isFinite(c.turn) || Math.abs(c.turn)>1 || typeof c.sprint !== 'boolean'||(c.attack!==undefined&&typeof c.attack!=='boolean'))
+          !Number.isFinite(c.turn) || Math.abs(c.turn)>1 || typeof c.sprint !== 'boolean'||(c.attack!==undefined&&typeof c.attack!=='boolean')||(c.attackKind!==undefined&&!['arm','leg','head'].includes(c.attackKind)))
         throw new RangeError('Invalid or duplicate command');
       commands.set(c.fighterId,c);
     }
@@ -276,7 +286,7 @@ export class LabSimulationCore implements SimulationCore {
         target = a.wanderSpeed;
       }
       target*=mobility.speedScale*flinch;
-      a.speed = mobility.mode==='unsupported'?0:damp(a.speed,target,3);
+      a.speed = mobility.mode==='unsupported'||a.strike.punch?.kind==='leg'?0:damp(a.speed,target,3);
       const ground=(x:number,z:number)=>a.baseY+terrainHeight(x,z,this.mounds);
       const travel=a.gait.travel(dt,a.speed,mobility,a.id,[a.x,a.y,a.z],a.yaw,this.tick*FIXED_DT,ground);
       const oldX=a.x,oldZ=a.z;
@@ -284,7 +294,7 @@ export class LabSimulationCore implements SimulationCore {
       a.z = clamp(a.z-Math.cos(a.yaw)*travel+recoil[2],-5.65,5.65);
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
-      a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments);
+      a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
     }
     this.tick++;
     if(previous)this.resolveStrikes(previous);

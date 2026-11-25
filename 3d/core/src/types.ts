@@ -1,4 +1,4 @@
-import type { StrikeSnapshot } from './combat/strike.js';
+import type { StrikeSnapshot,StrikeKind } from './combat/strike.js';
 import type { OilMark,OilSnapshot } from './combat/oil.js';
 import type { HealthSnapshot,IncapacitationCause } from './combat/damage.js';
 import type { BalancePhase } from './rig/knockdown.js';
@@ -19,6 +19,7 @@ export interface FighterCommand {
   readonly turn: number;
   readonly sprint: boolean;
   readonly attack?: boolean;
+  readonly attackKind?: StrikeKind;
 }
 
 export interface DamageRequest {readonly fighterId:FighterId;readonly segmentId:SegmentId;readonly amount:number;readonly attackerId?:FighterId}
@@ -43,6 +44,8 @@ export interface WorldConfig {
   readonly labDynamicBalance?: boolean;
   /** Opt-in product strike path; omitted commands use simple combat AI. */
   readonly combatEnabled?: boolean;
+  /** Opt-in extended source selection, retaining the arm-only regression mode. */
+  readonly expandedStrikes?: boolean;
 }
 
 /** Snapshot ownership belongs to the caller: buffers may be safely retained. */
@@ -90,6 +93,8 @@ export interface SimulationEvent {
   readonly segmentId?: SegmentId;
   readonly attackerId?: FighterId;
   readonly targetId?: FighterId;
+  readonly strikeKind?: StrikeKind;
+  readonly sourceSegment?: SegmentId;
   readonly damage?: number;
   readonly remainingHP?: number;
   readonly critical?: boolean;

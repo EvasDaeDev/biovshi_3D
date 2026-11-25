@@ -1,3 +1,4 @@
+import type { StrikeKind } from './strike.js';
 import type { PhysicsSegmentPose,Vec3 } from '../types.js';
 import { capsuleContact } from '../collision/capsule-contact.js';
 const delta=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
@@ -14,11 +15,11 @@ export function sweptContact(a0:PhysicsSegmentPose,a1:PhysicsSegmentPose,b0:Phys
  }
  return null;
 }
-export function firstStrikeContact(previous:readonly PhysicsSegmentPose[],current:readonly PhysicsSegmentPose[],victimPrevious:readonly PhysicsSegmentPose[],victimCurrent:readonly PhysicsSegmentPose[],side:'L'|'R'):string|null{
+export function firstStrikeContact(previous:readonly PhysicsSegmentPose[],current:readonly PhysicsSegmentPose[],victimPrevious:readonly PhysicsSegmentPose[],victimCurrent:readonly PhysicsSegmentPose[],side:'L'|'R',kind:StrikeKind='arm'):string|null{
  const prev=new Map(previous.map(p=>[p.id,p])),vp=new Map(victimPrevious.map(p=>[p.id,p]));
  let best:string|null=null,time=Infinity;
  for(const a of current){
-  if(a.id!==side+'.hand'&&a.id!==side+'.lowerArm')continue;
+  if(kind==='head'?a.id!=='head':kind==='leg'?a.id!==side+'.foot'&&a.id!==side+'.lowerLeg':a.id!==side+'.hand'&&a.id!==side+'.lowerArm')continue;
   const a0=prev.get(a.id);if(!a0)continue;
   for(const b of victimCurrent){
    const b0=vp.get(b.id);if(!b0)continue;
