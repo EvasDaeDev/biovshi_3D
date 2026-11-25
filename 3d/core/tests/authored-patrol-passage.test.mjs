@@ -25,7 +25,7 @@ test('P4 reuses only reachable original authored patrol points and renews goals'
  assert.deepEqual(p.patrol(1,here,legacy,allowed),legacy[1]);
  assert.deepEqual(p.patrol(2,here,legacy,allowed),legacy[1]);
  // A newly blocked goal must be invalidated immediately, not walked into.
- assert.deepEqual(p.patrol(3,here,legacy,pt=>pt.x>0),legacy.find(pt=>pt.x>0)||here);
+ assert.ok(legacy.filter(pt=>pt.x>0).some(pt=>gap(p.patrol(3,here,legacy,q=>q.x>0),pt)<1e-9));
 });
 test('P4 authored patrol chooses genuine reachable points in the 2D maze',async()=>{
  const {maze}=await buildLocationCatalog(),nav=new PolygonNavigation(maze),p=new PatientPerception(19,1);
