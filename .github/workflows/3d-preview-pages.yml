@@ -23,6 +23,8 @@ jobs:
       - run: npm --prefix 3d/core test
       - name: Record core CPU benchmark (informational)
         run: node 3d/core/scripts/benchmark-core.mjs
+      - name: Record Rapier ragdoll CPU benchmark (informational)
+        run: node 3d/core/scripts/benchmark-ragdoll.mjs
       - run: npm --prefix 3d/core run preview:stage
       - run: npx --prefix 3d/core playwright install --with-deps chromium
       - run: npm --prefix 3d/core run preview:smoke

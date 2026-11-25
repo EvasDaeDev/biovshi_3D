@@ -11,7 +11,7 @@ export class DebrisWorld {
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
-  this.items=[];this.branches=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
+  this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.nextId=0;this.incapacitated=new IncapacitatedBodies(R,this.world);
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
   this.world.createCollider(R.ColliderDesc.cuboid(7,.19,7).setFriction(.95),floor);
   for(const [x,z,w,d] of [[7,0,.15,7],[-7,0,.15,7],[0,7,7,.15],[0,-7,7,.15]]){
@@ -39,14 +39,14 @@ export class DebrisWorld {
   // Quaternion rotating +Y onto the segment axis; sphere orientation is immaterial.
   const [x,y,z]=f.y,n=Math.hypot(z,1+y,x);
   const q=n>1e-8?{x:z/n,y:0,z:-x/n,w:(1+y)/n}:{x:1,y:0,z:0,w:0};
-  const length=f.length>.11?f.length:0;
+  const length=f.length>1e-8?f.length:0;
   const rb=this.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(...f.center).setRotation(q).setLinearDamping(.6).setAngularDamping(1.25));
   const shape=length?R.ColliderDesc.capsule(length/2,p.radius):R.ColliderDesc.ball(p.radius);
   this.world.createCollider(shape.setMass(clamp(.9+length*2.1,.9,2.8)).setFriction(.8).setRestitution(0).setCollisionGroups(0x00020005),rb);
   const id=this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
   rb.setLinvel({x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
   rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
-  this.items.push({id,rb,length,radius:p.radius,fighterId:event.fighterId,age:0,still:0});
+  this.items.push({id,rb,length,radius:p.radius,segmentId:p.id,fighterId:event.fighterId,age:0,still:0});
  }
  step(dt){
   if(dt!==1/60)throw new RangeError('Debris requires fixed 60 Hz');
@@ -74,10 +74,12 @@ export class DebrisWorld {
    d.age++;d.still=(speed<.20&&(nearGround||d.rb.isSleeping()))?d.still+1:0;
    if(d.still>=60||(d.age>720&&nearGround)){
     const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y,q),R=this.R;
+    // Keep the exact visible segment pose independently of its collider.
+    this.settledSingles.push({id:d.id,length:d.length,radius:d.radius,segmentId:d.segmentId,fighterId:d.fighterId,settled:true,position:{...t},rotation:{...q}});
     this.world.removeRigidBody(d.rb);
     const rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,m.height/2,m.z));
     this.world.createCollider(R.ColliderDesc.cone(m.height/2,m.radius).setFriction(1.1).setCollisionGroups(0x00010006),rb);
-    this.mounds.push({id:d.id,...m});this.items.splice(i,1);
+    this.mounds.push({id:d.id,source:'segment',...m});this.items.splice(i,1);
    }
   }
  }
@@ -85,9 +87,9 @@ export class DebrisWorld {
  moundSnapshot(){return [...this.mounds.map(m=>({...m})),...this.incapacitated.moundSnapshot()];}
  branchSnapshot(){return this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))}));}
  snapshot(){
-  const singles=this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,fighterId:d.fighterId,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));
+  const singles=this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,segmentId:d.segmentId,fighterId:d.fighterId,settled:false,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));
   const branches=this.branchSnapshot().flatMap(b=>b.parts.map(p=>{const f=boneFrame(p.a,p.b);return {id:'branch:'+b.id+':'+p.id,branchId:b.id,segmentId:p.id,settled:b.settled,length:f.length,radius:p.radius,fighterId:b.fighterId,position:{x:f.center[0],y:f.center[1],z:f.center[2]},rotation:capsuleOrientation(f.y)};}));
-  return singles.concat(branches);
+  return singles.concat(this.settledSingles.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}})),branches);
  }
- dispose(){this.world?.free();this.world=null;this.items=[];this.branches=[];this.mounds=[];this.incapacitated=null;}
+ dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.incapacitated=null;}
 }

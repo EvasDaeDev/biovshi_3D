@@ -58,9 +58,17 @@ try{
  await page.locator('#damage-hit').click();
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.health==='0'&&d.detachedBranches==='1'&&d.branchSegments==='3';});
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.oil)>0,{},{timeout:30000});
+ await page.locator('#damage-segment').selectOption('L.hand');
+ await page.locator('#damage-crit').click();
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='1');
+ const singleHitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
+ await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,singleHitTick);
+ await page.locator('#damage-hit').click();
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settledSingles==='1'&&d.visibleCones==='0';},{},{timeout:45000});
  await page.locator('#scenario').selectOption('corpse');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.ragdollBodies==='15'&&d.ragdollJoints==='14';},{},{timeout:30000});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.incapacitated==='1'&&d.bodySegments==='17'&&Number(d.tick)>60;},{},{timeout:30000});
- await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settled==='1'&&Number(d.bodyCones)>0&&Number(d.bodyCones)<=4;},{},{timeout:45000});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settled==='1'&&Number(d.bodyCones)>0&&Number(d.bodyCones)<=4&&d.ragdollBodies==='0'&&d.ragdollJoints==='0'&&d.visibleCones==='0';},{},{timeout:45000});
  await page.locator('#terrain-debug').check();
  await page.locator('#terrain-debug').uncheck();
  await page.locator('#scenario').selectOption('fall');
