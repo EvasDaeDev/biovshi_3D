@@ -62,6 +62,7 @@ export class PatientPerception{
  patrol(tick:number,here:PointXZ,authored?:readonly PointXZ[],reachable:(p:PointXZ)=>boolean=()=>true):PointXZ{
   if(this.goal&&!reachable(this.goal))this.goal=null;
   if(!this.goal||tick>this.goalUntil||distance(here,this.goal)<metres(28)){
+   this.goal=null;
    if(authored?.length){
     const safe=authored.filter(p=>distance(here,p)>VISION.arrival&&reachable(p));
     // Cycle a deterministic, seed-dependent initial offset through the
