@@ -27,7 +27,7 @@ test('P4 annulus 60-second survivors can pursue around the central obstacle with
 test('P4 original boundary also projects combat targets inward without crossing the edge',async()=>{
  const {ring}=await buildLocationCatalog();
  const nav=new PolygonNavigation(ring);
- const start={x:0,z:0},goal={x:1.58,z:0};
+ const start={x:0,z:0},goal={x:1.48,z:0};
  assert.equal(nav.clear(goal,goal,.65),false);
  const path=nav.plan(start,goal);
  assert.ok(path.length>=1);
