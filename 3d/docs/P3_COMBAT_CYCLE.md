@@ -50,7 +50,7 @@ Critical unresolved case: when multiple survivors are all disarmed, the game mus
 
 **Observed green baseline:** GitHub Actions [run 45616725341](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45616725341), commit `2afede3702cd68db41b5b1186869b984a69c1430`. Core tests **138/138 passed**, six combined TypeScript + Rapier scenarios **6/6 complete**, all ragdolls/debris settled, and the offline browser smoke + Pages deployment succeeded. This is verified from actual Actions job logs, not inferred from core-only benchmarks.
 
-| Combat mode | Seed | Outcome | Combat seconds | Damage hits | No-hit maximum (s) | Physics CPU p95 (ms) |
+| Combat mode | Seed | Outcome | Combat seconds | Damage hits | No-hit maximum (s) | Integrated step CPU p95 (ms) |
 | --- | ---: | --- | ---: | ---: | ---: | ---: |
 | vision | 7 | winner 2 | 32.22 | 109 | 1.78 | 3.04 |
 | vision | 19 | winner 4 | 44.92 | 123 | 3.12 | 2.07 |
