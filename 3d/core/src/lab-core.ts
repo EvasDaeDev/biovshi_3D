@@ -1,3 +1,4 @@
+import { DamageState,type IncapacitationCause } from './combat/damage.js';
 import { Knockdown,KNOCKDOWN } from './rig/knockdown.js';
 import { analyzeSupport } from './rig/support.js';
 import { MOVEMENT } from './rig/movement-timing.js';
@@ -8,7 +9,7 @@ import { ContactEpisodes, type SegmentContact } from './collision/contact-episod
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
 import { PatientGait,type RigPose } from './rig/gait.js';
 import { FIXED_DT } from './fixed-clock.js';
-import type { FighterCommand, InputFrame, SimulationCore, SimulationEvent, WorldConfig, WorldSnapshot, PhysicsSegmentPose } from './types.js';
+import type { FighterCommand, InputFrame, SimulationCore, SimulationEvent, WorldConfig, WorldSnapshot, PhysicsSegmentPose, DamageRequest } from './types.js';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const wrap = (v: number) => Math.atan2(Math.sin(v), Math.cos(v));
@@ -17,7 +18,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; terrainOnly:boolean; physicsPose:readonly RigPose[];
+  segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
 /** Root locomotion and procedural rig. Includes kinematic collision correction; optional lab-only contact fracture; no debris yet.
@@ -58,7 +59,7 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       return {id:f.id,x,y,z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(f.origin,f.yawRad),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     this.actors = actors;
     this.mounds=[];
@@ -80,13 +81,39 @@ export class LabSimulationCore implements SimulationCore {
   }
   /** Terminal handoff, used by lab and future damage resolver. An intact
    * anatomy stays intact; incapacitation is not a detachment event. */
-  incapacitate(fighterId:number):boolean{
+  incapacitate(fighterId:number,cause:IncapacitationCause='manual'):boolean{
     this.requireReady();const a=this.actors.find(a=>a.id===fighterId);
     if(!a)throw new RangeError('Unknown fighter');
     if(a.fixed)return false;
     const pose=this.copyPose(this.actorPose(a));
-    a.fixed=true;a.speed=0;a.physicsPose=pose;
-    this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,bodyPose:this.copyPose(pose)});
+    a.fixed=true;a.speed=0;a.physicsPose=pose;a.health.finish(cause);
+    this.events.push({tick:this.tick,type:'fighter-incapacitated',fighterId,cause,bodyPose:this.copyPose(pose)});
+    return true;
+  }
+  private detach(a:Actor,ids:readonly string[]):void{
+    const pose=this.actorPose(a);
+    for(const id of ids)if(a.segments.includes(id)){
+      const part=pose.find(p=>p.id===id);
+      a.segments=a.segments.filter(s=>s!==id);a.health.detach([id]);this.detachedCount++;
+      this.events.push({tick:this.tick,type:'segment-detached',fighterId:a.id,segmentId:id,...(part?{detachedPose:part}:{})});
+    }
+  }
+  /** Validated contact from a future strike resolver, or explicit lab test.
+   * Plain collision overlaps never invoke this product damage path. */
+  applyDamage(request:DamageRequest):boolean{
+    this.requireReady();
+    const {fighterId,segmentId,amount,attackerId}=request;
+    if(!Number.isFinite(amount)||amount<=0)throw new RangeError('Invalid damage');
+    const a=this.actors.find(a=>a.id===fighterId);
+    if(!a)throw new RangeError('Unknown fighter');
+    if(attackerId!==undefined&&!this.actors.some(v=>v.id===attackerId))throw new RangeError('Unknown attacker');
+    if(a.fixed||!a.segments.includes(segmentId))return false;
+    const result=a.health.apply(segmentId,amount,this.tick);
+    if(!result)return false;
+    this.hitCount++;
+    this.events.push({tick:this.tick,type:'fighter-damaged',fighterId,segmentId,damage:result.amount,remainingHP:result.remainingHP,critical:result.critical,...(attackerId===undefined?{}:{attackerId})});
+    this.detach(a,result.detached);
+    if(result.cause)this.incapacitate(a.id,result.cause);
     return true;
   }
   /** External physics owns body transforms after handoff. Copy them at the
@@ -182,11 +209,7 @@ export class LabSimulationCore implements SimulationCore {
       this.hitCount++;
       this.events.push({tick:this.tick,type:'lab-hit',fighterId:hit.fighterId,segmentId:hit.segmentId});
       const actor=this.actors.find(a=>a.id===hit.fighterId)!;
-      for(const id of chain)if(actor.segments.includes(id)){
-        const pose=actor.gait.pose(actor.id,[actor.x,actor.y,actor.z],actor.yaw,this.tick*FIXED_DT).find(p=>p.id===id);
-        actor.segments=actor.segments.filter(s=>s!==id);this.detachedCount++;
-        this.events.push({tick:this.tick,type:'segment-detached',fighterId:actor.id,segmentId:id,...(pose?{detachedPose:pose}:{})});
-      }
+      this.detach(actor,chain);
     });
   }
 
@@ -205,6 +228,7 @@ export class LabSimulationCore implements SimulationCore {
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),
       postures:this.actors.map(a=>a.gait.posture),
       bodyTerrainStates:this.actors.map(a=>a.terrainOnly),
+      health:this.actors.map(a=>a.health.snapshot()),
       lifeStates:this.actors.map(a=>a.fixed?'incapacitated':'active'),
       balanceStates:this.actors.map(a=>a.knockdown.phase),
       stepCounts:this.actors.map(a=>a.gait.stepCount),footStates:this.actors.map(a=>a.gait.footStates),

@@ -37,6 +37,14 @@ try{
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===0);
  await page.locator('#pause').click();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)>2);
+ await page.locator('#scenario').selectOption('damage');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='3';});
+ await page.locator('#damage-crit').click();
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='1');
+ const hitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
+ await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,hitTick);
+ await page.locator('#damage-hit').click();
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='0');
  await page.locator('#scenario').selectOption('corpse');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.incapacitated==='1'&&d.bodySegments==='17'&&Number(d.tick)>60;},{},{timeout:30000});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settled==='1'&&Number(d.bodyCones)>0&&Number(d.bodyCones)<=4;},{},{timeout:45000});

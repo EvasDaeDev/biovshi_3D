@@ -1,3 +1,4 @@
+import type { HealthSnapshot,IncapacitationCause } from './combat/damage.js';
 import type { BalancePhase } from './rig/knockdown.js';
 import type { ResidualTraction } from './rig/residual-traction.js';
 import type { CrawlAnchor } from './rig/crawl-anchors.js';
@@ -16,6 +17,8 @@ export interface FighterCommand {
   readonly turn: number;
   readonly sprint: boolean;
 }
+
+export interface DamageRequest {readonly fighterId:FighterId;readonly segmentId:SegmentId;readonly amount:number;readonly attackerId?:FighterId}
 
 export interface InputFrame {
   readonly commands: readonly FighterCommand[];
@@ -46,6 +49,7 @@ export interface WorldSnapshot {
   readonly supports?: readonly SupportState[];
   /** True when a settled body is represented only by walkable terrain. */
   readonly bodyTerrainStates?: readonly boolean[];
+  readonly health?: readonly HealthSnapshot[];
   readonly lifeStates?: readonly ('active'|'incapacitated')[];
   readonly balanceStates?: readonly BalancePhase[];
   readonly stepCounts?: readonly number[];
@@ -74,6 +78,11 @@ export interface SimulationEvent {
   readonly type: string;
   readonly fighterId: FighterId;
   readonly segmentId?: SegmentId;
+  readonly attackerId?: FighterId;
+  readonly damage?: number;
+  readonly remainingHP?: number;
+  readonly critical?: boolean;
+  readonly cause?: IncapacitationCause;
   readonly bodyPose?: readonly PhysicsSegmentPose[];
   readonly detachedPose?: {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number};
 }
