@@ -7,11 +7,11 @@ const scale=(a:Vec3,n:number):Vec3=>[a[0]*n,a[1]*n,a[2]*n];
 const center=(p:RigPose):Vec3=>scale(add(p.a,p.b),.5);
 const unit=(v:Vec3,fallback:Vec3):Vec3=>{const l=Math.hypot(...v);return l>1e-9?scale(v,1/l):fallback;};
 const lengths=new Map(LAB_SEGMENTS.map(p=>[p.id,p.nominalLength]));
-const length=(id:string)=>lengths.get(id)!;
 /** Rebuild a connected skeleton from desired directions, not independently
  * interpolated endpoints. The full nominal rig is supplied before filtering
  * absent parts, so no missing limb can invalidate the transform chain. */
-export function constrainRig(pose:readonly RigPose[]):readonly RigPose[]{
+export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths):readonly RigPose[]{
+ const length=(id:string)=>customLengths.get(id)??lengths.get(id)!;
  const raw=new Map(pose.map(p=>[p.id,p])),out=new Map<string,RigPose>();
  const get=(id:string)=>raw.get(id)!;
  const put=(id:string,a:Vec3,b:Vec3=a)=>out.set(id,{id,a,b,radius:get(id).radius});

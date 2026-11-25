@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 import {PolygonNavigation,ArenaNavigation,RouteState,PatientPerception,FIXED_DT} from '../dist/index.js';
 
 const gap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 test('P4 original maze 1.3 m corridor remains passable for a 0.5 m root',async()=>{
- const {maze}=await buildLocationCatalog();
+ const {maze}=await buildLegacyLocationFixtures();
  const nav=new PolygonNavigation(maze);
  assert.equal(nav.routePad,.55);
  assert.equal(new ArenaNavigation().routePad,.65,'P3 legacy route clearance must not change');
@@ -19,7 +19,7 @@ test('P4 original maze 1.3 m corridor remains passable for a 0.5 m root',async()
  assert.equal(nav.clear(moved,moved,.49),true);
 });
 test('P4 ward corridor routes toward the observed remaining opponent',async()=>{
- const {ward}=await buildLocationCatalog(),nav=new PolygonNavigation(ward);
+ const {ward}=await buildLegacyLocationFixtures(),nav=new PolygonNavigation(ward);
  const stranded={x:-2.76568913,z:-2.31573462},opponent={x:-2.07119060,z:-.82586801};
  assert.equal(nav.clear(stranded,stranded,.49),true);
  const path=nav.plan(stranded,opponent,nav.routePad);
@@ -40,7 +40,7 @@ test('P4 reuses only reachable original authored patrol points and renews goals'
  assert.ok(legacy.filter(pt=>pt.x>0).some(pt=>gap(p.patrol(3,here,legacy,q=>q.x>0),pt)<1e-9));
 });
 test('P4 authored patrol chooses genuine reachable points in the 2D maze',async()=>{
- const {maze}=await buildLocationCatalog(),nav=new PolygonNavigation(maze),p=new PatientPerception(19,1);
+ const {maze}=await buildLegacyLocationFixtures(),nav=new PolygonNavigation(maze),p=new PatientPerception(19,1);
  const start={x:-3.93,z:-.63249},valid=point=>nav.reachable(start,point,nav.routePad);
  const chosen=p.patrol(3600,start,maze.patrol,valid);
  assert.ok(maze.patrol.some(pt=>gap(pt,chosen)<1e-9),'search must reuse an original patrol point');

@@ -26,6 +26,9 @@ export interface NativePolygon{
 export interface NativeLocation{
  readonly id:string;readonly name:string;readonly capacity:number;
  readonly width:number;readonly depth:number;
+ readonly shape?:'circle';
+ readonly floorRevision?:string;
+ readonly boundaryHeight?:number;
  readonly boundary:readonly NativePoint[];
  readonly objects:readonly NativePolygon[];
  readonly walls:readonly ArenaWall[];

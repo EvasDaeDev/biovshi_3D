@@ -4,7 +4,7 @@ import {loadFloorHistory,saveFloorHistory,clearFloorHistory} from './floor-stora
 import RAPIER from '@rapier';
 import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
-import {LabSimulationCore,createLabConfig,createArenaCombatConfig,createNavigationCombatConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
+import {LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
@@ -20,7 +20,8 @@ const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,60);camer
 window.labStartup.show('Инициализация WebGL…');
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));document.body.append(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);scene.add(lamp);
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,new THREE.GridHelper(14,28,0x5d7265,0x34483c));
+const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,grid);
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
 const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
 const routeDebug=document.getElementById('route-debug'),routeLines=[];
@@ -51,7 +52,7 @@ function assertSnapshot(s){
 }
 const scenario=document.getElementById('scenario'),patientCount=document.getElementById('patient-count');
 const requestedPatients=Number(new URLSearchParams(location.search).get('patients'));
-if(Number.isInteger(requestedPatients)&&requestedPatients>=2&&requestedPatients<=10)patientCount.value=String(requestedPatients);
+if(requestedPatients===2)patientCount.value='2';
 function authoredPatients(loc){return patientCount.value==='full'?loc.capacity:Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
 const damageControls=document.getElementById('damage-controls'),damageSegment=document.getElementById('damage-segment'),damageHP=document.getElementById('damage-hp');
 let pendingDamage=null;
@@ -62,7 +63,8 @@ if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario)
 function selectedLocation(){return scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
 function floorArenaId(){
  const location=selectedLocation();
- return location?.terrain?location.id+'@'+location.terrain.revision:location?.id??scenario.value;
+ const revision=location?.terrain?.revision??location?.floorRevision;
+ return revision?location.id+'@'+revision:location?.id??scenario.value;
 }
 function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;
  if(mode==='terrain-hill')return {...cfg,labDynamicBalance:true,gradedSurface:lowHill(),fighters:[{...cfg.fighters[0],origin:[0,0,1.7],yawRad:0}]};
@@ -70,7 +72,7 @@ function scenarioConfig(){const cfg=createLabConfig(7),mode=scenario.value;
   const location=selectedLocation();if(!location)throw Error('Неизвестная авторская 3D арена');
   return createAuthoredCombatConfig(7,location,authoredPatients(location));
  }
-if(mode==='arena-navigation')return createNavigationCombatConfig(7);if(mode.startsWith('arena'))return createArenaCombatConfig(7,mode!=='arena',mode==='arena-vision');if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
+if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
 function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();debris.reset(config.walls??[],savedFloor,floorArenaId(),selectedLocation(),config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
  for(const tri of config.gradedSurface??[]){
   const geo=new THREE.BufferGeometry(),p=new Float32Array(tri.flatMap(v=>v));
@@ -79,6 +81,17 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   scene.add(surface);wallMeshes.push(surface);
  }
  const location=selectedLocation();
+ patientCount.disabled=!location;
+ document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
+  ?'Бой пациентов под управлением ИИ.':'W/S — движение, A/D — поворот, Shift — бег.';
+ floor.visible=grid.visible=location?.shape!=='circle';
+ camera.position.set(...(location?.shape==='circle'?[4,5.4,6]:[8,6,9]));
+ camera.lookAt(0,location?.shape==='circle'?.55:1,0);
+ if(location?.shape==='circle'){
+  const mat=floor.material;
+  const surface=new THREE.Mesh(new THREE.CircleGeometry(location.width/2,location.boundary.length),mat);
+  surface.rotation.x=-Math.PI/2;scene.add(surface);wallMeshes.push(surface);
+ }
  if(location){
   for(const object of location.objects){
    const shape=new THREE.Shape();
@@ -91,8 +104,9 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   for(let i=0;i<location.boundary.length;i++){
    const a=location.boundary[i],b=location.boundary[(i+1)%location.boundary.length];
    const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
-   const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,2.8,.20),wallMaterial);
-   mesh.position.set((a.x+b.x)/2,1.4,(a.z+b.z)/2);
+   const height=location.boundaryHeight??2.8,offset=location.shape==='circle'?.10:0;
+   const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,height,.20),wallMaterial);
+   mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
  }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize(config);pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;assertSnapshot(core.getSnapshot());

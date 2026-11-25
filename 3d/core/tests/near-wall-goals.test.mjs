@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 import {PolygonNavigation} from '../dist/index.js';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 
 test('P4 annulus 60-second survivors can pursue around the central obstacle without a fake route dead-end',async()=>{
- const {annulus}=await buildLocationCatalog();
+ const {annulus}=await buildLegacyLocationFixtures();
  const nav=new PolygonNavigation(annulus),a={x:1.16927624,z:.93930858},b={x:1.07517731,z:-1.04552078};
  assert.equal(nav.clear(a,b,.65),false);
  assert.equal(nav.clear(b,b,.65),false,'physical .50 m clearance is narrower than routing .65 m');
@@ -30,7 +30,7 @@ test('P4 annulus 60-second survivors can pursue around the central obstacle with
 });
 
 test('P4 original boundary also projects combat targets inward without crossing the edge',async()=>{
- const {ring}=await buildLocationCatalog();
+ const {ring}=await buildLegacyLocationFixtures();
  const nav=new PolygonNavigation(ring);
  const start={x:0,z:0},goal={x:1.48,z:0};
  assert.equal(nav.clear(goal,goal,.65),false);
@@ -42,7 +42,7 @@ test('P4 original boundary also projects combat targets inward without crossing 
 });
 
 test('P4 route cannot turn a target inside the real obstacle into a valid arrival point',async()=>{
- const {annulus}=await buildLocationCatalog();
+ const {annulus}=await buildLegacyLocationFixtures();
  const nav=new PolygonNavigation(annulus),start={x:0,z:2},goal={x:0,z:0};
  assert.deepEqual(nav.plan(start,goal),[start]);
  assert.equal(nav.reachable(start,goal),false);

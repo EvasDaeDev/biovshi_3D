@@ -7,7 +7,7 @@ const core=resolve(dirname(fileURLToPath(import.meta.url)),'..'),repo=resolve(co
 const site=resolve(repo,'_site'),lab=resolve(site,'3d/lab-next'),vendor=resolve(lab,'vendor');
 await rm(site,{recursive:true,force:true});
 await mkdir(resolve(site,'3d/core'),{recursive:true});
-for(const dir of ['lab','lab-next'])await cp(resolve(repo,'3d',dir),resolve(site,'3d',dir),{recursive:true});
+await cp(resolve(repo,'3d/lab-next'),lab,{recursive:true});
 await cp(resolve(core,'dist'),resolve(site,'3d/core/dist'),{recursive:true});
 // v1 authored polygons, vetted spawns and patrols become a static native JSON
 // asset before computing the content-addressed release. Never ship v1 runtime.
@@ -34,13 +34,15 @@ await cp(lab,resolve(releaseDir,'lab-next'),{recursive:true});
 await cp(resolve(site,'3d/core/dist'),resolve(releaseDir,'core/dist'),{recursive:true});
 const prefix='../../releases/'+release+'/3d/lab-next/';
 const rig=await readFile(resolve(lab,'rig.html'),'utf8');
+const editor=await readFile(resolve(lab,'pose-editor.html'),'utf8');
 const map=await readFile(resolve(lab,'index.html'),'utf8');
 await writeFile(resolve(lab,'rig.html'),rig.replaceAll('./vendor/',prefix+'vendor/').replace("import('./rig.js')","import('"+prefix+"rig.js')").replace('data-build="dev"','data-build="'+release+'"'));
+await writeFile(resolve(lab,'pose-editor.html'),editor.replaceAll('./vendor/',prefix+'vendor/').replace('src="./pose-editor.js"','src="'+prefix+'pose-editor.js"'));
 await writeFile(resolve(lab,'index.html'),map.replace('src="./main.js"','src="'+prefix+'main.js"'));
 await writeFile(resolve(site,'release.json'),JSON.stringify({release}));
 console.log('Lab Next content release:',release);
 const html=await readFile(resolve(repo,'3d/index.html'),'utf8');
 await writeFile(resolve(site,'3d/index.html'),html);
-await writeFile(resolve(site,'index.html'),html.replaceAll('href="./lab/','href="./3d/lab/').replaceAll('href="./lab-next/','href="./3d/lab-next/'));
+await writeFile(resolve(site,'index.html'),html.replaceAll('href="./lab-next/','href="./3d/lab-next/'));
 await writeFile(resolve(site,'.nojekyll'),'');
 console.log('Staged offline Lab Next:',lab);

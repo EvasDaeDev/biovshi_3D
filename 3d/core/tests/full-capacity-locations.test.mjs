@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 import {createAuthoredCombatConfig,LabSimulationCore,PolygonNavigation,FIXED_DT} from '../dist/index.js';
 
 let cached;
-const getCatalog=async()=>cached??=await buildLocationCatalog();
+const getCatalog=async()=>cached??=await buildLegacyLocationFixtures();
 const minPairDistance=points=>Math.min(...points.flatMap((a,i)=>points.slice(i+1).map(b=>Math.hypot(a[0]-b[0],a[2]-b[2]))));
 
 test('P4 all eight authored arenas preserve four v1 starter positions and expose their full safe capacity',async()=>{

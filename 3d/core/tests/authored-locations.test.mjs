@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 import {ArenaNavigation,LabSimulationCore,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
 const ids=['ward','ring','annulus','sluice','zigzag','columns','maze','throat'];
 let catalog;
-const get=async()=>catalog??=await buildLocationCatalog();
+const get=async()=>catalog??=await buildLegacyLocationFixtures();
 
 test('P4 compiles all eight real 2D-authored locations with valid metric polygons and v1 spawns',async()=>{
  const maps=await get();

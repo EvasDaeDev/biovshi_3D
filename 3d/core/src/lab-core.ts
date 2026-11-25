@@ -451,7 +451,7 @@ export class LabSimulationCore implements SimulationCore {
       const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+Math.sin(a.yaw)*travel+recoil[0],-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*travel+recoil[2],-5.65,5.65);
-      if(this.navigation.walls.length){const p=this.navigation.move({x:oldX,z:oldZ},a);a.x=p.x;a.z=p.z;}
+      if(this.navigation instanceof PolygonNavigation||this.navigation.walls.length){const p=this.navigation.move({x:oldX,z:oldZ},a);a.x=p.x;a.z=p.z;}
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
       a.gait.advance([a.x,a.y,a.z],a.yaw,actualSpeed,dt,ground,mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
@@ -460,7 +460,7 @@ export class LabSimulationCore implements SimulationCore {
     if(previous)this.resolveStrikes(previous);
     const hits:SegmentContact[] = [];
     const before=this.dynamicBalance?this.actors.map(a=>[a.x,a.z] as const):[];
-    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat,this.navigation.walls.length?(a,x,z)=>this.navigation.move(a,{x,z}):undefined);
+    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat,this.navigation instanceof PolygonNavigation||this.navigation.walls.length?(a,x,z)=>this.navigation.move(a,{x,z}):undefined);
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;

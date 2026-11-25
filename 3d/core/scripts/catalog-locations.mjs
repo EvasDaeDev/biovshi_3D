@@ -3,13 +3,13 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseLocation,convexParts,locationBoundary,locationSpawnSlots} from '../../../src/game/location-geometry.js';
 import {applyLocationTerrain} from './location-terrain.mjs';
+import {createRingLocation} from '../dist/arena/ring.js';
 import {adaptLegacyLocation} from '../dist/arena/location-adapter.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
-/** Use the exact existing v1 validator, spawn selector and convex decomposition
- * only while preparing the static release; the browser never executes v1 AI
- * or depends on old Pixi/DOM/global game state. */
-export async function buildLocationCatalog(){
+/** Keep the original geometry available for regression tests. The published
+ * catalog is assembled separately from native 3D location data. */
+export async function buildLegacyLocationFixtures(){
  const manifest=JSON.parse(await readFile(resolve(root,'public/locations/active.json'),'utf8'));
  if(manifest.version!==1||!Array.isArray(manifest.active))throw Error('Invalid location manifest');
  const result=Object.create(null);
@@ -20,6 +20,11 @@ export async function buildLocationCatalog(){
   const parts=location.objects.map(o=>convexParts(o.points));
   result[id]=adaptLegacyLocation({location,boundary:locationBoundary(location),parts,spawns,spawnSlots:locationSpawnSlots(location,60),patrol});
  }
+ return result;
+}
+
+export async function buildLocationCatalog(){
+ const result={ring:createRingLocation()};
  const terrain=JSON.parse(await readFile(resolve(root,'3d/locations/terrain.json'),'utf8'));
  return applyLocationTerrain(result,terrain);
 }

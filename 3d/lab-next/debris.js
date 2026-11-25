@@ -57,10 +57,11 @@ export class DebrisWorld {
    for(let i=0;i<boundary.length;i++){
     const a=boundary[i],b=boundary[(i+1)%boundary.length];
     const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),yaw=-Math.atan2(dz,dx);
+    const height=location.boundaryHeight??2.8,offset=location.shape==='circle'?.10:0;
     const body=this.world.createRigidBody(R.RigidBodyDesc.fixed()
-     .setTranslation((a.x+b.x)/2,1.4,(a.z+b.z)/2)
+     .setTranslation((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset)
      .setRotation({x:0,y:Math.sin(yaw/2),z:0,w:Math.cos(yaw/2)}));
-    this.world.createCollider(R.ColliderDesc.cuboid(len/2,1.4,.10).setFriction(.95),body);
+    this.world.createCollider(R.ColliderDesc.cuboid(len/2,height/2,.10).setFriction(.95),body);
    }
   }else for(const w of walls){
    const body=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2));

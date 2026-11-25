@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>Редактор пациента — ЭКЦЕПРИ 3D</title>
+ <link rel="stylesheet" href="./pose-editor.css">
+ <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+ <header>
+  <div><a href="./rig.html">ЭКЦЕПРИ 3D / Ринг</a><h1>Редактор пациента</h1></div>
+  <div class="actions"><label class="button" for="import">Импорт JSON</label><input id="import" type="file" accept=".json,application/json" hidden><button id="export">Экспорт JSON</button></div>
+ </header>
+ <main>
+  <section class="viewport" aria-label="Просмотр пациента">
+   <div class="toolbar">
+    <label>Поза <select id="pose"></select></label>
+    <div class="views">
+     <button data-view="front">Спереди</button><button data-view="side">Сбоку</button><button data-view="perspective" aria-pressed="true">3/4</button>
+    </div>
+   </div>
+   <div id="viewport"></div>
+   <p class="hint">Перетаскивание вращает камеру. Колесо меняет масштаб.</p>
+  </section>
+  <aside aria-label="Параметры сегментов">
+   <h2>Анатомия</h2>
+   <label>Сегмент <select id="segment"></select></label>
+   <label class="check"><input type="checkbox" id="enabled"> Оставить сегмент</label>
+   <div class="size"><label>Длина, м <input type="number" id="length" min=".02" max="1.5" step=".01"></label><label>Радиус, м <input type="number" id="radius" min=".01" max=".5" step=".005"></label></div>
+   <h2>Положение</h2>
+   <p class="hint" id="coord-hint">Координаты в метрах. Направление задаёт ось капсулы, соединения восстанавливаются по скелету.</p>
+   <div id="coords"></div>
+   <div class="actions"><button id="reset-pose">Сбросить позу</button></div>
+   <p id="status" role="status" aria-live="polite">Загрузка редактора…</p>
+  </aside>
+ </main>
+ <script type="module" src="./pose-editor.js"></script>
+</body>
+</html>

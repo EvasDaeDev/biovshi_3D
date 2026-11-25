@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {gradeHeight,validateGradeSurface,lowHill,LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {createGradeContact} from '../dist/collision/grade-contact.js';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 import {applyLocationTerrain} from '../scripts/location-terrain.mjs';
 import {DebrisWorld} from '../../lab-next/debris.js';
 const near=(actual,expected,tolerance=1e-9)=>assert.ok(Math.abs(actual-expected)<=tolerance,`${actual} != ${expected}`);
@@ -117,7 +117,7 @@ test('P4 clips a long capsule axis at the terrain footprint, between the old thr
 });
 
 test('P4 native terrain is versioned, rejects invalid geometry and reaches authored core and Rapier',async()=>{
- const catalog=await buildLocationCatalog();
+ const catalog=await buildLegacyLocationFixtures();
  const ring=catalog.ring, [x,,z]=ring.spawnSlots[0];
  const grades=lowHill(x,z,.35,.15),manifest={schemaVersion:1,locations:{ring:grades}};
  const reviewed=applyLocationTerrain({...catalog},manifest);

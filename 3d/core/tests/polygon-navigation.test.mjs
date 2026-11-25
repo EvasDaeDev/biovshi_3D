@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PolygonNavigation,ArenaNavigation,LabSimulationCore,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 
 const diamond=[{x:-1,z:0},{x:0,z:-1},{x:1,z:0},{x:0,z:1}];
 const box={minX:-1,maxX:1,minZ:-1,maxZ:1,height:2.8};
@@ -46,7 +46,7 @@ test('movement at a diagonal face slides along it, but never cuts through solids
  assert.equal(n.clear({x:3.6,z:0},{x:3.6,z:0},.5),false);
 });
 test('every source 2D spawn respects the true convex perimeter and obstacle clearance',async()=>{
- const catalog=await buildLocationCatalog();
+ const catalog=await buildLegacyLocationFixtures();
  for(const map of Object.values(catalog)){
   const poly=new PolygonNavigation(map);
   for(const origin of map.spawns){
@@ -57,7 +57,7 @@ test('every source 2D spawn respects the true convex perimeter and obstacle clea
  }
 });
 test('P4 live four-patient native combat uses polygon routes without leaving exact source arena',async()=>{
- const {ward,ring}=await buildLocationCatalog();
+ const {ward,ring}=await buildLegacyLocationFixtures();
  for(const location of [ward,ring]){
   const base=createArenaCombatConfig(7,true,true),count=Math.min(4,location.capacity);
   const fighters=base.fighters.slice(0,count).map((f,i)=>({...f,origin:location.spawns[i]}));
