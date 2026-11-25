@@ -1,4 +1,5 @@
 import type { WorldConfig } from './types.js';
+import type { NativeLocation } from './arena/location-adapter.js';
 import { LAB_SEGMENTS } from './rig/anatomy.js';
 const starts = [[0,1.4],[-3,-3.3],[2.8,-3.4],[3.5,.8],[-3.7,.6],[-2.7,3.4],[2.4,3.4],[.5,-1.6]] as const;
 export function createLabConfig(seed: number): WorldConfig {
@@ -17,4 +18,20 @@ export function createArenaCombatConfig(seed:number,escapeCombat=false,perceptio
 /** Diagnostic obstacle scenario; product locations will supply wall geometry. */
 export function createNavigationCombatConfig(seed:number):WorldConfig{
  return {...createArenaCombatConfig(seed,true,true),walls:[{minX:-.28,maxX:.28,minZ:-.65,maxZ:.65,height:2.8}]};
+}
+
+/** Reuses P3 profiles/anatomy and the *original* v1 safe spawn slots.
+ * A tenth patient is a new ID sharing a profile template, not a new fighting
+ * AI or invented skeletal prototype. No 8-fighter cap leaks into authored maps. */
+export function createAuthoredCombatConfig(seed:number,location:NativeLocation,participants=location.capacity):WorldConfig{
+ if(!Number.isInteger(participants)||participants<2||participants>location.capacity||
+  participants>10||location.spawnSlots.length<participants)
+  throw new RangeError('Unsupported authored arena occupancy');
+ const base=createArenaCombatConfig(seed,true,true);
+ const fighters=location.spawnSlots.slice(0,participants).map((origin,id)=>{
+  const exemplar=base.fighters[id%base.fighters.length]!;
+  return {...exemplar,id,origin,
+   yawRad:Math.atan2(-origin[0],origin[2])};
+ });
+ return {...base,location,walls:location.walls,fighters};
 }
