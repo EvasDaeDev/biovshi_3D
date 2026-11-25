@@ -52,20 +52,29 @@ export function pincerGoal(a:EscapeActor,threats:readonly EscapeOpponent[],side:
 }
 export class EscapeState{
  private stationary=0;private plan:EscapePlan|null=null;private cooldown=0;private side=1;private rng:number;
+ private relocationTarget:number|null=null;private pincerTargets:number[]=[];
  constructor(seed:number,id:number){this.rng=(seed^Math.imul(id+1,0x27d4eb2d)^0x165667b1)>>>0;}
  private random():number{this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;return this.rng/4294967296;}
- clear():void{this.stationary=0;this.plan=null;}
+ private clearPlan():void{this.plan=null;this.relocationTarget=null;this.pincerTargets=[];}
+ clear():void{this.stationary=0;this.clearPlan();}
  choose(tick:number,a:EscapeActor,foe:EscapeOpponent,opponents:readonly EscapeOpponent[],occupied:readonly PointXZ[],allowed:boolean,goalClear:EscapeGoalClear=allGoalsClear):EscapePlan|null{
   if(!allowed){this.clear();return null;}
   const threats=pincerThreats(a,opponents);
-  if(this.plan&&(tick>=this.plan.until||distance(a,this.plan.goal)<ESCAPE.arrival||(this.plan.mode==='pincer'&&!threats.length)))this.plan=null;
+  const threatIds=threats.map(t=>t.id).sort((x,y)=>x-y);
+  // An escape is a response to specific opponents, not a generic destination.
+  // When a target dies or attention switches, do not spend the remainder of
+  // the four-second manoeuvre running toward a stale goal.
+  if(this.plan&&(tick>=this.plan.until||distance(a,this.plan.goal)<ESCAPE.arrival||
+   (this.plan.mode==='relocate'&&this.relocationTarget!==foe.id)||
+   (this.plan.mode==='pincer'&&(threatIds.length!==this.pincerTargets.length||
+    threatIds.some((id,i)=>id!==this.pincerTargets[i])))))this.clearPlan();
   if(threats.length&&this.plan?.mode!=='pincer'&&tick>=this.cooldown){
    const goal=pincerGoal(a,threats,this.side,occupied,goalClear);
-   if(goal){this.plan={mode:'pincer',goal,until:tick+ticks(.9+this.random()*.7)};this.cooldown=tick+ticks(7+this.random()*4);this.stationary=0;}
+   if(goal){this.plan={mode:'pincer',goal,until:tick+ticks(.9+this.random()*.7)};this.relocationTarget=null;this.pincerTargets=threatIds;this.cooldown=tick+ticks(7+this.random()*4);this.stationary=0;}
   }
   if(!this.plan&&this.stationary>ticks(ESCAPE.stuckSeconds)){
    this.side*=-1;const goal=tacticalEscape(a,foe,this.side,occupied,goalClear);this.stationary=0;
-   if(goal)this.plan={mode:'relocate',goal,until:tick+ticks(ESCAPE.relocateSeconds)};
+   if(goal){this.plan={mode:'relocate',goal,until:tick+ticks(ESCAPE.relocateSeconds)};this.relocationTarget=foe.id;this.pincerTargets=[];}
   }
   return this.plan;
  }
