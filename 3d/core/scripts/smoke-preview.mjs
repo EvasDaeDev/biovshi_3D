@@ -45,6 +45,17 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.posture==='prone'&&Number(d.hits)>0;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('arena');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0&&d.targets?.split('/').length===8;},{},{timeout:45000});
+ // The published catalog is built from the original 2D authored JSON,
+ // not fetched from the old app or from any external website.
+ await page.locator('#scenario').selectOption('location-ward');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
+  return d?.state==='running'&&d.location==='ward'&&d.authoredObjects==='5'&&Number(d.tick)>3;},{},{timeout:45000});
+ await page.locator('#scenario').selectOption('location-ring');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
+  return d?.state==='running'&&d.location==='ring'&&d.authoredObjects==='0'&&Number(d.tick)>3;},{},{timeout:45000});
+ await page.locator('#scenario').selectOption('location-maze');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
+  return d?.state==='running'&&d.location==='maze'&&Number(d.authoredObjects)>0&&Number(d.tick)>3;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('arena-vision');
  await page.locator('#vision-debug').check();
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0&&d.visible?.split('/').length===8;},{},{timeout:45000});
