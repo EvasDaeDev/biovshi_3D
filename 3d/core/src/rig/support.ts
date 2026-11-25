@@ -12,6 +12,18 @@ export interface SupportState {
  readonly correction:PointXZ;
 }
 const CONTACT_TOLERANCE=.025;
+// Common uniform-density capsule mass proxy. The omitted pi and density
+// are common to every segment and cancel when calculating the COM.
+export const capsuleMass=(radius:number,length:number):number=>radius*radius*length+4*radius**3/3;
+export function rigCenterOfMass(parts:readonly RigPose[],active?:ReadonlySet<string>):Vec3|null{
+ let mass=0,x=0,y=0,z=0;
+ for(const p of parts){
+  if(active&&!active.has(p.id))continue;
+  const w=capsuleMass(p.radius,Math.hypot(p.b[0]-p.a[0],p.b[1]-p.a[1],p.b[2]-p.a[2]));
+  mass+=w;x+=(p.a[0]+p.b[0])*.5*w;y+=(p.a[1]+p.b[1])*.5*w;z+=(p.a[2]+p.b[2])*.5*w;
+ }
+ return mass>0?[x/mass,y/mass,z/mass]:null;
+}
 const cross=(a:PointXZ,b:PointXZ,c:PointXZ)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
 function convexHull(points:PointXZ[]):PointXZ[]{
  const sorted=points.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
@@ -33,7 +45,7 @@ export function analyzeSupport(parts:readonly RigPose[],ground:(x:number,z:numbe
  const contacts:GroundContact[]=[],patch:PointXZ[]=[];
  for(const p of parts){
   const r=p.radius,dx=p.b[0]-p.a[0],dy=p.b[1]-p.a[1],dz=p.b[2]-p.a[2],length=Math.hypot(dx,dy,dz);
-  const weight=r*r*length+4*r*r*r/3;
+  const weight=capsuleMass(r,length);
   mass+=weight;x+=(p.a[0]+dx/2)*weight;y+=(p.a[1]+dy/2)*weight;z+=(p.a[2]+dz/2)*weight;
   if(eligible&&!eligible.has(p.id))continue;
   for(const t of length>1e-9?[0,.5,1]:[0]){

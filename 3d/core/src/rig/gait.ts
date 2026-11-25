@@ -7,6 +7,7 @@ import { MOVEMENT,bipedStep } from './movement-timing.js';
 import { HopCycle, type HopSample } from './hop-cycle.js';
 import { constrainRig } from './rig-constraints.js';
 import { balanceStandingPose } from './balance.js';
+import { balanceSingleSupport } from './single-support.js';
 import { CrawlAnchors, type CrawlAnchor } from './crawl-anchors.js';
 import { residualMode,residualTraction,type ResidualTraction } from './residual-traction.js';
 const FOOT_RADIUS=LAB_SEGMENTS.find(p=>p.id==='L.foot')!.radius;
@@ -20,7 +21,7 @@ export class PatientGait {
   private moveAmount=0; private next=0;private stepWait=0;private steps=0;private runAmount=0;private signedSpeed=0;
   get stepCount():number{return this.steps;}
   get footStates(){return this.feet.map(f=>({moving:f.moving,target:[...f.target] as Vec3,point:[...f.plant] as Vec3}));}
-  private supportShift=0; private supportDrop=0;
+  private supportDrop=0;
   private hop=new HopCycle();private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
   get hopHeight():number{return this.hopSample.lift;}
   get hopPhase():HopSample['phase']{return this.hopSample.phase;}
@@ -59,7 +60,7 @@ export class PatientGait {
     if(forcedProne!==undefined){
       this.proneAmount=clamp(forcedProne);this.anchors.reset();this.hop.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
       this.crawlEffort=0;this.signedSpeed=0;this.moveAmount=0;this.runAmount=0;this.stepWait=0;
-      this.supportShift=0;this.supportDrop=0;
+      this.supportDrop=0;
       for(let i=0;i<2;i++){
         const side=i===0?-1:1,x=root[0]+Math.cos(yaw)*side*.18,z=root[2]+Math.sin(yaw)*side*.18;
         const f=this.feet[i]!,p:Vec3=[x,ground(x,z)+FOOT_RADIUS,z];f.plant=p;f.start=p;f.target=p;f.phase=0;f.moving=false;
@@ -78,7 +79,6 @@ export class PatientGait {
     this.runAmount+=(plan.run-this.runAmount)*(1-Math.exp(-5*dt));
     const single=support[0]!==support[1];
     const blend=1-Math.exp(-5*dt);
-    this.supportShift+=((single?(support[0]?-.12:.12):0)-this.supportShift)*blend;
     this.supportDrop+=((single?.055:(!support[0]&&!support[1]?.28:0))-this.supportDrop)*blend;
     this.moveAmount+=(clamp(Math.abs(speed)/MOVEMENT.walkSpeed)-this.moveAmount)*(1-Math.exp(-4*dt));
     this.stepWait=Math.max(0,this.stepWait-dt);
@@ -124,8 +124,8 @@ export class PatientGait {
     const gaitPhase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
     const lean=Math.sign(this.signedSpeed)*moving*(.045+this.runAmount*.055)+Math.sin(t*.72+id)*.012,bob=moving*.012*(1-Math.abs(gaitPhase))+breathing*.006;
     const stanceDrop=this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0;
-    const hip:Vec3=[lateral+this.supportShift,1.02+bob-this.supportDrop-stanceDrop,0],chest:Vec3=[-lateral*.35+this.supportShift*.65,1.51+bob-this.supportDrop-stanceDrop,-.035-lean*.5];
-    const head:Vec3=[-lateral*.65+this.supportShift*.5+.012*Math.sin(t*.62+id),1.89+bob-this.supportDrop-stanceDrop,-.045-lean*.24];
+    const hip:Vec3=[lateral,1.02+bob-this.supportDrop-stanceDrop,0],chest:Vec3=[-lateral*.35,1.51+bob-this.supportDrop-stanceDrop,-.035-lean*.5];
+    const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id),1.89+bob-this.supportDrop-stanceDrop,-.045-lean*.24];
     const chestPose=add(chest,[-roll*.12,0,lean*.18]);
     const hipTwist=.11*moving*gaitPhase, chestTwist=-.16*moving*gaitPhase;
     const hipRoll=.025*sway+.035*moving*gaitPhase,chestRoll=-roll;
@@ -152,8 +152,11 @@ export class PatientGait {
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
     if(this.proneAmount===0){
-      const fixed=constrainRig(standing),lift=this.hopSample.lift;
+      let fixed=constrainRig(standing);const lift=this.hopSample.lift;
+      const single=this.mobility.mode==='single-support';
+      if(single){const i=this.mobility.support[0]?0:1;fixed=balanceSingleSupport(fixed,this.active,i===0?'L':'R',this.feet[i]!.plant,this.ground);}
       if(lift>0)return fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));
+      if(single)return fixed;
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
       return balanceStandingPose(fixed,this.active,stance,this.ground);
     }
