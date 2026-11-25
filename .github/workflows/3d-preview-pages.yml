@@ -25,6 +25,15 @@ jobs:
         run: node 3d/core/scripts/benchmark-core.mjs
       - name: Record Rapier ragdoll CPU benchmark (informational)
         run: node 3d/core/scripts/benchmark-ragdoll.mjs
+      - name: Audit P4 authored arenas with actual 3-10 patient capacity (informational)
+        run: node 3d/core/scripts/audit-authored-arenas.mjs
+      - name: Upload P4 capacity and Rapier performance audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authored-arena-audit
+          path: 3d/core/authored-arena-audit.json
+          if-no-files-found: warn
       - name: Audit full combat cycles with Rapier (six seeded cases)
         run: node 3d/core/scripts/audit-combat-cycle.mjs
       - name: Upload P3 integrated combat audit report
