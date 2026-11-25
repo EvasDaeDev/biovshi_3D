@@ -75,6 +75,8 @@ function expandedVertex(poly:readonly NativePoint[],i:number,pad:number):NativeP
 }
 type StaticGraph={readonly nodes:readonly NativePoint[];readonly edges:readonly (readonly (number|null)[])[]};
 export class PolygonNavigation extends ArenaNavigation{
+ /** 1.30 m authored gates remain walkable for a .50 m root, with .05 m margin. */
+ override readonly routePad:number=.55;
  readonly location:NativeLocation;
  private readonly shapes:readonly (readonly NativePoint[])[];
  private readonly perimeter:readonly NativePoint[];
