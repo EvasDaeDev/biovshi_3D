@@ -51,10 +51,12 @@ export class LimbFlight{
  }
  /** One fixed step with real swept-capsule contact. No damage from the
   * accuracy roll, only from the first physical interception. */
- advance(targets:readonly {id:number;previous:readonly PhysicsSegmentPose[];current:readonly PhysicsSegmentPose[]}[],clear:(a:Vec3,b:Vec3)=>boolean,ground:(x:number,z:number)=>number){
+ advance(targets:readonly {id:number;previous:readonly PhysicsSegmentPose[];current:readonly PhysicsSegmentPose[]}[],clear:(a:Vec3,b:Vec3,pad?:number)=>boolean,ground:(x:number,z:number)=>number){
   const from=this.age,to=from+FIXED_DT,old=this.pose(from),next=this.pose(to);
   let stop=1,ended=false,hit:{fighterId:number;segmentId:string;point:Vec3}|null=null;
-  if(!clear(this.center(from),this.center(to))){stop=0;ended=true;}
+  // Check full swept capsule clearance before handing off to physical debris.
+  const blocked=!clear(this.center(from),this.center(to))||next.some((p,i)=>!clear(old[i]!.a,p.a,p.radius)||!clear(old[i]!.b,p.b,p.radius)||!clear(p.a,p.b,p.radius));
+  if(blocked){stop=0;ended=true;}
   if(!ended&&next.some(p=>[p.a,p.b].some(v=>v[1]-p.radius<=ground(v[0],v[2])))){ended=true;stop=1;}
   if(stop>0){
    for(const b of targets){
@@ -71,6 +73,6 @@ export class LimbFlight{
    }
   }
   this.age=from+(to-from)*stop;
-  return {ended:ended||this.age>=LIMB_THROW.maxSeconds,hit,parts:this.pose(this.age),velocity:this.velocity(this.age)};
+  return {ended:ended||this.age>=LIMB_THROW.maxSeconds,hit,parts:this.pose(this.age),velocity:blocked?[0,Math.min(0,this.velocity(this.age)[1]),0] as Vec3:this.velocity(this.age)};
  }
 }

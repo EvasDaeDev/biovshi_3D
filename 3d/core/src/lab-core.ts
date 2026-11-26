@@ -331,7 +331,7 @@ export class LabSimulationCore implements SimulationCore {
     const targets=this.fightEnded?[]:this.actors.filter(a=>!a.fixed).map(a=>({id:a.id,current:this.actorPose(a),previous:previous?.get(a.id)??this.actorPose(a)}));
     const keep:LimbFlight[]=[];
     for(const flight of this.flights){
-      const f=flight.advance(targets,(a,b)=>this.navigation.clear({x:a[0],z:a[2]},{x:b[0],z:b[2]},0),(x,z)=>gradeHeight(x,z,this.grade)+terrainHeight(x,z,this.mounds));
+      const f=flight.advance(targets,(a,b,pad=0)=>[a,b].every(p=>Math.abs(p[0])+pad<=6.85&&Math.abs(p[2])+pad<=6.85)&&this.navigation.clear({x:a[0],z:a[2]},{x:b[0],z:b[2]},pad),(x,z)=>gradeHeight(x,z,this.grade)+terrainHeight(x,z,this.mounds));
       this.events.push({tick:this.tick,type:f.ended?'limb-flight-ended':'limb-flight',fighterId:flight.owner,flightId:flight.id,flightParts:f.parts,flightVelocity:f.velocity});
       if(f.hit&&!this.fightEnded){
         this.events.push({tick:this.tick,type:'limb-hit',fighterId:f.hit.fighterId,attackerId:flight.owner,segmentId:f.hit.segmentId,point:f.hit.point,flightId:flight.id});

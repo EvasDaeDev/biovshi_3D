@@ -19,6 +19,8 @@ export class DebrisWorld {
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
   this.items=[];this.settledSingles=[];this.branches=[];this.flights=new Map();this.mounds=[];this.nextId=0;
   this.grades=grades;this.baseHeight=(x,z)=>gradeHeight(x,z,this.grades);
+  const perimeter=location?.boundary??[{x:-6.85,z:-6.85},{x:6.85,z:-6.85},{x:6.85,z:6.85},{x:-6.85,z:6.85}];
+  this.throwPlanes=perimeter.map((a,i)=>{const b=perimeter[(i+1)%perimeter.length],dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz);return {x:-dz/n,z:dx/n,c:(-dz*a.x+dx*a.z)/n};});
   this.incapacitated=new IncapacitatedBodies(R,this.world,this.baseHeight);
   this.archiveFloor=archive;
   const floor=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0,-.19,0));
@@ -92,7 +94,9 @@ export class DebrisWorld {
    const velocity=event.flightVelocity;
    branch.rb.setLinvel(velocity?{x:velocity[0]*.3,y:Math.max(0,velocity[1]*.2),z:velocity[2]*.3}:{x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
    branch.rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
-   this.branches.push({...branch,id,fighterId:event.fighterId,age:0,still:0,settled:null});return;
+   const record={...branch,id,fighterId:event.fighterId,age:0,still:0,settled:null,thrown:!!velocity};
+   if(record.thrown)this.containThrow(record,compoundPose(record));
+   this.branches.push(record);return;
   }
   const p=poses[0],f=boneFrame(p.a,p.b),R=this.R;
   // Quaternion rotating +Y onto the segment axis; sphere orientation is immaterial.
@@ -107,13 +111,27 @@ export class DebrisWorld {
   rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
   this.items.push({id,rb,length,radius:p.radius,segmentId:p.id,fighterId:event.fighterId,age:0,still:0});
  }
+ /** Keep thrown capsules inside the convex footprint, including above low rails.
+  * Preserve the branch geometry and remove only outward linear velocity. */
+ containThrow(branch,parts){
+  let dx=0,dz=0;const v=branch.rb.linvel();let vx=v.x,vz=v.z;
+  for(let pass=0;pass<3;pass++)for(const p of this.throwPlanes){
+   let gap=Infinity;
+   for(const part of parts)for(const q of [part.a,part.b])gap=Math.min(gap,p.x*(q[0]+dx)+p.z*(q[2]+dz)-p.c-part.radius);
+   if(gap>=.005)continue;
+   const shift=.005-gap;dx+=p.x*shift;dz+=p.z*shift;
+   const outward=p.x*vx+p.z*vz;if(outward<0){vx-=p.x*outward;vz-=p.z*outward;}
+  }
+  if(Math.hypot(dx,dz)>1e-8){const t=branch.rb.translation();branch.rb.setTranslation({x:t.x+dx,y:t.y,z:t.z+dz},true);branch.rb.setLinvel({x:vx,y:v.y,z:vz},true);return compoundPose(branch);}
+  return parts;
+ }
  step(dt){
   if(dt!==1/60)throw new RangeError('Debris requires fixed 60 Hz');
   this.world.step();
   this.incapacitated.settle(this.moundSnapshot());
   for(const b of this.branches){
    if(b.settled)continue;
-   const parts=compoundPose(b),v=b.rb.linvel(),w=b.rb.angvel();
+   const raw=compoundPose(b),parts=b.thrown?this.containThrow(b,raw):raw,v=b.rb.linvel(),w=b.rb.angvel();
    const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],this.moundSnapshot())+.06));
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.4;
    b.age++;b.still=near&&(b.rb.isSleeping()||speed<.16)?b.still+1:0;
