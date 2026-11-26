@@ -218,3 +218,7 @@ b772cea CI 45825659732: 259/260 (pitch bound), f87f0ef CI 45826695875: 260/261 (
 ### P4-M — уточнение пластики и визуализации (26.11.2026)
 
 006a17c CI 45827890622 success. Walk/run ×.75, crawl ×4/3, поднят таз, ранний swing/вынос передней стопы, box presentation all segments, v1 exact-hit tint normal .4/.30s crit fade .48s. Physical capsules unchanged. Tests/CI/visual pending; [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).
+
+### P4-M — две цели и multi-contact (26.11.2026)
+
+520fc07 CI 45831187977 success (ring p95 2.209ms). Independent attention2, ±70° arm/leg, two unique victims per thrust, thorax curve/box orientation, pooled v1 particles without flash; regressions/audit counters added. New CI and manual/CPU acceptance pending.

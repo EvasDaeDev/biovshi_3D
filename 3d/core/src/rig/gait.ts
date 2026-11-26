@@ -336,7 +336,7 @@ export class PatientGait {
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
     if(this.proneAmount===0){
-      let fixed=constrainRig(standing);const lift=this.hopSample.lift;
+      let fixed=constrainRig(standing,undefined,1,this.organic);const lift=this.hopSample.lift;
       // Anticipatory reference relative to the locomoting root. Retain
       // deliberate lean/look and impacts; compensate the alternating sway.
       const steadyHead=world([looking[0]+lateral*.65,looking[1]-bob*.75,looking[2]]);
@@ -354,7 +354,7 @@ export class PatientGait {
         const weight=Math.min(.8,lift*12);
         return {...part,a:mix(part.a,position(target.a),weight),b:mix(part.b,position(target.b),weight)};
        });
-       fixed=constrainRig(flying);
+       fixed=constrainRig(flying,undefined,1,this.organic);
       }
       if(lift>0)return steady(fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])})),lift);
       if(single)return steady(fixed);

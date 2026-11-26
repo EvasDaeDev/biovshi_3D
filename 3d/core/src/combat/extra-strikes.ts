@@ -1,3 +1,4 @@
+import {strikeBearing} from './strike-sector.js';
 import {lowTargetAmount,strikeTrajectory} from './strike-trajectory.js';
 import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import type { Punch,StrikePhase } from './strike.js';
@@ -27,9 +28,10 @@ export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase
   const hip=pose.find(v=>v.id===p.side+'.upperLeg');
   if(!foot||!plant||!hip)return pose;
   const base=foot.a,low=coordinated?lowTargetAmount(p.aim,ground):0;
-  const back:Vec3=[hip.a[0]-Math.sin(p.yaw)*.14,Math.max(base[1]+.23,hip.a[1]-.48)+.08*low,hip.a[2]+Math.cos(p.yaw)*.14];
+  const aimYaw=coordinated?p.yaw+strikeBearing(pose,p.aim,p.yaw):p.yaw;
+  const back:Vec3=[hip.a[0]-Math.sin(aimYaw)*.14,Math.max(base[1]+.23,hip.a[1]-.48)+.08*low,hip.a[2]+Math.cos(aimYaw)*.14];
   const aim:Vec3=[p.aim[0],Math.max(ground(p.aim[0],p.aim[2])+foot.radius,p.aim[1]),p.aim[2]];
-  const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,t,low,'leg',p.yaw,p.side):phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
+  const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,t,low,'leg',aimYaw,p.side):phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
   // Same mass-driven support solver as the one-legged gait. It includes
   // the swinging leg in COM and maintains the opposite world foot anchor.
   return balanceSingleSupport(pose,pose.map(v=>v.id),support,supportPlant??plant.a,ground,weight===1?rawTarget:mix(base,rawTarget,weight),supportLoad,coordinated?p.yaw:undefined);

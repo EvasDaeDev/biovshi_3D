@@ -111,14 +111,18 @@ export class RaidState{
   const {tick,here,target,visible,strike,interrupted,ready,clear}=i;
   if(target&&target.id===this.targetId)this.remembered={x:target.x,z:target.z};
   const active=strike!=='idle',danger=visible.filter(o=>!o.grounded&&dist(here,o)<1.45&&(o.threatening||dist(here,o)<.95));
-  const crowded=visible.filter(o=>dist(here,o)<1.35).length>=2;
+  const close=visible.filter(o=>dist(here,o)<1.35);
+  // Two adjacent opponents can lie along one swing. Keep pincer/third
+  // party avoidance, but do not categorically abort a committed sweep.
+  const sharedLane=close.length===2&&dist(close[0]!,close[1]!)<.65&&Math.abs(wrap(bearing(here,close[0]!)-bearing(here,close[1]!)))<.85&&!close.some(o=>o.threatening);
+  const crowded=close.length>=2&&!sharedLane;
   // The candidate selected this tick is already our intended opponent,
   // even before observe acquires its ID. Do not mistake it for a third
   // party. Close telegraphed attacks are still handled in observe/rush
   // and the situation-dependent series evaluation.
   const intendedTarget=target?.id??this.targetId;
   const counter=!!target&&!target.grounded&&target.threatening&&dist(here,target)<1.45;
-  if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==intendedTarget)&&!active||this.phase==='reassess'&&counter))this.withdraw(tick);
+  if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==intendedTarget)&&!active&&!sharedLane||this.phase==='reassess'&&counter))this.withdraw(tick);
   if(this.phase==='attack'&&this.attempts>0&&(strike==='recover'||!active)){
    const exposure=target?Math.abs(wrap(bearing(target,here)-target.yaw))/Math.PI:0;
    if(!target||target.id!==this.targetId||dist(here,target)>1.45||tick>=this.deadline||!continueSeries(this.profile,this.attempts,this.rush,this.landed,target,exposure,this.bias))this.finish(tick,counter);

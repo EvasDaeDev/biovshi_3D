@@ -43,13 +43,44 @@ export function notices(a:VisionBody,b:VisionBody,gazeYaw:number,clear:SightClea
  });
 }
 export interface VisionMemory {readonly id:number;readonly point:PointXZ;readonly until:number}
-export interface PerceptionSnapshot {readonly gazeYaw:number;readonly look:number;readonly visibleIds:readonly number[];readonly memory:VisionMemory|null;readonly patrol:PointXZ|null}
+export interface AttentionTrack extends VisionMemory {readonly visible:boolean}
+export interface PerceptionSnapshot {readonly tracked:readonly AttentionTrack[];readonly gazeYaw:number;readonly look:number;readonly visibleIds:readonly number[];readonly memory:VisionMemory|null;readonly patrol:PointXZ|null}
 export class PatientPerception{
+ private tracks:AttentionTrack[]=[];
  private look=0;private direction=1;private memory:VisionMemory|null=null;private goal:PointXZ|null=null;private goalUntil=0;private visible:number[]=[];private rng:number;
  constructor(seed:number,id:number,private readonly authored=false){this.rng=(seed^Math.imul(id+1,0x7feb352d)^0x846ca68b)>>>0;this.direction=id%2?1:-1;}
  private random():number{this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;return this.rng/4294967296;}
  gaze(bodyYaw:number):number{return bodyYaw+this.look;}
  setVisible(ids:readonly number[]):void{this.visible=[...ids];}
+ /** Two independent observed tracks. Preserve a secondary briefly when
+  * occluded, never refresh a hidden opponent's coordinates. This is
+  * attention/memory, not a restriction on the underlying sight sensor. */
+ updateTracks(tick:number,here:PointXZ,primaryId:number|null,observed:readonly (PointXZ&{id:number})[],activeIds:readonly number[]):void{
+  if(!this.authored)return;
+  const old=this.tracks.filter(p=>p.until>tick&&activeIds.includes(p.id));
+  const get=(id:number):AttentionTrack|null=>{
+   const v=observed.find(p=>p.id===id),prior=old.find(p=>p.id===id);
+   return v?{id,point:{x:v.x,z:v.z},until:tick+VISION.memoryTicks,visible:true}:prior?{...prior,visible:false}:null;
+  };
+  const sorted=[...observed].sort((a,b)=>distance(here,a)-distance(here,b)||a.id-b.id);
+  const primary=primaryId===null?null:get(primaryId);
+  const first=primary??old.map(p=>get(p.id)).find(p=>p?.visible)??(sorted[0]?get(sorted[0].id):null)??old.map(p=>get(p.id)).find(p=>p!==null)??null;
+  const second=old.filter(p=>p.id!==first?.id).map(p=>get(p.id)).find(p=>p?.visible)
+   ??(sorted.find(p=>p.id!==first?.id)?get(sorted.find(p=>p.id!==first?.id)!.id):null)
+   ??old.filter(p=>p.id!==first?.id).map(p=>get(p.id)).find(p=>p!==null)??null;
+  this.tracks=[first,second].filter((p):p is AttentionTrack=>p!==null);
+ }
+ /** Center a shared visual sector when both observed opponents fit.
+  * If they flank from opposite directions prioritize the primary, rather
+  * than staring between two invisible targets. */
+ attentionPoint(here:PointXZ,primary:PointXZ):PointXZ{
+  const second=this.tracks[1];if(!this.authored||!second?.visible)return primary;
+  const angle=(p:PointXZ)=>Math.atan2(p.x-here.x,-(p.z-here.z));
+  const a=angle(primary),delta=wrap(angle(second.point)-a);
+  if(Math.abs(delta)>VISION.fov)return primary;
+  const heading=a+delta*.5,r=Math.max(.1,distance(here,primary));
+  return {x:here.x+Math.sin(heading)*r,z:here.z-Math.cos(heading)*r};
+ }
  /** v1 updateHead: bounded local tracking or reflected scan. */
  advanceLook(bodyYaw:number,origin:PointXZ,target:PointXZ|null,bodyTurnRate=0,urgent=false):void{
   const motion=this.authored?PATIENT_HEAD:VISION;
@@ -96,6 +127,6 @@ export class PatientPerception{
   }
   return {...this.goal};
  }
- clear():void{this.visible=[];this.memory=null;this.goal=null;this.look=0;}
- snapshot(bodyYaw:number):PerceptionSnapshot{return {gazeYaw:this.gaze(bodyYaw),look:this.look,visibleIds:[...this.visible],memory:this.memory?{...this.memory,point:{...this.memory.point}}:null,patrol:this.goal?{...this.goal}:null};}
+ clear():void{this.tracks=[];this.visible=[];this.memory=null;this.goal=null;this.look=0;}
+ snapshot(bodyYaw:number):PerceptionSnapshot{return {tracked:this.tracks.map(p=>({...p,point:{...p.point}})),gazeYaw:this.gaze(bodyYaw),look:this.look,visibleIds:[...this.visible],memory:this.memory?{...this.memory,point:{...this.memory.point}}:null,patrol:this.goal?{...this.goal}:null};}
 }

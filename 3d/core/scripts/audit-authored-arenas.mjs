@@ -31,6 +31,7 @@ for(const location of Object.values(catalog)){
  const detachedKeys=new Set(),incapacitated=new Set(),stationarySeconds=new Map(),lastPositions=new Map();
  let minActive=location.capacity,peakRagdolls=0,peakCones=0,damageEvents=0;
  let windups=0,contacts=0,oilDrops=0,terminalEvents=0,finishTick=null,lastHitTick=0,maxQuietTicks=0;
+ const strikeTargets=new Map();let doubleContactCycles=0,maxTracked=0;
  let longestStationarySeconds=0,stationaryPatientId=null;
  const seriesSamples={maxAttempts:0,maxHits:0,maxRush:0,activeSamples:0,heatedSamples:0,crowdedSamples:0};
  try{
@@ -42,8 +43,8 @@ for(const location of Object.values(catalog)){
    const events=advanceCombatStep(core,world,FIXED_DT,input);
    samples.push(performance.now()-t);
    for(const e of events){
-    if(e.type==='combat-windup')windups++;
-    if(e.type==='strike-contact')contacts++;
+    if(e.type==='combat-windup'){windups++;strikeTargets.set(e.fighterId,new Set());}
+    if(e.type==='strike-contact'){contacts++;const ids=strikeTargets.get(e.attackerId);if(ids){assert.ok(!ids.has(e.fighterId),'repeat contact in a strike');ids.add(e.fighterId);assert.ok(ids.size<=2,'more than two contact victims');if(ids.size===2)doubleContactCycles++;}}
     if(e.type==='oil-drop')oilDrops++;
     if(e.type==='fighter-damaged'){
      assert.equal(finishTick,null,location.id+' damage after terminal result');
@@ -72,6 +73,7 @@ for(const location of Object.values(catalog)){
    // Once per simulated second; diagnostic lower bounds, not exact counts.
    if(!state.fight.ended)for(let i=0;i<state.fighterIds.length;i++){
     const raid=state.raids?.[i];if(state.lifeStates[i]!=='active'||!raid)continue;
+    maxTracked=Math.max(maxTracked,state.perception[i]?.tracked.length??0);
     seriesSamples.maxAttempts=Math.max(seriesSamples.maxAttempts,raid.attempts);
     seriesSamples.maxHits=Math.max(seriesSamples.maxHits,raid.hits);
     seriesSamples.maxRush=Math.max(seriesSamples.maxRush,raid.rush);
@@ -120,7 +122,7 @@ for(const location of Object.values(catalog)){
    winnerId:state.fight.winnerId,finishSeconds:finishTick===null?null:round(finishTick/60),
    active:state.lifeStates.filter(x=>x==='active').length,minActive,
    hits:state.damageStats.hits,detached:state.damageStats.detached,damageEvents,
-   windups,contacts,oilDrops,visible,expected:expected.size,
+   windups,contacts,doubleContactCycles,maxTracked,oilDrops,visible,expected:expected.size,
    settledBodies:bodies.filter(b=>b.settled).length,
    unsettledBodies:bodies.filter(b=>!b.settled).map(b=>({fighterId:b.fighterId,motion:b.motion})),
    unsettledDebris:debris.filter(d=>!d.settled).map(d=>({fighterId:d.fighterId,segmentId:d.segmentId})),
