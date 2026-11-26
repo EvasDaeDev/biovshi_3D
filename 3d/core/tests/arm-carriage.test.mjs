@@ -59,3 +59,21 @@ test('live gait carries arms at steady walk, run and guard without changing bone
  for(const a of guard.arms)assert.ok(Math.abs(a.hand[1])<.12);
  assert.ok(run.lean<walk.lean-.06,JSON.stringify({walk,run}));
 });
+
+test('guard and run transitions remain bounded in both directions across profile and target angles',()=>{
+ for(const lag of [.86,1,1.16])for(const asymmetry of [-1.15,1.15])for(const side of [-1,1])for(const bearing of [-55,0,55])for(const swing of [-1,0,1]){
+  const a=new ArmCarriage({...BASE_MOTION_PROFILE,lag,asymmetry});
+  let previous=null;
+  for(const [speed,running,guard] of [[1.4,false,true],[5,true,true],[1.4,false,true],[-1.4,false,false],[0,false,false]]){
+   for(let i=0;i<180;i++){
+    a.advanceMotion(dt,speed,speed,running,true);a.advanceAttention(dt,guard,bearing*Math.PI/180);
+    const p=a.offsets(side,elbow,hand,swing);
+    assert.ok(Math.abs(dist(p.elbow,[0,0,0])-.36)<1e-9);
+    assert.ok(Math.abs(dist(p.elbow,p.hand)-.32)<1e-9);
+    if(previous)assert.ok(dist(p.hand,previous.hand)<.16,JSON.stringify({lag,asymmetry,side,bearing,swing,speed,running,guard,i,delta:dist(p.hand,previous.hand)}));
+    previous=p;
+   }
+   if(running)assert.ok(pitch(previous.elbow)>=-45.01&&pitch(previous.elbow)<=-29.99);
+  }
+ }
+});

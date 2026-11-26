@@ -230,3 +230,7 @@ b772cea CI 45825659732: 259/260 (pitch bound), f87f0ef CI 45826695875: 260/261 (
 ### P4-M — положение рук и ринг 9 м (26.11.2026)
 
 230bd9d CI 45839056399 success; ring p95 1.492ms, doubleContactCycles0/maxTracked2. ArmCarriage walk30–40° forward, run30–45° backward+lean, close combat guard at chest, target bearing and smooth transitions. Ring9m, revision9m-v1, camera overview. Tests/docs updated; new CI and visual/CPU acceptance pending.
+
+### P4-M — устранение рывка кисти (26.11.2026)
+
+bfeebc7 CI 45841052541: tsc OK, 273/274; guard→run hand delta regression. Signed pitch/lateral angular interpolation вместо normalized lerp; tau run .21/guard .18. Численная проверка .1620→.0914 native/tick; расширена regression across108 combinations. Ринг9м/конечные позы сохранены, тесты не ослаблены. Новый CI ожидается.
