@@ -64,7 +64,7 @@ export class PatientGait {
   private supportDrop=0;
   private hop:HopCycle;
   private leap:HopCycle;private attackLeap=new HopCycle(POUNCE.prepare,POUNCE.flight,POUNCE.settle,true,POUNCE.distance);private pouncing=false;
-  private leapHeld=false;private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+  private leapHeld=false;private leapQueued=0;private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
   get hopHeight():number{return this.hopSample.lift;}
   get hopPhase():HopSample['phase']{return this.hopSample.phase;}
   private anchors:CrawlAnchors;
@@ -72,18 +72,28 @@ export class PatientGait {
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
   travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R',pounce=false):number{
+    let groundedLeap=false;
     if(mobility.mode==='biped'&&this.groundedStride){
-      const attackLaunch=pounce&&jump&&!this.pouncing&&this.hopSample.phase==='idle'&&!this.sprintCycle;
-      const launch=attackLaunch||jump&&!this.leapHeld&&!this.sprintCycle&&!this.pouncing;
+      const idle=this.hopSample.phase==='idle';
+      const attackLaunch=pounce&&jump&&!this.pouncing&&idle&&!this.sprintCycle;
+      this.leapQueued=Math.max(0,this.leapQueued-dt);
+      if(!pounce&&jump&&!this.leapHeld&&idle)this.leapQueued=.25;
       this.leapHeld=jump;
+      const launch=attackLaunch||idle&&!pounce&&this.leapQueued>0&&this.feet.some(f=>!f.moving);
+      if(launch)this.leapQueued=0;
       if(attackLaunch){this.pouncing=true;this.attackLeap.reset();}
       if(launch||this.hopSample.phase!=='idle'){
         const leap=this.pouncing?this.attackLeap:this.leap;
         this.hopSample=leap.advance(dt,attackLaunch?POUNCE.distance/(POUNCE.prepare+POUNCE.flight+POUNCE.settle):launch?(Math.abs(speed)>.03?speed:.035):0);
-        if(this.hopSample.phase==='idle')this.pouncing=false;
-        return this.hopSample.distance;
+        const phase=this.hopSample.phase;
+        if(phase==='idle')this.pouncing=false;
+        groundedLeap=this.organic&&!this.pouncing&&driveRequested&&!this.hopSample.followsRoot&&(phase==='prepare'||phase==='pause');
+        if(!groundedLeap)return this.hopSample.distance;
+        // Keep a little ground travel through anticipation and absorption.
+        // The normal stance envelope still protects the planted foot.
+        speed*=phase==='prepare'?.55:.70;
       }
-    }else{this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.leapHeld=jump;}
+    }else{this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.leapHeld=jump;this.leapQueued=0;}
     if(this.anchored(mobility)&&this.proneAmount===1){
       const before=this.pose(id,root,yaw,t);
       this.anchors.advance(dt,speed,yaw,before,mobility,ground);
@@ -92,7 +102,9 @@ export class PatientGait {
     }
     this.anchors.reset();
     if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,this.organic&&!driveRequested?0:speed);return this.hopSample.distance;}
-    this.hop.reset();this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+    if(!groundedLeap){
+      this.hop.reset();this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+    }
     if(!mobility.prone){
       if(!this.groundedStride||mobility.mode!=='biped')return speed*dt;
       const direction=Math.sign(speed);
@@ -130,7 +142,7 @@ export class PatientGait {
     this.next=this.organic?motionProfile.firstFoot:0;
     const tempo=this.organic?motionProfile.hopTempo:1;
     this.hop=new HopCycle((groundedStride?.14:0)*tempo,MOVEMENT.hopFlightSeconds*tempo,this.organic?.18*tempo:MOVEMENT.hopPauseSeconds,this.organic);
-    this.leap=new HopCycle(.18*tempo,.42*tempo,this.organic?.20*tempo:MOVEMENT.hopPauseSeconds,this.organic);
+    this.leap=new HopCycle(.18*tempo,.42*tempo,this.organic?.20*tempo:MOVEMENT.hopPauseSeconds,this.organic,this.organic?1.30:MOVEMENT.hopMaxDistance);
     const foot=(side:number):Foot=>{
       const reference=authored?.stance?.get(side<0?'L.foot':'R.foot')?.a;
       const x=reference?side*.10+reference[0]*.4:side*.18,z=reference?reference[2]*.4:0;
@@ -142,7 +154,7 @@ export class PatientGait {
     this.mobility=mobility;this.active=active;this.ground=ground;
     const support=mobility.support;
     if(forcedProne!==undefined){
-      this.sprintCycle=false;this.sprintBob=0;this.sprintSlow=0;
+      this.sprintCycle=false;this.sprintBob=0;this.sprintSlow=0;this.leapQueued=0;
       this.carriage.advanceMotion(dt,0,0,false,false);
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const amount=clamp(forcedProne);
@@ -351,11 +363,12 @@ export class PatientGait {
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
     if(this.proneAmount===0){
-      let fixed=constrainRig(standing,undefined,1,this.organic);const lift=this.hopSample.lift;
+      const neckFollow=this.organic?clamp(moving/.35):0;
+      let fixed=constrainRig(standing,undefined,1,this.organic,neckFollow);const lift=this.hopSample.lift;
       // Anticipatory reference relative to the locomoting root. Retain
       // deliberate lean/look and impacts; compensate the alternating sway.
       const steadyHead=world([looking[0]+lateral*.65,looking[1]-bob*.75,looking[2]]);
-      const steady=(pose:readonly RigPose[],height=0)=>this.organic?compensateHead(pose,add(steadyHead,[0,height,0]),this.motionProfile.compensation*(reactive?.55:1)):pose;
+      const steady=(pose:readonly RigPose[],height=0)=>this.organic?compensateHead(pose,add(steadyHead,[0,height,0]),(1-neckFollow)*this.motionProfile.compensation*(reactive?.55:1)):pose;
       const single=this.mobility.mode==='single-support';
       if(single){const i=this.mobility.support[0]?0:1;fixed=balanceSingleSupport(fixed,this.active,i===0?'L':'R',this.feet[i]!.plant,this.ground);}
       if(lift>0&&this.authored?.jump&&this.hopSample.phase==='flight'){
@@ -369,7 +382,7 @@ export class PatientGait {
         const weight=Math.min(.8,lift*12);
         return {...part,a:mix(part.a,position(target.a),weight),b:mix(part.b,position(target.b),weight)};
        });
-       fixed=constrainRig(flying,undefined,1,this.organic);
+       fixed=constrainRig(flying,undefined,1,this.organic,neckFollow);
       }
       if(lift>0)return steady(fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])})),lift);
       if(single)return steady(fixed);

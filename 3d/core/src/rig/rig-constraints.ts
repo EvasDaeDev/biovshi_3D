@@ -10,7 +10,7 @@ const lengths=new Map(LAB_SEGMENTS.map(p=>[p.id,p.nominalLength]));
 /** Rebuild a connected skeleton from desired directions, not independently
  * interpolated endpoints. The full nominal rig is supplied before filtering
  * absent parts, so no missing limb can invalidate the transform chain. */
-export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths,scaleOffsets=1,curvedThorax=false):readonly RigPose[]{
+export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths,scaleOffsets=1,curvedThorax=false,neckFollow=0):readonly RigPose[]{
  const length=(id:string)=>customLengths.get(id)??lengths.get(id)!;
  const raw=new Map(pose.map(p=>[p.id,p])),out=new Map<string,RigPose>();
  const get=(id:string)=>raw.get(id)!;
@@ -24,7 +24,17 @@ export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<s
  const thorax=curvedThorax?unit([spine[0]*1.22,spine[1],spine[2]*1.22],spine):spine;
  const chest=add(abdomenEnd,scale(thorax,.14*scaleOffsets));
  girdle('pelvis',hip);put('abdomen',abdomenStart,abdomenEnd);girdle('chest',chest);
- const headAxis=unit(sub(get('head').a,oldChest),spine),neckEnd=add(chest,scale(headAxis,length('neck')));
+ const resting=unit(sub(get('head').a,oldChest),spine);
+ let headAxis=resting;
+ if(neckFollow>0){
+  // The chest capsule spans the shoulders. Remove that axis from the
+  // thoracic spine direction so the neck inherits shoulder roll as well.
+  const across=unit(sub(get('chest').b,get('chest').a),[1,0,0]);
+  const along=thorax[0]*across[0]+thorax[1]*across[1]+thorax[2]*across[2];
+  const up=unit(sub(thorax,scale(across,along)),thorax);
+  headAxis=unit(add(scale(resting,1-neckFollow),scale(up,neckFollow)),up);
+ }
+ const neckEnd=add(chest,scale(headAxis,length('neck')));
  put('neck',chest,neckEnd);put('head',add(neckEnd,scale(headAxis,.10*scaleOffsets)));
  for(const side of ['L','R']){
   for(const [upper,lower,end,girdleId] of [['upperLeg','lowerLeg','foot','pelvis'],['upperArm','lowerArm','hand','chest']] as const){
