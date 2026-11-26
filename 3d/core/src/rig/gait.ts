@@ -1,3 +1,4 @@
+import {KnockdownMotion} from '../animation/knockdown-motion.js';
 import {localImpact,type ImpactMotionSample} from '../animation/impact-motion.js';
 import type {AuthoredMotion} from './authored-motion.js';
 import {BASE_MOTION_PROFILE,type MotionProfile} from '../animation/motion-profile.js';
@@ -92,6 +93,13 @@ export class PatientGait {
     const traction=residualTraction(this.pose(id,root,yaw,t),mobility,this.crawlPhase,ground);
     return speed*dt*(traction?.scale??0);
   }
+  private knockdownMotion:KnockdownMotion|null=null;
+  private knockdownRising=false;
+  get hasKnockdownMotion():boolean{return this.knockdownMotion!==null;}
+  beginKnockdown(root:Vec3,pose:readonly RigPose[]):void{
+    if(!this.organic||this.mobility.mode!=='biped'||pose.length!==LAB_SEGMENTS.length)return;
+    this.knockdownMotion=new KnockdownMotion(root,pose,this.feet.map(f=>f.plant));this.knockdownRising=false;
+  }
   private proneAmount=0;private crawlPhase=0;private crawlEffort=0;private crawlDirection=1;
   private mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id));
   private active:readonly string[]=LAB_SEGMENTS.map(s=>s.id);
@@ -113,15 +121,21 @@ export class PatientGait {
     const support=mobility.support;
     if(forcedProne!==undefined){
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
-      this.proneAmount=clamp(forcedProne);this.anchors.reset();this.hop.reset();this.leap.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+      const amount=clamp(forcedProne);
+      if(this.knockdownMotion&&amount<this.proneAmount)this.knockdownRising=true;
+      this.proneAmount=amount;this.anchors.reset();this.hop.reset();this.leap.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
       this.crawlEffort=0;this.signedSpeed=0;this.moveAmount=0;this.runAmount=0;this.stepWait=0;
       this.supportDrop=0;
       for(let i=0;i<2;i++){
         const side=i===0?-1:1,x=root[0]+Math.cos(yaw)*side*.18,z=root[2]+Math.sin(yaw)*side*.18;
-        const f=this.feet[i]!,p:Vec3=[x,ground(x,z)+FOOT_RADIUS,z];f.plant=p;f.start=p;f.target=p;f.phase=0;f.moving=false;
+        const f=this.feet[i]!,target:Vec3=[x,ground(x,z)+FOOT_RADIUS,z];
+        const p=this.knockdownMotion&&!this.knockdownRising?this.knockdownMotion.foot(i,target,amount):target;
+        f.plant=p;f.start=p;f.target=p;f.phase=0;f.moving=false;
       }
+      if(this.knockdownRising&&amount===0){this.knockdownMotion=null;this.knockdownRising=false;}
       return;
     }
+    this.knockdownMotion=null;this.knockdownRising=false;
     this.proneAmount=clamp(this.proneAmount+(mobility.prone?1:-1)*dt/.65);
     if(mobility.prone){
       const desired=mobility.speedScale>0?clamp(Math.abs(speed)/(MOVEMENT.walkSpeed*mobility.speedScale)):0;
@@ -200,6 +214,7 @@ export class PatientGait {
     }
   }
   pose(id:number,root:Vec3,yaw:number,t:number,_hurt=false,look=0,reaction?:ImpactMotionSample):readonly RigPose[]{
+    if(this.knockdownMotion&&!this.knockdownRising&&this.proneAmount===0)return this.knockdownMotion.source(root);
     const secondary=this.organic?this.motion.sample:null;
     const reactive=this.organic&&reaction&&this.proneAmount===0&&this.hopSample.phase!=='flight'?reaction:null;
     const torsoHit:Vec3=reactive?localImpact(reactive.torso,yaw):[0,0,0];
@@ -279,7 +294,12 @@ export class PatientGait {
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
       return balanceStandingPose(fixed,this.active,stance,this.ground);
     }
-    const prone=blendGroundPose(standing,pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground),this.proneAmount,this.active,this.ground);
+    const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground);
+    if(this.knockdownMotion){
+      const source=this.knockdownRising?balanceStandingPose(constrainRig(standing),this.active,['L.foot','R.foot'],this.ground):this.knockdownMotion.source(root);
+      return blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true);
+    }
+    const prone=blendGroundPose(standing,grounded,this.proneAmount,this.active,this.ground);
     return this.proneAmount===1&&this.anchored(this.mobility)?this.anchors.apply(prone,this.mobility,this.ground):prone;
   }
 }

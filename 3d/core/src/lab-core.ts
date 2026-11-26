@@ -133,7 +133,7 @@ export class LabSimulationCore implements SimulationCore {
     for(const a of this.actors)a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,0,this.gaitGround(a),mobilityFor(a.segments),a.segments);
   }
 
-  private actorPose(a:Actor):readonly RigPose[]{
+  private actorPose(a:Actor,nominal=false):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const pose=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,a.impact.active,a.perception.gaze(a.yaw)-a.yaw,this.authored?.stalk?a.impact.reaction:undefined).filter(p=>a.segments.includes(p.id));
     const visual=a.strike.visual(this.tick),strike=visual?.punch;
@@ -141,6 +141,7 @@ export class LabSimulationCore implements SimulationCore {
     // configuration. Missing source, flight and ground transitions win.
     const compatible=visual?.weight===1||a.gait.posture==='upright'&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare';
     const posed=strike&&visual&&compatible&&!a.knockdown.blocked&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,aim:this.gaitPoint(strike.aim)},visual.tick,this.gaitGround(a),this.authored,visual.weight):pose;
+    if(nominal)return posed;
     const world=this.worldPose(posed);
     return this.gradeContact?.(world,a.baseY)??world;
   }
@@ -510,11 +511,11 @@ export class LabSimulationCore implements SimulationCore {
       a.knockdown.advance(dt,!mobility.prone);
       if(previousPhase!=='standing'&&a.knockdown.phase==='standing'&&!mobility.prone)this.events.push({tick:this.tick+1,type:'fighter-recovered',fighterId:a.id});
       const flinch=a.impact.slow,recoil=a.impact.advance(dt);
-      if(a.knockdown.blocked){
+      if(a.knockdown.blocked||previousPhase!=='standing'&&a.gait.hasKnockdownMotion&&!mobility.prone){
         a.speed=0;
         const ground=(x:number,z:number)=>this.ground(a,x,z);
         a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
-        a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,dt,this.gaitGround(a),mobility,a.segments,a.knockdown.amount);
+        a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,dt,this.gaitGround(a),mobility,a.segments,a.knockdown.amount??0);
         a.gait.advanceExpression(dt,a.impact.active);
         continue;
       }
@@ -556,10 +557,14 @@ export class LabSimulationCore implements SimulationCore {
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
-      const parts=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,false,this.authored?.stalk?a.perception.gaze(a.yaw)-a.yaw:0,this.authored?.stalk?a.impact.reaction:undefined).filter(p=>a.segments.includes(p.id));
+      const root=this.gaitPoint([a.x,a.y,a.z]);
+       const full=a.gait.pose(a.id,root,a.yaw,this.tick*FIXED_DT,false,this.authored?.stalk?a.perception.gaze(a.yaw)-a.yaw:0,this.authored?.stalk?a.impact.reaction:undefined);
+       const parts=full.filter(p=>a.segments.includes(p.id));
       const world=this.worldPose(parts);
       const support=analyzeSupport(this.gradeContact?.(world,a.baseY)??world,(x,z)=>this.ground(a,x,z));
+      const onset=this.authored?.stalk&&this.patientScale!==1&&mobility.mode==='biped'?(parts.length===full.length?this.actorPose(a,true):full):null;
       if(a.knockdown.observe(displacement,support.margin,true)){
+        if(onset)a.gait.beginKnockdown(root,onset);
         a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
       }
     }
