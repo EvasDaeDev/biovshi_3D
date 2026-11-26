@@ -389,11 +389,12 @@ export class LabSimulationCore implements SimulationCore {
         continue;
       }
       const seen=!sensing||visibleIds.includes(target.id);
+      let routeLook:PointXZ|null=null;
       if(sensing){
         if(seen)a.perception.remember(target.id,target,this.tick);
         const aim=a.strike.punch?.aim;
-        const look=seen?(this.authored?.stalk&&aim?{x:aim[0],z:aim[2]}:target):a.perception.recalled(this.tick,a,opponents.map(b=>b.id))?.point??null;
-        this.lookAt(a,look);
+        routeLook=seen?(this.authored?.stalk&&aim?{x:aim[0],z:aim[2]}:target):a.perception.recalled(this.tick,a,opponents.map(b=>b.id))?.point??null;
+        this.lookAt(a,routeLook);
       }
       if(command&&this.authored?.stalk&&(command.attack||vision&&notices(vision.get(a.id)!,vision.get(target.id)!,a.perception.gaze(a.yaw),(from,to)=>this.navigation.sightClear(from,to))))this.lookAt(a,target);
       if(this.tacticalCombat&&!command&&previousTarget!==target.id)this.events.push({tick:this.tick,type:'combat-target',fighterId:a.id,targetId:target.id});
@@ -470,8 +471,8 @@ export class LabSimulationCore implements SimulationCore {
         // Keep an observed target in the neck's field of regard. A route
         // behind the body can be traversed backwards instead of turning
         // the entire body away from the threat.
-        if(raid.goal&&a.lookTarget&&(retreat||raid.phase==='flank')){
-          const bearing=wrap(Math.atan2(a.lookTarget.x-a.x,-(a.lookTarget.z-a.z))-a.yaw);
+        if(raid.goal&&routeLook&&(retreat||raid.phase==='flank')){
+          const bearing=wrap(Math.atan2(routeLook.x-a.x,-(routeLook.z-a.z))-a.yaw);
           const route=gazeAwareRoute(h,bearing);
           h=route.heading;forward=Math.max(0,Math.cos(h))*raid.pace*(route.backward?-.85:1);
         }

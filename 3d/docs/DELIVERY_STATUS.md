@@ -186,3 +186,7 @@ fc38ecc: CI 45787417000, 239/239 tests и P3/P4 audit пройдены, smoke ti
 ### P4-M — взгляд ±80° и полный шаг (26.11.2026)
 
 3883a76 прошёл CI 45795461471: ring 19 hits/28 attempts, open after60s, p95 1.254ms; walk peak .1833 m/tick. Authored head ±80°, 80°/s, tracking after body update, gaze-aware withdrawal. Разделены actual/drive speed, исправлены landing lead/cadence и опорный IK с forward knee pole. Три регрессии, новый CI/CPU/визуальная приёмка ожидаются. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).
+
+### P4-M — исправление типизации gaze-aware route (26.11.2026)
+
+49adcc3: CI 45799809870 остановился на TS2339, тесты/deploy не запущены. Локальная routeLook: PointXZ|null вместо чтения свойства после вызова lookAt устраняет ошибочное narrowing. Настройки поведения/походки сохранены; новый CI ожидается.
