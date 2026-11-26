@@ -1,4 +1,5 @@
 import {compensateHead} from '../animation/body-compensation.js';
+import {ArmCarriage} from '../animation/arm-carriage.js';
 import {pivotPlan} from '../animation/turn-motion.js';
 import {kickTravelLimit} from '../combat/strike-locomotion.js';
 import {KnockdownMotion} from '../animation/knockdown-motion.js';
@@ -34,10 +35,12 @@ export class PatientGait {
   get stepCount():number{return this.steps;}
   get footStates(){return this.feet.map(f=>({moving:f.moving,target:[...f.target] as Vec3,point:[...f.plant] as Vec3}));}
   private expression:PoseTransition;
+  private carriage:ArmCarriage;
   private expressive:ReadonlyMap<string,RigPose>|undefined;
   /** Resolve expressive targets once per fixed tick. IK still owns lengths and supports. */
-  advanceExpression(dt:number,hurt=false,intent:'stance'|'aggressive'|'stalk'|'freeze'='stance'):void{
+  advanceExpression(dt:number,hurt=false,intent:'stance'|'aggressive'|'stalk'|'freeze'='stance',guard=intent==='aggressive',bearing=0):void{
     if(!this.authored)return;
+    if(this.organic)this.carriage.advanceAttention(dt,guard&&!hurt&&this.proneAmount===0&&this.hopSample.phase==='idle',bearing);
     const slot:ExpressionSlot=hurt?'hurt':this.hopSample.phase==='flight'?'jump':this.mobility.mode==='single-support'?'balance':this.authored[intent]?intent:'stance';
     this.expression.advance(slot,dt);
     const weights=this.expression.weights,base=this.authored.stance;
@@ -116,6 +119,7 @@ export class PatientGait {
   private feet:[Foot,Foot];
   constructor(root:Vec3,yaw=0,private readonly groundedStride=false,private readonly authored?:AuthoredMotion,private readonly motionProfile:MotionProfile=BASE_MOTION_PROFILE){
     this.motion=new LocomotionMotion(motionProfile);
+    this.carriage=new ArmCarriage(this.motionProfile);
     this.anchors=new CrawlAnchors(this.organic);
     this.expression=new PoseTransition(groundedStride&&authored?.stalk?.size ? .18 : .10);
     this.next=this.organic?motionProfile.firstFoot:0;
@@ -134,6 +138,7 @@ export class PatientGait {
     const support=mobility.support;
     if(forcedProne!==undefined){
       this.sprintCycle=false;this.sprintBob=0;this.sprintSlow=0;
+      this.carriage.advanceMotion(dt,0,0,false,false);
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const amount=clamp(forcedProne);
       if(this.knockdownMotion&&amount<this.proneAmount)this.knockdownRising=true;
@@ -167,6 +172,7 @@ export class PatientGait {
     this.sprintSlow=wasRunning&&speed<2.1?this.sprintSlow+dt:0;
     this.sprintCycle=this.organic&&mobility.mode==='biped'&&this.proneAmount===0&&!holdFeet&&this.hopSample.phase==='idle'&&plannedSpeed>(wasRunning?3.225:3.825)&&(wasRunning?this.sprintSlow<.20:speed>2.4)&&Math.abs(turnRate)<1.6;
     if(this.sprintCycle&&!wasRunning)this.stepWait=Math.min(this.stepWait,.10);
+    if(this.organic)this.carriage.advanceMotion(dt,speed,plannedSpeed,this.sprintCycle,mobility.mode==='biped'&&this.proneAmount===0&&this.hopSample.phase==='idle'&&!holdFeet);
     const plan=this.organic?horrorBipedStep(plannedSpeed,this.motionProfile.strideTempo):bipedStep(speed);
     this.signedSpeed=speed;
     this.runAmount+=(plan.run-this.runAmount)*(1-Math.exp(-5*dt));
@@ -297,8 +303,9 @@ export class PatientGait {
     // Less permanent crouch in intact authored bipeds. Keep the original
     // stance scale and leave support reach/landing compression to IK.
     const rise=this.organic&&this.mobility.mode==='biped'?.03:0;
-    const hip:Vec3=[lateral+weightShift+(baseHip?center(baseHip)[0]*.3:0),1.02+rise+bob-this.supportDrop-stanceDrop,0],chest:Vec3=[-lateral*.35+weightShift*.4,1.51+rise+bob-this.supportDrop-stanceDrop,-.035-lean*.5];
-    const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id),1.89+rise+bob-this.supportDrop-stanceDrop,-.045-lean*.24];
+    const runLean=this.organic?this.carriage.runLean:0;
+    const hip:Vec3=[lateral+weightShift+(baseHip?center(baseHip)[0]*.3:0),1.02+rise+bob-this.supportDrop-stanceDrop,0],chest:Vec3=[-lateral*.35+weightShift*.4,1.51+rise+bob-this.supportDrop-stanceDrop,-.035-lean*.5-runLean];
+    const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id),1.89+rise+bob-this.supportDrop-stanceDrop,-.045-lean*.24-runLean*.72];
     const spineSway=secondary?secondary.chest:this.groundedStride?moving*gaitPhase:0;
     const chestPose=add(add(chest,torsoHit),[-roll*.12-spineSway*.075+spineX,spineSway*.025,lean*.18-.055*spineSway+spineZ-preload*.8]);
     const tilt=(part:RigPose|undefined)=>part?Math.atan2(part.b[2]-part.a[2],part.b[0]-part.a[0]):0;
@@ -330,8 +337,11 @@ export class PatientGait {
       const armBias=arm?[arm.b[0]-arm.a[0],arm.b[1]-arm.a[1],arm.b[2]-arm.a[2]] as Vec3:null;
       const handBias=arm&&forearm?[forearm.b[0]-arm.a[0],forearm.b[1]-arm.a[1],forearm.b[2]-arm.a[2]] as Vec3:null;
       const armHit:Vec3=reactive?localImpact(i===0?reactive.leftArm:reactive.rightArm,yaw):[0,0,0];
-      const elbow=add(shoulder,add(armBias??[side*.055,-.31,.035],[armHit[0]*.45,preload*.5,swing*.17+armHit[2]*.45]));
-      const hand=add(shoulder,add(handBias??[side*.06,-.59,.015],[armHit[0],preload,swing*(.28+.07*this.runAmount)+armHit[2]]));
+      const idleElbow=add(armBias??[side*.055,-.31,.035],[0,preload*.5,swing*.17]);
+      const idleHand=add(handBias??[side*.06,-.59,.015],[0,preload,swing*(.28+.07*this.runAmount)]);
+      const carried=this.organic&&this.mobility.mode==='biped'?this.carriage.offsets(side,idleElbow,idleHand,swing):{elbow:idleElbow,hand:idleHand};
+      const elbow=add(shoulder,add(carried.elbow,[armHit[0]*.45,0,armHit[2]*.45]));
+      const hand=add(shoulder,add(carried.hand,[armHit[0],0,armHit[2]]));
       put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,hand);put(key+'hand',hand);
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});

@@ -226,3 +226,7 @@ b772cea CI 45825659732: 259/260 (pitch bound), f87f0ef CI 45826695875: 260/261 (
 ### P4-M — уточнение dual channels и лужи (26.11.2026)
 
 655cd0c CI 45836201997 success. Explicit two distinct sources/targets shared window, dual arms or kick+arm support, combined preview, same-direction thorax curvature; particles11/15/30 enlarged and longer, settled body pool diameter4/3 remaining footprint archived. Double-leg airborne strike not yet implemented. New CI/audits/visual pending.
+
+### P4-M — положение рук и ринг 9 м (26.11.2026)
+
+230bd9d CI 45839056399 success; ring p95 1.492ms, doubleContactCycles0/maxTracked2. ArmCarriage walk30–40° forward, run30–45° backward+lean, close combat guard at chest, target bearing and smooth transitions. Ring9m, revision9m-v1, camera overview. Tests/docs updated; new CI and visual/CPU acceptance pending.

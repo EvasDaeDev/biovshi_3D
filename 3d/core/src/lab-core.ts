@@ -699,7 +699,11 @@ export class LabSimulationCore implements SimulationCore {
       a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,a.strike.punch?.kind==='leg',(a.yaw-beforeYaw)/dt,a.speed/this.patientScale);
       const mode=a.tactics.snapshot().mode;
       const intent=this.ringCombat&&!this.fightEnded?(a.strike.punch?'aggressive':mode==='search'||mode==='memory'?(Math.abs(a.speed)<.055?'freeze':'stalk'):mode==='pursuit'?(Math.abs(c?.forward??0)<.08?'freeze':c?.sprint?'aggressive':'stalk'):'stance'):'stance';
-      a.gait.advanceExpression(dt,a.impact.active,intent);
+      // Guard is a combat-distance state, not the generic aggressive
+      // expression used during sprint. Aim from an observed target only.
+      const aim=a.lookTarget,guard=this.combat&&!this.fightEnded&&(!!a.strike.punch||!!aim&&!!a.gazeFocus&&Math.hypot(a.gazeFocus[0]-a.x,a.gazeFocus[2]-a.z)<1.9);
+      const armBearing=aim?wrap(Math.atan2(aim.x-a.x,-(aim.z-a.z))-a.yaw):0;
+      a.gait.advanceExpression(dt,a.impact.active,intent,guard,armBearing);
     }
     this.tick++;
     if(previous)this.resolveStrikes(previous);

@@ -24,7 +24,7 @@ export class LabCamera {
  }
  staticView(){
   const c=this.camera;c.up.copy(this.worldUp);
-  c.position.set(...(this.mode==='overview'?(this.circle?[5,6.4,7.4]:[8,6,9]):(this.circle?[3.9,2.75,4.6]:[5.8,3.6,6.6])));
+  c.position.set(...(this.mode==='overview'?(this.circle?[6.4,8.2,9.5]:[8,6,9]):(this.circle?[3.9,2.75,4.6]:[5.8,3.6,6.6])));
   c.lookAt(0,this.circle?.75:1,0);this.projection();
  }
  orientation(h,out){

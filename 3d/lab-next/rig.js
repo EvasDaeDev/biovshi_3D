@@ -141,7 +141,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const location=config.location??null;
  patientCount.disabled=!selectedLocation();
  document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
-  ?'Ринг ⌀ 7 м · деление 1 м · рост пациента 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
+  ?'Ринг ⌀ 9 м · деление 1 м · рост пациента 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
  floor.visible=grid.visible=location?.shape!=='circle';
  cameraControl.setArena(location?.shape==='circle');
  
