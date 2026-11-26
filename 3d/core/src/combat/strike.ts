@@ -1,3 +1,4 @@
+import {compensateHead} from '../animation/body-compensation.js';
 import {lowTargetAmount,strikeTrajectory} from './strike-trajectory.js';
 import {coordinatedStrikeBody} from './coordinated-strike.js';
 import {strikeBody,type AuthoredMotion} from '../rig/authored-motion.js';
@@ -16,7 +17,7 @@ export type StrikePhase='idle'|'windup'|'thrust'|'recover';
 export type StrikeKind='arm'|'leg'|'head';
 const CANCEL_TICKS=ticks(.24);
 export interface StrikeVisual {readonly punch:Punch;readonly tick:number;readonly weight:number}
-export interface Punch {readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string}
+export interface Punch {readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string;readonly tempo?:number}
 export interface StrikeSnapshot {readonly phase:StrikePhase;readonly kind?:StrikeKind;readonly prone?:boolean;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean}
 export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
@@ -31,12 +32,14 @@ export function strikeOrigin(kind:StrikeKind,side:'L'|'R'):string{return kind===
 export class StrikeState{
  private current:Punch|null=null;private last=-Infinity;private done=false;private sequence=0;
  private cancelled:{punch:Punch;tick:number}|null=null;
+ constructor(private readonly tempo=1){}
+ get cooldownTicks():number{return Math.ceil(C*this.tempo-1e-9);}
  get attempts():number{return this.sequence;}
- ready(tick:number):boolean{return !this.current&&tick-this.last>=C&&(!this.cancelled||tick>=this.cancelled.tick+CANCEL_TICKS);}
+ ready(tick:number):boolean{return !this.current&&tick-this.last>=this.cooldownTicks&&(!this.cancelled||tick>=this.cancelled.tick+CANCEL_TICKS);}
  get punch():Punch|null{return this.current;}
  phase(tick:number):StrikePhase{
   if(!this.current)return 'idle';
-  const age=tick-this.current.start;
+  const age=(tick-this.current.start)/(this.current.tempo??1);
   return age<W?'windup':age<W+T?'thrust':age<W+T+R?'recover':'idle';
  }
  /** Cancel combat authority immediately; optionally retain an inert visual
@@ -57,7 +60,7 @@ export class StrikeState{
  start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm',prone=false):boolean{
   if(!this.ready(tick))return false;
   this.cancelled=null;
-  this.current={side,kind,prone,targetId,aim:[...aim],start:tick,yaw,...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.sequence++;return true;
+  this.current={side,kind,prone,targetId,aim:[...aim],start:tick,yaw,...(this.tempo===1?{}:{tempo:this.tempo}),...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.sequence++;return true;
  }
  /** Track the target only during preparation; commit the aim for thrust. */
  track(tick:number,aim:Vec3):void{
@@ -71,9 +74,11 @@ export class StrikeState{
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
 export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion,weight=1,supportPlant?:Vec3):readonly PhysicsSegmentPose[]{
  weight=Math.max(0,Math.min(1,weight));if(weight===0)return pose;
- const age=tick-punch.start;if(age<0||age>=W+T+R||age===0)return pose;
+ const age=(tick-punch.start)/(punch.tempo??1);if(age<0||age>=W+T+R||age===0)return pose;
  if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
  const coordinated=!!motion?.stalk;
+ const headReference=coordinated&&punch.kind!=='head'?pose.find(p=>p.id==='head')?.a:undefined;
+ const stabilized=(parts:readonly PhysicsSegmentPose[])=>headReference?compensateHead(parts,headReference,.78):parts;
  const phase=age<W?'windup':age<W+T?'thrust':'recover';
  const progress=age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R);
  const load=phase==='windup'?progress:phase==='recover'?1-progress:1;
@@ -81,7 +86,7 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
   const amount=age<W?-.32*smooth(age/W):age<W+T?-.32+1.32*smooth((age-W+1)/T):1-smooth((age-W-T)/R);
   pose=coordinated?coordinatedStrikeBody(pose,punch,amount*weight,motion):strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
  }
- if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,phase,progress,ground,coordinated?load*weight:1,coordinated,weight,supportPlant);
+ if(punch.kind&&punch.kind!=='arm')return stabilized(extraStrikePose(pose,punch,phase,progress,ground,coordinated?load*weight:1,coordinated,weight,supportPlant));
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');
  if(!u||!l)return pose;
  const a=u.a,low=coordinated?lowTargetAmount(punch.aim,ground):0;
@@ -94,5 +99,5 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
  const strikePole:Vec3=[Math.cos(punch.yaw)*(punch.side==='L'?-1:1),-.65,Math.sin(punch.yaw)*(punch.side==='L'?-1:1)];
  const ik=coordinated?authoredArmStrike(u,l,target,punch.yaw,punch.side,load*weight):solveTwoBone(a,target,.36,.32,strikePole);
  const end=ik.end;
- return pose.map(p=>p.id===u.id?{...p,b:ik.joint}:p.id===l.id?{...p,a:ik.joint,b:end}:h&&p.id===h.id?{...p,a:end,b:end}:p);
+ return stabilized(pose.map(p=>p.id===u.id?{...p,b:ik.joint}:p.id===l.id?{...p,a:ik.joint,b:end}:h&&p.id===h.id?{...p,a:end,b:end}:p));
 }

@@ -40,10 +40,10 @@ export const CRAWL_TIMING=Object.freeze({swing:.30,plant:.55,reach:.40});
 /** Authored full-scale horror profile; v1 calibration stays unchanged. */
 export const HORROR_MOVEMENT=Object.freeze({walkSpeed:1.20,sprintSpeed:2.30,crawlMultiplier:1.45,stanceReach:.55,maxStrideSpeed:2.8});
 export const HORROR_CRAWL_TIMING=Object.freeze({swing:.27,plant:.49,reach:.48});
-export function horrorBipedStep(speed:number){
- const plan=bipedStep(speed),v=Math.min(HORROR_MOVEMENT.maxStrideSpeed,Math.abs(speed)),run=Math.max(0,Math.min(1,(v-1.2)/1.6));
+export function horrorBipedStep(speed:number,tempo=1){
+ const plan=bipedStep(speed),v=Math.min(HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,tempo),Math.abs(speed)),run=Math.max(0,Math.min(1,(v-1.2)/1.6));
  // Advance the swinging foot beyond the predicted landing root, not
  // just toward the present root. Shorten cadence with increased speed.
- const interval=.41-.11*run,swing=.28-.055*run;
+ const interval=(.41-.11*run)*tempo,swing=(.28-.055*run)*tempo;
  return {...plan,interval,swing,run,lead:Math.sign(speed)*Math.min(.96,v*(swing+interval*.5)),lift:.082+.045*run};
 }

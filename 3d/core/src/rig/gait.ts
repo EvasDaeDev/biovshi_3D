@@ -1,3 +1,4 @@
+import {compensateHead} from '../animation/body-compensation.js';
 import {pivotPlan} from '../animation/turn-motion.js';
 import {kickTravelLimit} from '../combat/strike-locomotion.js';
 import {KnockdownMotion} from '../animation/knockdown-motion.js';
@@ -55,7 +56,7 @@ export class PatientGait {
   private get organic():boolean{return this.groundedStride&&!!this.authored?.stalk;}
   private supportDrop=0;
   private hop:HopCycle;
-  private leap=new HopCycle(.18,.42);
+  private leap:HopCycle;
   private leapHeld=false;private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
   get hopHeight():number{return this.hopSample.lift;}
   get hopPhase():HopSample['phase']{return this.hopSample.phase;}
@@ -89,7 +90,7 @@ export class PatientGait {
         const behind=((root[0]-plant[0])*Math.sin(yaw)-(root[2]-plant[2])*Math.cos(yaw))*direction;
         return (this.organic?HORROR_MOVEMENT.stanceReach:.48)-behind;
       }));
-      const requested=direction*Math.min((this.organic?Math.min(Math.abs(speed),HORROR_MOVEMENT.maxStrideSpeed):Math.abs(speed))*dt,Math.max(0,reach));
+      const requested=direction*Math.min((this.organic?Math.min(Math.abs(speed),HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,this.motionProfile.strideTempo)):Math.abs(speed))*dt,Math.max(0,reach));
       return this.organic&&kickSupport?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,yaw,requested):requested;
     }
     if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
@@ -113,7 +114,10 @@ export class PatientGait {
     this.motion=new LocomotionMotion(motionProfile);
     this.anchors=new CrawlAnchors(this.organic);
     this.expression=new PoseTransition(groundedStride&&authored?.stalk?.size ? .18 : .10);
-    this.hop=new HopCycle(groundedStride?.14:0);
+    this.next=this.organic?motionProfile.firstFoot:0;
+    const tempo=this.organic?motionProfile.hopTempo:1;
+    this.hop=new HopCycle((groundedStride?.14:0)*tempo,MOVEMENT.hopFlightSeconds*tempo,this.organic?.18*tempo:MOVEMENT.hopPauseSeconds,this.organic);
+    this.leap=new HopCycle(.18*tempo,.42*tempo,this.organic?.20*tempo:MOVEMENT.hopPauseSeconds,this.organic);
     const foot=(side:number):Foot=>{
       const reference=authored?.stance?.get(side<0?'L.foot':'R.foot')?.a;
       const x=reference?side*.10+reference[0]*.4:side*.18,z=reference?reference[2]*.4:0;
@@ -150,7 +154,7 @@ export class PatientGait {
     }
     // Keep the planned stride independent of a one-tick stance reach clamp.
     const plannedSpeed=this.organic?driveSpeed:speed;
-    const plan=this.organic?horrorBipedStep(plannedSpeed):bipedStep(speed);
+    const plan=this.organic?horrorBipedStep(plannedSpeed,this.motionProfile.strideTempo):bipedStep(speed);
     this.signedSpeed=speed;
     this.runAmount+=(plan.run-this.runAmount)*(1-Math.exp(-5*dt));
     const single=support[0]!==support[1];
@@ -283,6 +287,10 @@ export class PatientGait {
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
     if(this.proneAmount===0){
       let fixed=constrainRig(standing);const lift=this.hopSample.lift;
+      // Anticipatory reference relative to the locomoting root. Retain
+      // deliberate lean/look and impacts; compensate the alternating sway.
+      const steadyHead=world([looking[0]+lateral*.65,looking[1]-bob*.75,looking[2]]);
+      const steady=(pose:readonly RigPose[],height=0)=>this.organic?compensateHead(pose,add(steadyHead,[0,height,0]),this.motionProfile.compensation*(reactive?.55:1)):pose;
       const single=this.mobility.mode==='single-support';
       if(single){const i=this.mobility.support[0]?0:1;fixed=balanceSingleSupport(fixed,this.active,i===0?'L':'R',this.feet[i]!.plant,this.ground);}
       if(lift>0&&this.authored?.jump&&this.hopSample.phase==='flight'){
@@ -298,10 +306,10 @@ export class PatientGait {
        });
        fixed=constrainRig(flying);
       }
-      if(lift>0)return fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));
-      if(single)return fixed;
+      if(lift>0)return steady(fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])})),lift);
+      if(single)return steady(fixed);
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
-      return balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined);
+      return steady(balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined));
     }
     const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
     if(this.knockdownMotion){

@@ -3,7 +3,7 @@ import type {PatientTraits} from './patient-profile.js';
 import type {StrikePhase} from './strike.js';
 import {FIXED_DT} from '../fixed-clock.js';
 export type RaidPhase='search'|'observe'|'flank'|'rush'|'attack'|'withdraw'|'reassess';
-export interface RaidProfile {readonly patience:number;readonly risk:number;readonly safeDistance:number;readonly drive:number;readonly side:1|-1}
+export interface RaidProfile {readonly patience:number;readonly risk:number;readonly safeDistance:number;readonly drive:number;readonly initiative:number;readonly side:1|-1}
 export interface RaidOpponent extends PointXZ {readonly id:number;readonly yaw:number;readonly threatening:boolean;readonly grounded:boolean;readonly recovering?:boolean}
 export interface RaidSnapshot {readonly phase:RaidPhase;readonly targetId:number|null;readonly goal:PointXZ|null;readonly attempts:number;readonly hits:number;readonly rush:number;readonly profile:RaidProfile}
 export interface RaidInput {readonly tick:number;readonly here:PointXZ;readonly target:RaidOpponent|null;readonly visible:readonly RaidOpponent[];readonly strike:StrikePhase;readonly interrupted:boolean;readonly ready:boolean;readonly clear:(goal:PointXZ)=>boolean}
@@ -22,7 +22,7 @@ export function raidProfile(seed:number,id:number,temperament:PatientTraits['tem
  let h=Math.imul((seed^Math.imul(id+1,0x9e3779b9))>>>0,0x85ebca6b)>>>0;h=(h^(h>>>16))>>>0;
  const u=(h&255)/255,aggressive=temperament==='impulsive',cautious=temperament==='hesitant';
  return Object.freeze({patience:(aggressive?.32:cautious?.70:.48)+u*.18,risk:aggressive?.78:cautious?.26:.48,
-  safeDistance:(aggressive?1.45:cautious?2.05:1.75)+u*.18,drive:.85+((h>>>10)&255)/255*.30,side:(h&256)?1:-1});
+  safeDistance:(aggressive?1.45:cautious?2.05:1.75)+u*.18,drive:.85+((h>>>10)&255)/255*.30,initiative:.86+((h>>>18)&255)/255*.28,side:(h&256)?1:-1});
 }
 /** Typical series are 3–5 attempts; the ceiling is only a safety bound.
  * Commitment builds heat, damage reinforces it. Heat weakens the response
@@ -145,8 +145,8 @@ export class RaidState{
    // Close threat triggers separation instead of a stationary face-off.
    if(d<.85&&target.threatening&&this.profile.risk<.5){this.withdraw(tick);return this.advance(i);}
    if(tick<this.deadline)return this.intent(null,0,false,false);
-   if(target.grounded||d<1.12||exposure>1.15&&d<2.6){this.enter('rush',tick,1.8);}
-   else this.enter('flank',tick,1.35);
+   if(target.grounded||d<1.12||exposure>1.15&&d<2.6){this.enter('rush',tick,1.8*this.profile.initiative);}
+   else this.enter('flank',tick,1.35*this.profile.initiative);
   }
   if(this.phase==='flank'){
    if(tick>=this.retry||this.goal&&!clear(this.goal)){this.goal=approachLane(here,target,visible,this.profile,this.side,clear);this.retry=tick+15;}
@@ -155,8 +155,8 @@ export class RaidState{
     if(visible.some(o=>o.id!==target.id&&pathDistance(here,target,o)<.65&&dist(here,o)<2)){
      this.withdraw(tick);return this.advance(i);
     }
-    this.enter('rush',tick,1.8);
-   }else if(this.goal)return this.intent(this.goal,.75,false,false);
+    this.enter('rush',tick,1.8*this.profile.initiative);
+   }else if(this.goal)return this.intent(this.goal,.75/this.profile.initiative,false,false);
    else return this.intent(null,0,false,false);
   }
   if(this.phase==='rush'){

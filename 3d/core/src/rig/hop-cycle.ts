@@ -5,10 +5,10 @@ export interface HopSample { readonly distance:number; readonly lift:number; rea
  * even if input is released. Horizontal displacement uses v1's smooth curve. */
 export class HopCycle {
  private age=0;private travel=0;private running=false;
- constructor(private readonly preparation=0,private readonly flightTime:number=MOVEMENT.hopFlightSeconds){}
+ constructor(private readonly preparation=0,private readonly flightTime:number=MOVEMENT.hopFlightSeconds,private readonly pauseTime:number=MOVEMENT.hopPauseSeconds,private readonly absorb=false){}
  reset():void{this.age=0;this.travel=0;this.running=false;}
  advance(dt:number,speed:number):HopSample{
-  const flight=this.flightTime,pause=MOVEMENT.hopPauseSeconds,takeoff=this.preparation,landing=takeoff+flight,cycle=landing+pause;
+  const flight=this.flightTime,pause=this.pauseTime,takeoff=this.preparation,landing=takeoff+flight,cycle=landing+pause;
   let remaining=dt,distance=0,followsRoot=false;
   while(remaining>1e-10){
    if(!this.running){
@@ -25,7 +25,14 @@ export class HopCycle {
   }
   const phase=!this.running?'idle':this.age<takeoff-1e-10?'prepare':this.age<landing-1e-10?'flight':'pause';
   const t=phase==='flight'?this.age-takeoff:0;
-  const crouch=phase==='prepare'?.14*smooth(this.age/takeoff):phase==='flight'?.14*Math.max(0,1-t/.065):phase==='pause'&&takeoff>0?.06*Math.sin(Math.PI*Math.min(1,(this.age-landing)/pause)):0;
+  let crouch=phase==='prepare'?.14*smooth(this.age/takeoff):phase==='flight'?.14*Math.max(0,1-t/.065):phase==='pause'&&takeoff>0?.06*Math.sin(Math.PI*Math.min(1,(this.age-landing)/pause)):0;
+  if(this.absorb){
+   // Anticipatory knee flexion; smooth extension through takeoff.
+   // Match landing velocity at contact, then release with zero final
+   // compression velocity. Only the body bends; feet remain on ground.
+   if(phase==='flight')crouch=.14*(1-smooth(Math.min(1,t/.10)));
+   if(phase==='pause'){const q=Math.max(0,Math.min(1,(this.age-landing)/pause));crouch=.5*MOVEMENT.gravity*flight*pause*q*(1-q)**2;}
+  }
   return {distance,crouch,lift:phase==='flight'?.5*MOVEMENT.gravity*t*(flight-t):0,phase,followsRoot};
  }
 }

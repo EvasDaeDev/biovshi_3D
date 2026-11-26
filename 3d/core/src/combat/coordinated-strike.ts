@@ -1,3 +1,4 @@
+import {counterArms} from '../animation/body-compensation.js';
 import type {Vec3,PhysicsSegmentPose} from '../types.js';
 import type {Punch} from './strike.js';
 import type {AuthoredMotion} from '../rig/authored-motion.js';
@@ -32,10 +33,11 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
  };
  const chestCenter=body(mid(chest));
  const upper=(point:Vec3):Vec3=>add(chestCenter,yaw(sub(body(point),chestCenter),kind==='leg'?-turn*.55:kind==='arm'?turn*.55:0));
- return pose.map(v=>{
+ const moved=pose.map(v=>{
   if(kind==='leg'&&v.id==='pelvis')return {...v,a:body(v.a),b:body(v.b)};
   if(v.id==='abdomen')return {...v,a:body(v.a),b:body(v.b)};
   if(v.id==='chest'||v.id==='neck'||v.id==='head'||/Arm$|hand$/.test(v.id))return {...v,a:upper(v.a),b:upper(v.b)};
   return v;
  });
+ return counterArms(moved,kind,p.side,p.yaw,amount);
 }
