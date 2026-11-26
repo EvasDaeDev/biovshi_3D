@@ -58,7 +58,13 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
 export function blendGroundPose(standing:readonly RigPose[],prone:readonly RigPose[],amount:number,active:readonly string[],ground:(x:number,z:number)=>number,continuous=false,preserveTorso=false):readonly RigPose[]{
  if(continuous&&amount===0)return standing;
  const t=amount*amount*(3-2*amount);
- const result=constrainRig(standing.map((p,i)=>{const q=prone[i]!;return {...p,a:mix(p.a,q.a,t),b:mix(p.b,q.b,t)};}),undefined,1,false,0,undefined,preserveTorso);
+ // The raw prone pose places abdomen.b at the chest centre. It is not
+ // a connected rig yet, so its thorax vector has zero length. Resolve it
+ // with the same constraints as the falling endpoint before interpolating
+ // independent spine/thorax axes. Both endpoints then share the same
+ // anatomy and the rise does not jump when its weight leaves one.
+ const target=preserveTorso?constrainRig(prone):prone;
+ const result=constrainRig(standing.map((p,i)=>{const q=target[i]!;return {...p,a:mix(p.a,q.a,t),b:mix(p.b,q.b,t)};}),undefined,1,false,0,undefined,preserveTorso);
  let correction=-Infinity;
  for(const p of result)if(active.includes(p.id))for(const point of [p.a,p.b,mix(p.a,p.b,.5)])correction=Math.max(correction,ground(point[0],point[2])+p.radius-point[1]);
  const lift=Number.isFinite(correction)?(continuous&&correction<0?correction*t:amount>=1?correction:Math.max(0,correction)):0;

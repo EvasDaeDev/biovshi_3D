@@ -7,6 +7,7 @@ import {referencePose} from '../dist/rig/pose-editor.js';
 import {LAB_SEGMENTS} from '../dist/rig/anatomy.js';
 import {mobilityFor} from '../dist/rig/mobility.js';
 import {FIXED_DT} from '../dist/fixed-clock.js';
+import {pronePose,blendGroundPose} from '../dist/rig/prone.js';
 const ids=LAB_SEGMENTS.map(p=>p.id),mobility=mobilityFor(ids),ground=()=>0,dt=FIXED_DT;
 const motion=compileAuthoredMotion({schemaVersion:1,stature:1.65,slots:{stance:referencePose('stance'),stalk:referencePose('stalk')}});
 const dist=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
@@ -47,4 +48,20 @@ test('walking onset is retained and temporary fall/rise keeps nominal anatomy',(
  const final=g.pose(0,root,0,2.17+dt);
  assert.ok(gap(almost,final)<.08,JSON.stringify({gap:gap(almost,final)}));
  assert.ok(Math.abs(g.footStates[0].point[2]-g.footStates[1].point[2])>.08,'recovery retains staggered standing feet');
+});
+
+
+test('independent thorax recovery is continuous at both constrained endpoints',()=>{
+ for(const yaw of [0,Math.PI/2,-Math.PI/3]){
+  const root=[.4,0,-.2],g=new PatientGait(root,yaw,true,motion);
+  g.advance(root,yaw,0,0,ground,mobility,ids);
+  const standing=g.pose(0,root,yaw,0),raw=pronePose(root,yaw,0,0,1,mobility,ground,true);
+  const down=blendGroundPose(standing,raw,1,ids,ground,true);
+  const sample=amount=>blendGroundPose(standing,raw,amount,ids,ground,true,true);
+  assert.ok(gap(down,sample(1))<1e-8,'fall and rise share the exact ground endpoint');
+  assert.ok(gap(down,sample(.9999))<.015,'start of rise is continuous');
+  assert.ok(gap(standing,sample(.0001))<.015,'end of rise is continuous');
+  for(const amount of [.9999,.75,.5,.25,.0001,0])for(const p of sample(amount))
+   assert.ok(Math.abs(dist(p.a,p.b)-LAB_SEGMENTS.find(s=>s.id===p.id).nominalLength)<1e-7,p.id);
+ }
 });
