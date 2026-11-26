@@ -16,11 +16,11 @@ export function createSegmentVisual(id,radius,length,material){
  };
  const type=id.split('.').at(-1);
  const radii={
-  head:[.91*radius,1.16*radius,.87*radius],
+  head:[.91*radius,.91*radius,.91*radius],
   neck:[.76*radius,.56*length,.81*radius],
-  chest:[1.48*radius,.50*length,.91*radius],
+  chest:[1.48*radius,.85*(.50*length),.91*radius],
   abdomen:[.87*radius,.78*length,.83*radius],
-  pelvis:[.82*radius,.5*length+.48*radius,.85*radius],
+  pelvis:[.82*radius,.90*(.5*length+.48*radius),.85*radius],
   upperArm:[.69*radius,.56*length,.68*radius],
   lowerArm:[.74*radius,.59*length,.66*radius],
   upperLeg:[.76*radius,.56*length,.80*radius],
@@ -30,7 +30,7 @@ export function createSegmentVisual(id,radius,length,material){
  };
  add('segment',radii[type]??[radius,Math.max(length/2,radius),radius]);
  if(type==='chest')for(const side of [-1,1]){
-  add('clavicle',[1.03*radius,1.02*radius,.88*radius],[.56*radius,side*.42*length,0]);
+  add('clavicle',[.515*radius,.51*radius,.44*radius],[.56*radius,side*.42*length,0]);
  }
  if(type==='head')for(const side of [-1,1]){
   add('ear',[.31*radius,.43*radius,.37*radius],[side*.82*radius,0,0]);
