@@ -222,3 +222,7 @@ b772cea CI 45825659732: 259/260 (pitch bound), f87f0ef CI 45826695875: 260/261 (
 ### P4-M — две цели и multi-contact (26.11.2026)
 
 520fc07 CI 45831187977 success (ring p95 2.209ms). Independent attention2, ±70° arm/leg, two unique victims per thrust, thorax curve/box orientation, pooled v1 particles without flash; regressions/audit counters added. New CI and manual/CPU acceptance pending.
+
+### P4-M — уточнение dual channels и лужи (26.11.2026)
+
+655cd0c CI 45836201997 success. Explicit two distinct sources/targets shared window, dual arms or kick+arm support, combined preview, same-direction thorax curvature; particles11/15/30 enlarged and longer, settled body pool diameter4/3 remaining footprint archived. Double-leg airborne strike not yet implemented. New CI/audits/visual pending.

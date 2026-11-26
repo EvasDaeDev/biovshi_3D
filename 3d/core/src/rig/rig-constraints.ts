@@ -21,7 +21,7 @@ export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<s
  const spine=unit(sub(oldChest,hip),[0,1,0]);
  // Fixed anatomical attachment offsets from the two girdle centres.
  const abdomenStart=add(hip,scale(spine,.10*scaleOffsets)),abdomenEnd=add(abdomenStart,scale(spine,length('abdomen')));
- const thorax=curvedThorax?unit([spine[0]*.78,spine[1],spine[2]*.78],spine):spine;
+ const thorax=curvedThorax?unit([spine[0]*1.22,spine[1],spine[2]*1.22],spine):spine;
  const chest=add(abdomenEnd,scale(thorax,.14*scaleOffsets));
  girdle('pelvis',hip);put('abdomen',abdomenStart,abdomenEnd);girdle('chest',chest);
  const headAxis=unit(sub(get('head').a,oldChest),spine),neckEnd=add(chest,scale(headAxis,length('neck')));

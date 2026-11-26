@@ -8,7 +8,7 @@ export interface FloorVec3 {readonly x:number;readonly y:number;readonly z:numbe
 export interface FloorRotation extends FloorVec3 {readonly w:number}
 export interface FloorMound {readonly id:string;readonly source:'segment'|'branch'|'body';readonly x:number;readonly z:number;readonly radius:number;readonly height:number}
 export interface FloorVisual {readonly id:string;readonly fighterId:number;readonly segmentId:string;readonly settled:true;readonly length:number;readonly radius:number;readonly position:FloorVec3;readonly rotation:FloorRotation}
-export interface FloorOilMark {readonly id:string;readonly fighterId:number;readonly tick:number;readonly point:readonly [number,number,number]}
+export interface FloorOilMark {readonly id:string;readonly fighterId:number;readonly tick:number;readonly point:readonly [number,number,number];readonly radius?:number}
 export interface FloorHistory {readonly schemaVersion:1;readonly arenaId:string;readonly mounds:readonly FloorMound[];readonly visuals:readonly FloorVisual[];readonly oilMarks:readonly FloorOilMark[]}
 type RecordValue=Record<string,unknown>;
 const object=(v:unknown):v is RecordValue=>typeof v==='object'&&v!==null&&!Array.isArray(v);
@@ -50,11 +50,11 @@ export function readFloorHistory(input:unknown,arenaId:string):FloorHistory{
  });
  const oilMarks:FloorOilMark[]=input.oilMarks.map((raw:unknown,i:number)=>{
   if(!object(raw)||!Number.isSafeInteger(raw.fighterId)||Number(raw.fighterId)<0||
-     !Array.isArray(raw.point)||raw.point.length!==3||!raw.point.every(number))
+     !Array.isArray(raw.point)||raw.point.length!==3||!raw.point.every(number)||raw.radius!==undefined&&(!positive(raw.radius)||raw.radius>8))
    throw new RangeError('Invalid archived oil stain');
   // Older blood is fully dry at the next round. Avoid a new timer on old IDs.
   return {id:'floor:o:'+i,fighterId:raw.fighterId as number,tick:-1080,
-    point:[raw.point[0] as number,raw.point[1] as number,raw.point[2] as number]};
+    point:[raw.point[0] as number,raw.point[1] as number,raw.point[2] as number],...(typeof raw.radius==='number'?{radius:raw.radius}:{})};
  });
  return {schemaVersion:FLOOR_VERSION,arenaId,mounds,visuals,oilMarks};
 }

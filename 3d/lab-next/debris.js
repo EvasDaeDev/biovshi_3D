@@ -136,6 +136,7 @@ export class DebrisWorld {
  }
  bodySnapshot(){return this.incapacitated.snapshot();}
  moundSnapshot(){return [...(this.archiveFloor?.mounds.map(m=>({...m}))??[]),...this.mounds.map(m=>({...m})),...this.incapacitated.moundSnapshot()];}
+ bodyPoolSnapshot(){return this.incapacitated.poolSnapshot();}
  archivedOilSnapshot(){return this.archiveFloor?.oilMarks.map(o=>({...o,point:[...o.point]}))??[];}
  /** Never flatten a falling ragdoll into saved scenery. Fully settled visual
   * geometry and hidden cone colliders are serialized independently. */
@@ -150,7 +151,7 @@ export class DebrisWorld {
     position:{x:frame.center[0],y:frame.center[1],z:frame.center[2]},rotation};
   }));
   return createFloorHistory(arenaId,this.moundSnapshot(),[...this.snapshot(),...remains],
-   [...this.archivedOilSnapshot(),...oilMarks]);
+   [...this.archivedOilSnapshot(),...oilMarks,...this.bodyPoolSnapshot()]);
  }
  branchSnapshot(){return this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))}));}
  snapshot(){

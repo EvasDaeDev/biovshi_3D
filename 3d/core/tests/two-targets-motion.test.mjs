@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PatientPerception,VISION} from '../dist/combat/perception.js';
-import {StrikeState,punchPose} from '../dist/combat/strike.js';
+import {StrikeState,punchPose,strikeChannels} from '../dist/combat/strike.js';
 import {firstStrikeContactDetail} from '../dist/combat/swept-contact.js';
 import {SIDE_STRIKE_LIMIT,clampStrikeAim,strikeBearing} from '../dist/combat/strike-sector.js';
 import {PatientGait} from '../dist/rig/gait.js';
@@ -23,19 +23,37 @@ test('attention keeps two separate observed positions, shares gaze and expires h
  assert.equal(p.snapshot(0).tracked.length,1);
  p.clear();assert.equal(p.snapshot(0).tracked.length,0);
 });
-test('one arm/leg sweep can contact two distinct victims but never twice or a third',()=>{
- const s=new StrikeState(),ball=(id,x)=>({id,a:[x,1,0],b:[x,1,0],radius:.08});
+test('dual channels bind different limbs and targets, never a single sweep across unrelated victims',()=>{
+ const s=new StrikeState(),ids=LAB_SEGMENTS.map(v=>v.id);
  for(const kind of ['arm','leg']){
-  const source=kind==='arm'?'L.hand':'L.foot',before=[ball(source,-1)],after=[ball(source,1)];
-  assert.ok(s.start(kind==='arm'?0:60,'L',1,[0,1,0],0,undefined,kind,false,true));
-  const a=firstStrikeContactDetail(before,after,[ball('head',-.3)],[ball('head',-.3)],'L',kind);
-  const b=firstStrikeContactDetail(before,after,[ball('head',.4)],[ball('head',.4)],'L',kind);
-  assert.ok(a&&b&&a.time<b.time&&a.point.every(Number.isFinite));
-  assert.ok(s.resolveTarget(2));assert.equal(s.resolveTarget(2),false);assert.ok(s.resolveTarget(1));assert.equal(s.resolveTarget(3),false);
-  assert.equal(s.exhausted,true);assert.deepEqual(s.snapshot(kind==='arm'?20:80).hitIds,[2,1]);
-  s.advance(kind==='arm'?48:108,true,LAB_SEGMENTS.map(v=>v.id));
+  const tick=kind==='arm'?0:60,secondary={side:'R',kind:'arm',targetId:2,aim:[.4,1.4,-.5]};
+  assert.ok(s.start(tick,'L',1,[-.4,1.4,-.5],0,undefined,kind,false,secondary));
+  assert.deepEqual(strikeChannels(s.punch).map(p=>[p.kind,p.side,p.targetId]),[[kind,'L',1],['arm','R',2]]);
+  s.track(tick+5,[.3,1.2,-.4],2);assert.deepEqual(s.punch.secondary.aim,[.3,1.2,-.4]);
+  assert.equal(s.resolveTarget(3),false);assert.ok(s.resolveTarget(2));assert.equal(s.resolveTarget(2),false);assert.equal(s.exhausted,false);
+  assert.ok(s.resolveTarget(1));assert.equal(s.exhausted,true);
+  assert.deepEqual(s.snapshot(tick+20).hitIds,[2,1]);s.advance(tick+48,true,ids);
  }
- const legacy=new StrikeState();legacy.start(0,'L',1,[0,1,0],0);assert.equal(legacy.resolveTarget(2),false);assert.ok(legacy.resolveTarget(1));assert.equal(legacy.exhausted,true);
+ const single=new StrikeState();single.start(0,'L',1,[0,1,0],0);assert.equal(single.resolveTarget(2),false);assert.ok(single.resolveTarget(1));
+ const illegal=new StrikeState();
+ assert.equal(illegal.start(0,'L',1,[0,1,0],0,undefined,'arm',false,{side:'L',kind:'arm',targetId:2,aim:[0,1,0]}),false);
+ assert.equal(illegal.start(0,'L',1,[0,1,0],0,undefined,'leg',false,{side:'R',kind:'leg',targetId:2,aim:[0,1,0]}),false);
+});
+test('combined pose has both attacking chains and connected anatomy; real sweep hits separate reachable targets',()=>{
+ const motion=compileAuthoredMotion({schemaVersion:1,stature:1.65,slots:Object.fromEntries(['stance','stalk','punch','kick'].map(k=>[k,referencePose(k)]))});
+ const base=new PatientGait([0,0,0],0,true,motion).pose(0,[0,0,0],0,0),get=(p,id)=>p.find(v=>v.id===id),dist=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
+ const p={side:'L',kind:'arm',targetId:1,aim:[-.62,1.45,-.48],start:0,yaw:0,secondary:{side:'R',kind:'arm',targetId:2,aim:[.62,1.45,-.48]}};
+ const at=punchPose(base,p,31,()=>0,motion),prior=punchPose(base,p,23,()=>0,motion);
+ for(const v of at)assert.ok(Math.abs(dist(v.a,v.b)-LAB_SEGMENTS.find(s=>s.id===v.id).nominalLength)<1e-7,v.id);
+ for(const side of ['L','R']){
+  const hand=get(at,side+'.hand'),other=get(at,side==='L'?'R.hand':'L.hand');
+  assert.ok(dist(hand.a,get(base,side+'.hand').a)>.1);
+  assert.ok(dist(hand.a,other.a)>.3);
+  assert.ok(dist(get(at,side+'.upperArm').a,get(at,'chest')[side==='L'?'a':'b'])<1e-8);
+  const target={id:'head',a:hand.a,b:hand.a,radius:.05};
+  assert.ok(firstStrikeContactDetail(prior,at,[target],[target],side,'arm'));
+ }
+ assert.deepEqual(punchPose(base,p,48,()=>0,motion),base);
 });
 test('lateral aim is limited to 70 degrees and actual limb pose keeps anatomical lengths',()=>{
  const motion=compileAuthoredMotion({schemaVersion:1,stature:1.65,slots:Object.fromEntries(['stance','stalk','punch','kick'].map(k=>[k,referencePose(k)]))});
@@ -51,8 +69,17 @@ test('lateral aim is limited to 70 degrees and actual limb pose keeps anatomical
  }
 });
 test('particle port retains bounded lifetime, deterministic spray and no flash primitive',()=>{
- assert.equal(HIT_PARTICLES.normal,8);assert.equal(HIT_PARTICLES.sever,14);
- const p=particleSpec(7,1,0);assert.deepEqual(p,particleSpec(7,1,0));assert.ok(p.life<=.38);
+ assert.equal(HIT_PARTICLES.normal,11);assert.equal(HIT_PARTICLES.critical,15);assert.equal(HIT_PARTICLES.sever,HIT_PARTICLES.critical*2);
+ const p=particleSpec(7,1,0);assert.deepEqual(p,particleSpec(7,1,0));assert.ok(p.life<=.51&&p.life>.38*.7);
  assert.ok(particleFrame(p,0).offset.every(v=>v===0));assert.equal(particleFrame(p,p.life),null);
  assert.ok(particleFrame(p,p.life*.9).scale<particleFrame(p,0).scale);
+});
+
+import {bodyPool,poolRadius} from '../../lab-next/body-pool.js';
+test('settled body stain uses remaining horizontal length plus one third and grows once',()=>{
+ const p=bodyPool([{id:'abdomen',a:[0,.1,0],b:[0,.1,1],radius:.1}],7,60);
+ assert.ok(Math.abs(p.radius*2-1.2*4/3)<1e-9);
+ assert.deepEqual(p.point,[0,0,.5]);assert.equal(p.tick,60);
+ assert.ok(poolRadius(p.radius,0)<poolRadius(p.radius,1));assert.ok(poolRadius(p.radius,1)<poolRadius(p.radius,2));
+ assert.equal(poolRadius(p.radius,3),p.radius);assert.equal(poolRadius(p.radius,10),p.radius);
 });

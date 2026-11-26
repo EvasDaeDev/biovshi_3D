@@ -291,7 +291,8 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
   let m=moundMeshes.get(d.id);if(!m){m=new THREE.Mesh(cone,d.source==='body'||d.source==='branch'||d.source==='segment'?bodyConeMaterial:moundMaterial);m.position.set(d.x,d.height/2,d.z);m.scale.set(d.radius,d.height,d.radius);scene.add(m);moundMeshes.set(d.id,m);}m.visible=(d.source!=='body'&&d.source!=='branch'&&d.source!=='segment')||terrainDebug.checked;
  }
  stats.dataset.hitParticles=String(hitParticles.draw(s.tick));stats.dataset.hitTint=tinted.join(',');stats.dataset.segmentGeometry='box';
- const floorOil=[...debris.archivedOilSnapshot(),...s.oilMarks].slice(-2000);
+ const pools=debris.bodyPoolSnapshot();stats.dataset.bodyPools=String(pools.length);
+ const floorOil=[...debris.archivedOilSnapshot(),...s.oilMarks,...pools].slice(-2000);
   oilMarks.draw(floorOil,s.tick);stats.dataset.oil=String(floorOil.length);
   stats.dataset.floorVisuals=String(debris.archiveFloor?.visuals.length??0);
   stats.dataset.floorMounds=String(debris.archiveFloor?.mounds.length??0);stats.dataset.wounds=String(s.oil[0].wounds.length);stats.dataset.impact=String(s.impacts[0].active);const health=s.health[0],selected=health.segments.find(p=>p.id===damageSegment.value);damageHP.textContent=selected?selected.hp+'/'+selected.maxHp+(selected.attached?'':' — отделён'):'';stats.dataset.health=String(selected?.hp??0);stats.dataset.trauma=String(health.trauma);stats.dataset.cause=health.cause??'';

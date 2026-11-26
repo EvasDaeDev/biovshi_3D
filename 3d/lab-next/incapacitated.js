@@ -1,20 +1,22 @@
+import {bodyPool} from './body-pool.js';
 import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {terrainHeight} from '../core/dist/collision/terrain.js';
 import {createRagdoll,ragdollPose,ragdollMotion,removeRagdoll,relaxRagdoll,nudgeCollapse,RAGDOLL_SLOTS} from './ragdoll.js';
 /** Physics-driven articulated fall, followed by static visible anatomy
  * and a small number of invisible walkable cone colliders. */
 export class IncapacitatedBodies{
- constructor(R,world,baseHeight=()=>0){this.R=R;this.world=world;this.baseHeight=baseHeight;this.bodies=new Map();}
+ constructor(R,world,baseHeight=()=>0){this.R=R;this.world=world;this.baseHeight=baseHeight;this.bodies=new Map();this.tick=0;}
  accept(event){
   if(event.type!=='fighter-incapacitated'||!event.bodyPose?.length||this.bodies.has(event.fighterId))return;
   const direction=event.fallDirection??[Math.sin(event.fighterId*2.399963),0,Math.cos(event.fighterId*2.399963)];
   const occupied=new Set([...this.bodies.values()].filter(b=>b.rag).map(b=>b.rag.slot));
   const slot=Array.from({length:RAGDOLL_SLOTS},(_,i)=>i).find(i=>!occupied.has(i))??-1;
   const rag=createRagdoll(this.R,this.world,event.bodyPose,direction,slot,event.bodyMotion??[]);
-  this.bodies.set(event.fighterId,{rag,still:0,age:0,attempts:0,quiet:0,reference:null,motion:null,settled:null,mounds:[]});
+  this.bodies.set(event.fighterId,{rag,still:0,age:0,attempts:0,quiet:0,reference:null,motion:null,settled:null,mounds:[],pool:null});
  }
  worldPose(b){return b.settled??ragdollPose(b.rag);}
  settle(terrain){
+  this.tick++;
   for(const [fighterId,b] of this.bodies){
    if(b.settled)continue;
    const parts=this.worldPose(b),rag=b.rag,{sleeping,speed}=ragdollMotion(rag);
@@ -51,7 +53,7 @@ export class IncapacitatedBodies{
    }
    b.motion={age:b.age,near,lying,speed,sleeping,still:b.still,quiet:b.quiet,bottom,top,attempts:b.attempts};
    if(b.still<60&&!(b.age>=360&&b.quiet>=60))continue;
-   b.settled=parts;b.mounds=bodyTerrain(parts,this.baseHeight).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
+   b.settled=parts;b.pool=bodyPool(parts,fighterId,this.tick,this.baseHeight);b.mounds=bodyTerrain(parts,this.baseHeight).map((m,i)=>({...m,id:'body:'+fighterId+':'+i,source:'body'}));
    removeRagdoll(this.world,rag);b.rag=null;
    for(const m of b.mounds){
     const R=this.R,rb=this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(m.x,this.baseHeight(m.x,m.z)+m.height/2,m.z));
@@ -59,6 +61,7 @@ export class IncapacitatedBodies{
    }
   }
  }
+ poolSnapshot(){return [...this.bodies.values()].flatMap(b=>b.pool?[{...b.pool,point:[...b.pool.point]}]:[]);}
  moundSnapshot(){return [...this.bodies.values()].flatMap(b=>b.mounds.map(m=>({...m})));}
  snapshot(){
   return [...this.bodies].map(([fighterId,b])=>({fighterId,parts:this.worldPose(b).map(p=>({...p,a:[...p.a],b:[...p.b]})),settled:!!b.settled,sleeping:b.settled?true:ragdollMotion(b.rag).sleeping,dynamicBodies:b.rag?.nodes.length??0,joints:b.rag?.joints.length??0,motion:b.motion?{...b.motion}:null}));

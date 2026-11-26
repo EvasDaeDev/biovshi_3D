@@ -95,8 +95,8 @@ export class RaidState{
   this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;this.bias=(this.rng/4294967296-.5)*.32;
   if(this.phase!=='attack')this.enter('attack',tick,6.5);
  }
- damagedTarget(targetId:number):void{
-  if(this.phase!=='attack'||this.targetId!==targetId||!this.attempts||this.landed)return;
+ damagedTarget(targetId:number,companion=false):void{
+  if(this.phase!=='attack'||this.targetId!==targetId&&!companion||!this.attempts||this.landed)return;
   this.landed=true;this.hits++;this.rush=clamp(this.rush+.12*this.profile.drive,0,1);
  }
  private withdraw(tick:number){this.lastTarget=this.targetId;this.side=this.side===1?-1:1;this.enter('withdraw',tick,2.1);}

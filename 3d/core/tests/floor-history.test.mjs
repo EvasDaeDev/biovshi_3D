@@ -43,6 +43,7 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
    if(w.bodySnapshot().every(b=>b.settled)&&w.snapshot().every(d=>d.settled))break;
   }
   const body=w.bodySnapshot()[0];
+  const pools=w.bodyPoolSnapshot();assert.equal(pools.length,1);assert.ok(pools[0].radius>0);
   assert.ok(body.settled,JSON.stringify(body.motion));
   assert.ok(w.snapshot().every(d=>d.settled));
   const expectedVisualCount=w.snapshot().length+body.parts.length;
@@ -78,7 +79,7 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
    assert.ok(next.snapshot().every(d=>d.settled));
    const later=next.exportSettledFloor('ward',[{id:0,fighterId:0,tick:5,point:[1,.01,0]}]);
    assert.equal(later.visuals.length,expectedVisualCount+1);
-   assert.equal(later.oilMarks.length,2);
+   assert.equal(later.oilMarks.length,3);assert.equal(later.oilMarks.filter(o=>o.radius!==undefined).length,1);
    next.reset([],later,'ward');
    assert.equal(next.snapshot().length,expectedVisualCount+1);
    next.reset();

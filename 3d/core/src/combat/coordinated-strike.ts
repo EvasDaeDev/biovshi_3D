@@ -22,7 +22,9 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
  const axis=reference?sub(reference.b,reference.a):[1,0,0];
  const authoredTurn=Math.abs(Math.atan2(axis[2]!,axis[0]!));
  const directional=kind==='head'?0:strikeBearing(pose,p.aim,p.yaw)*.18*amount;
- const turn=side*amount*Math.min(.65,.32+authoredTurn*.35)-directional;
+ const singleTurn=side*amount*Math.min(.65,.32+authoredTurn*.35)-directional;
+ const otherTurn=p.secondary? (p.secondary.side==='L'?-1:1)*amount*.32-strikeBearing(pose,p.secondary.aim,p.yaw)*.18*amount:singleTurn;
+ const turn=p.secondary&&kind==='arm'?(singleTurn+otherTurn)*.5:singleTurn;
  const pivot=kind==='leg'?mid(hip):abdomen.a;
  const shoulder=pose.find(v=>v.id===p.side+'.upperArm')?.a??mid(chest);
  // Low arm attacks bend toward a real target; no scaling of reach.
@@ -35,11 +37,11 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
   const local=yaw(sub(point,pivot),p.yaw);
   return add(pivot,yaw(yaw(pitch(local,bend),-p.yaw),baseYaw));
  };
- // Continue the lumbar inclination into the thorax with slightly less
- // pitch. Rotate about the abdomen's upper attachment, preserving its
- // length and the chest-to-abdomen gap, not a separate floating mesh.
+ // Continue the curvature in the same direction, rather than undoing
+ // lumbar pitch. Thorax adds a smaller local bend on top of the lower
+ // spine angle. Rotate around the actual upper abdomen attachment.
  const upperPivot=body(abdomen.b),localYaw=p.yaw-baseYaw;
- const thorax=(point:Vec3):Vec3=>add(upperPivot,yaw(pitch(yaw(sub(body(point),upperPivot),localYaw),-bend*.22),-localYaw));
+ const thorax=(point:Vec3):Vec3=>add(upperPivot,yaw(pitch(yaw(sub(body(point),upperPivot),localYaw),bend*.22),-localYaw));
  const chestCenter=thorax(mid(chest));
  const upper=(point:Vec3):Vec3=>add(chestCenter,yaw(sub(thorax(point),chestCenter),kind==='leg'?-turn*.55:kind==='arm'?turn*.55:0));
  const moved=pose.map(v=>{
@@ -48,5 +50,5 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
   if(v.id==='chest'||v.id==='neck'||v.id==='head'||/Arm$|hand$/.test(v.id))return {...v,a:upper(v.a),b:upper(v.b)};
   return v;
  });
- return counterArms(moved,kind,p.side,p.yaw,amount);
+ return p.secondary?moved:counterArms(moved,kind,p.side,p.yaw,amount);
 }
