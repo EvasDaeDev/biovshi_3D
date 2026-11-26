@@ -85,7 +85,7 @@ try{
  await page.locator('#scenario').selectOption('damage');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='4';});
  await page.locator('#damage-crit').click();
- await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.health==='2'&&d.segmentGeometry==='box'&&d.hitTint==='0:R.upperArm';});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.health==='2'&&d.segmentGeometry==='ellipsoid'&&d.hitTint==='0:R.upperArm';});
  const firstCard=page.locator('#patient-hud [data-patient-id="0"]');
  assert.equal(await firstCard.locator('[data-segment="R.upperArm"]').getAttribute('data-state'),'damaged');
  assert.equal(await firstCard.locator('[data-segment="L.upperArm"]').getAttribute('data-state'),'healthy');
@@ -165,6 +165,18 @@ try{
  await page.goto(base+'/3d/lab-next/rig.html?scenario=one-arm',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
  const release=await page.locator('#stats').getAttribute('data-build');
+ const ornaments=await page.evaluate(async release=>{
+  const {createSegmentVisual}=await import('/releases/'+release+'/3d/lab-next/segment-visual.js');
+  return ['chest','head','R.upperArm','L.upperLeg','R.lowerArm','L.lowerLeg'].map(id=>
+   createSegmentVisual(id,.1,.4,undefined).children.slice(1).map(mesh=>[mesh.name,mesh.userData.segment]));
+ },release);
+ assert.deepEqual(ornaments,[
+  [['clavicle','chest'],['clavicle','chest']],
+  [['ear','head'],['ear','head']],
+  [['elbow','R.upperArm']],
+  [['knee','L.upperLeg']],
+  [],[],
+ ]);
  assert.match(release,/^[a-f0-9]{20}$/);
  // Real IndexedDB persistence across reload, session and arena switches.
  // A synthetic settled remain avoids spending another 60 seconds waiting for

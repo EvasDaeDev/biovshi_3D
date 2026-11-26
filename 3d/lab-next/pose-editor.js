@@ -1,3 +1,5 @@
+import {createSegmentVisual} from './segment-visual.js';
+import {anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
 import {solveTwoBone} from '../core/dist/rig/two-bone.js';
 import {TransformControls} from './vendor/TransformControls.js';
 import * as THREE from 'three';
@@ -47,7 +49,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));workspace.append(renderer.d
 const actor=new THREE.Group();scene.add(actor);
 const primary=new THREE.MeshStandardMaterial({color:0xb1c6bd,roughness:.55});
 const selected=new THREE.MeshStandardMaterial({color:0xb5eda0,roughness:.6,emissive:0x193211});
-const up=new THREE.Vector3(0,1,0);
+const basis=new THREE.Matrix4();
 const raycaster=new THREE.Raycaster();
 let azimuth=.95,elevation=.15,distance=4.6;
 function draw(){
@@ -130,11 +132,12 @@ for(const id of ['translate','rotate','ik'])element(id).onclick=()=>{
 };
 function renderPose(){
  controls.detach();
- actor.traverse(obj=>obj.geometry?.dispose());actor.clear();pickable.length=0;
+ actor.clear();pickable.length=0;
  const parts=current(),settings=new Map(parts.map(p=>[p.id,p]));
  nodes.clear();
  const anchors=new Map();
- for(const part of buildEditedPose(parts)){
+ const pose=buildEditedPose(parts);
+ for(const part of pose){
   const a=new THREE.Vector3(...part.a),b=new THREE.Vector3(...part.b),axis=b.clone().sub(a);
   const anchor=['pelvis','chest'].includes(part.id)?a.clone().lerp(b,.5):a.clone();
   const parent=LAB_SEGMENTS.find(def=>def.id===part.id).parent;
@@ -148,14 +151,15 @@ function renderPose(){
   joint.position.add(new THREE.Vector3(...(params.offset??[0,0,0])));
   joint.rotation.set(...(params.rotation??[0,0,0]));
   (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
-  const geometry=new THREE.BoxGeometry(part.radius*2,Math.max(axis.length(),part.radius*2),part.radius*2);
-  const mesh=new THREE.Mesh(geometry,part.id===segmentSelect.value?selected:primary);
-  mesh.userData.segment=part.id;mesh.position.copy(a).lerp(b,.5).sub(anchor);
-  if(axis.lengthSq()>1e-12)mesh.quaternion.setFromUnitVectors(up,axis.normalize());
-  joint.add(mesh);pickable.push(mesh);
+  const frame=anatomicalBoneFrame(part,pose,0);
+  const visual=createSegmentVisual(part.id,part.radius,frame.length,part.id===segmentSelect.value?selected:primary);
+  visual.position.copy(a).lerp(b,.5).sub(anchor);
+  const vector=values=>new THREE.Vector3(...values);
+  visual.quaternion.setFromRotationMatrix(basis.makeBasis(vector(frame.x),vector(frame.y),vector(frame.z)));
+  joint.add(visual);pickable.push(...visual.children);
  }
  actor.updateMatrixWorld(true);attachControl();
- workspace.dataset.segments=String(pickable.length);
+ workspace.dataset.segments=String(nodes.size);
  draw();
 }
 function refresh(){

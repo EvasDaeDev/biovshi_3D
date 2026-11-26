@@ -1,3 +1,4 @@
+import {createSegmentVisual} from './segment-visual.js';
 import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
@@ -41,15 +42,15 @@ const visionDebug=document.getElementById('vision-debug'),visionArrows=[],vision
 const visionGeometry=new THREE.CircleGeometry(VISION.range,32,-Math.PI/2-VISION.fov/2,VISION.fov);
 visionGeometry.rotateX(Math.PI/2);
 const visionMaterial=new THREE.MeshBasicMaterial({color:0xffca62,transparent:true,opacity:.12,side:THREE.DoubleSide,depthWrite:false});
-const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),segmentBox=new THREE.BoxGeometry(1,1,1),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
+const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
 const patientHud=new PatientHud(document.getElementById('patient-hud'));
 const hitParticles=new HitParticles(THREE,scene),segmentTints=new SegmentTints(),red=new THREE.Color(1,0,0);
 function paintSegment(m,fighterId,tint){
- const base=materials[fighterId===0?0:1];m.material.color.copy(base.color);m.material.emissive.setRGB(0,0,0);
- if(tint.critical)m.material.emissive.setRGB(tint.strength,0,0);
- else if(tint.strength)m.material.color.lerp(red,tint.strength);
+ const base=materials[fighterId===0?0:1],material=m.children[0].material;
+ material.color.copy(base.color);material.emissive.setRGB(0,0,0);
+ if(tint.critical)material.emissive.setRGB(tint.strength,0,0);
+ else if(tint.strength)material.color.lerp(red,tint.strength);
 }
-function boxScale(m,r,length){m.scale.set(2*r,Math.max(length,2*r),2*r);}
 const supportDebug=document.getElementById('support-debug'),supportGroup=new THREE.Group();scene.add(supportGroup);supportGroup.visible=false;
 const contactMaterial=new THREE.MeshBasicMaterial({color:0x72df9c}),massMaterial=new THREE.MeshBasicMaterial({color:0xffca62});
 const contactMarkers=[],massMarker=new THREE.Mesh(sphere,massMaterial);massMarker.scale.setScalar(.055);supportGroup.add(massMarker);
@@ -176,7 +177,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.material.dispose();}debrisMeshes.clear();segmentTints.reset();hitParticles.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();hitParticles.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -256,8 +257,8 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
   const compatible=oldParts&&oldParts.length===parts.length&&prior.lifeStates[j]===s.lifeStates[i]&&parts.every(p=>oldParts.some(q=>q.id===p.id));
   for(const p of parts){
    const id=s.fighterIds[i],key=id+':'+p.id,f=segmentFrame(p,parts,s.roots[i*4+3],s.headFrames?.[i]);
-   let m=meshes.get(key);if(!m){m=new THREE.Mesh(segmentBox,materials[id===0?0:1].clone());meshes.set(key,m);scene.add(m);}
-   m.visible=true;m.position.copy(v(f.center));frameRotation(f,m.quaternion);boxScale(m,p.radius,f.length);
+   let m=meshes.get(key);if(!m){m=createSegmentVisual(p.id,p.radius,f.length,materials[id===0?0:1].clone());meshes.set(key,m);scene.add(m);}
+   m.visible=true;m.position.copy(v(f.center));frameRotation(f,m.quaternion);
    const tint=segmentTints.sample(id,p.id,s.tick);paintSegment(m,id,tint);if(tint.strength)tinted.push(key);
    const old=compatible&&alpha<1?oldParts.find(q=>q.id===p.id):null;
    if(old){
@@ -269,10 +270,10 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  });
  cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE);stats.dataset.camera=cameraControl.mode;
  const falling=currentFrame.debris,oldDebris=new Map(previousFrame.debris.map(d=>[d.id,d])),active=new Set(falling.map(d=>d.id));
- for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);m.material.dispose();debrisMeshes.delete(id);}
+ for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);m.children[0].material.dispose();debrisMeshes.delete(id);}
  for(const d of falling){
   let m=debrisMeshes.get(d.id);
-  if(!m){m=new THREE.Mesh(segmentBox,materials[d.fighterId===0?0:1].clone());debrisMeshes.set(d.id,m);scene.add(m);boxScale(m,d.radius,d.length);}
+  if(!m){m=createSegmentVisual(d.segmentId,d.radius,d.length,materials[d.fighterId===0?0:1].clone());debrisMeshes.set(d.id,m);scene.add(m);}
   const tint=segmentTints.sample(d.id,d.segmentId,s.tick,true);paintSegment(m,d.fighterId,tint);if(tint.strength)tinted.push('debris:'+d.id);
   m.position.set(d.position.x,d.position.y,d.position.z);m.quaternion.set(d.rotation.x,d.rotation.y,d.rotation.z,d.rotation.w);
   const old=oldDebris.get(d.id);
@@ -284,7 +285,7 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  for(const d of debris.moundSnapshot()){
   let m=moundMeshes.get(d.id);if(!m){m=new THREE.Mesh(cone,d.source==='body'||d.source==='branch'||d.source==='segment'?bodyConeMaterial:moundMaterial);m.position.set(d.x,d.height/2,d.z);m.scale.set(d.radius,d.height,d.radius);scene.add(m);moundMeshes.set(d.id,m);}m.visible=(d.source!=='body'&&d.source!=='branch'&&d.source!=='segment')||terrainDebug.checked;
  }
- stats.dataset.hitParticles=String(hitParticles.draw(s.tick));stats.dataset.hitTint=tinted.join(',');stats.dataset.segmentGeometry='box';
+ stats.dataset.hitParticles=String(hitParticles.draw(s.tick));stats.dataset.hitTint=tinted.join(',');stats.dataset.segmentGeometry='ellipsoid';
  const pools=debris.bodyPoolSnapshot();stats.dataset.bodyPools=String(pools.length);
  const floorOil=[...debris.archivedOilSnapshot(),...s.oilMarks,...pools].slice(-2000);
   oilMarks.draw(floorOil,s.tick);stats.dataset.oil=String(floorOil.length);
