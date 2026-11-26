@@ -36,7 +36,7 @@ import { Knockdown,KNOCKDOWN } from './rig/knockdown.js';
 import { analyzeSupport } from './rig/support.js';
 import { MOVEMENT,HORROR_MOVEMENT,patientDriveSpeed } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
-import { expandLegacyTorso } from './rig/anatomy.js';
+import { expandLegacyTorso,severingChain } from './rig/anatomy.js';
 import { terrainHeight, type Mound } from './collision/terrain.js';
 import { createGradeContact } from './collision/grade-contact.js';
 import { gradeHeight,validateGradeSurface,type GradeSurface } from './arena/graded-surface.js';
