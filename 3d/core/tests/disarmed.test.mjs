@@ -5,6 +5,7 @@ import {LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
 const base=createLabConfig(7);
 const withoutArms=base.fighters[0].segmentIds.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));
 const defenseless=withoutArms.filter(s=>s!=='head'&&s!=='neck');
+const singleLeg=defenseless.filter(s=>!s.startsWith('R.'));
 const flat=()=>true;
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 
@@ -13,7 +14,8 @@ test('disarmed means no usable source in the current combat mode, not merely a m
  assert.equal(hasAttackSource(withoutArms,true),true,'head and supported kick remain available');
  assert.equal(hasAttackSource(withoutArms,false),false,'arm-only regression mode has no usable source');
  assert.equal(hasAttackSource(defenseless,true),true,'two intact legs can still kick');
- assert.equal(hasAttackSource(defenseless.filter(s=>s!=='R.foot'),true),false,'one support leg cannot kick');
+ assert.equal(hasAttackSource(defenseless.filter(s=>s!=='R.foot'),true),true,'the injured leg can strike from intact support');
+ assert.equal(hasAttackSource(singleLeg,true),false,'a lone leg must remain the support');
  assert.equal(hasAttackSource(base.fighters[0].segmentIds.filter(s=>s!=='L.hand'&&s!=='R.hand'),false),true,'forearm remains usable');
 });
 
@@ -33,7 +35,7 @@ test('v1 disarmed escape increases the gap to all armed threats, never picks an 
 test('armless/headless one-leg survivor flees a dangerous patient instead of chasing',()=>{
  const c=new LabSimulationCore();
  const fighters=[
-  {...base.fighters[0],origin:[0,0,1],yawRad:0,segmentIds:defenseless.filter(s=>s!=='R.foot')},
+  {...base.fighters[0],origin:[0,0,1],yawRad:0,segmentIds:singleLeg},
   {...base.fighters[1],origin:[0,0,0],yawRad:Math.PI}
  ];
  // Single-support still permits locomotion, but there is no arm,
@@ -55,7 +57,7 @@ test('armless/headless one-leg survivor flees a dangerous patient instead of cha
 });
 
 test('when no opponent has an attack source, disarmed AI searches rather than blindly chasing',()=>{
- const c=new LabSimulationCore(),ids=defenseless.filter(s=>s!=='R.foot');
+ const c=new LabSimulationCore(),ids=singleLeg;
  try{
   c.initialize({seed:19,fighters:[{...base.fighters[0],origin:[0,0,1],segmentIds:ids},{...base.fighters[1],origin:[0,0,-1],segmentIds:ids}],combatEnabled:true,expandedStrikes:true,tacticalCombat:true});
   const commands=new Map();c.planCombat(commands);
@@ -66,7 +68,7 @@ test('when no opponent has an attack source, disarmed AI searches rather than bl
 });
 
 test('disarmed perception does not see through walls or at headless long distance',()=>{
- const c=new LabSimulationCore(),ids=defenseless.filter(s=>s!=='R.foot');
+ const c=new LabSimulationCore(),ids=singleLeg;
  const config=(distance)=>({seed:7,fighters:[{...base.fighters[0],origin:[0,0,distance],segmentIds:ids},{...base.fighters[1],origin:[0,0,0]}],combatEnabled:true,expandedStrikes:true,tacticalCombat:true,perceptionCombat:true});
  try{
   c.initialize(config(2));
@@ -78,7 +80,7 @@ test('disarmed perception does not see through walls or at headless long distanc
  }finally{c.dispose();}
 });
 
-test('disarmed upper-arm stump can crawl away without inventing a missing forearm attack',()=>{
+test('upper-arm stump stays usable in grounded combat',()=>{
  const c=new LabSimulationCore();
  const stump=defenseless.filter(s=>!s.endsWith('.upperLeg')&&!s.endsWith('.lowerLeg')&&!s.endsWith('.foot')).concat('L.upperArm');
  const fighters=[{...base.fighters[0],origin:[0,0,.6],segmentIds:stump},{...base.fighters[1],origin:[0,0,0]}];
@@ -86,14 +88,13 @@ test('disarmed upper-arm stump can crawl away without inventing a missing forear
   c.initialize({seed:7,fighters,combatEnabled:true,expandedStrikes:true,tacticalCombat:true});
   const commands=new Map();c.planCombat(commands);
   assert.equal(c.getSnapshot().mobilityModes[0],'arm-crawl');
-  assert.equal(c.getSnapshot().tactics[0].mode,'retreat');
-  assert.equal(commands.get(0).sprint,false);
-  assert.equal(c.getSnapshot().strikes[0].phase,'idle');
+  assert.ok(hasAttackSource(stump,true));
+  assert.notEqual(c.getSnapshot().tactics[0].mode,'retreat');
  }finally{c.dispose();}
 });
 
 test('unreachable escape is negatively cached until its 1.8-second retry, not rescored every tick',()=>{
- const c=new LabSimulationCore(),ids=defenseless.filter(s=>s!=='R.foot');
+ const c=new LabSimulationCore(),ids=singleLeg;
  const stationary={fighterId:1,forward:0,turn:0,sprint:false};
  try{
   c.initialize({seed:7,fighters:[{...base.fighters[0],origin:[0,0,1],segmentIds:ids},{...base.fighters[1],origin:[0,0,0]}],combatEnabled:true,expandedStrikes:true,tacticalCombat:true});

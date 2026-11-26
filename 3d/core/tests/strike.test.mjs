@@ -8,7 +8,7 @@ test('strike phase timing and cooldown, missing source cancels',()=>{
  const s=new StrikeState(),ids=fighters[0].segmentIds;
  assert.ok(s.start(0,'L',1,[0,1,-.5],0));assert.equal(s.phase(19),'windup');assert.equal(s.phase(20),'thrust');assert.equal(s.phase(32),'recover');assert.equal(s.phase(48),'idle');
  s.advance(48,true,ids);assert.equal(s.start(53,'L',1,[0,1,-.5],0),false);assert.equal(s.start(54,'L',1,[0,1,-.5],0),true);
- s.advance(55,true,ids.filter(id=>id!=='L.lowerArm'));assert.equal(s.phase(55),'idle');
+ s.advance(55,true,ids.filter(id=>id!=='L.upperArm'));assert.equal(s.phase(55),'idle');
 });
 test('sweep detects intermediate moving contact and rejects misses and other limbs',()=>{
  const a=ball('L.hand',-1),b=ball('L.hand',1),v=ball('head',0);

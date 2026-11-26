@@ -26,12 +26,15 @@ export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
 }
 export function usableStrike(ids:readonly string[],kind:StrikeKind,side:'L'|'R'):boolean{
- if(kind==='arm')return usableArm(ids,side);
+ if(kind==='arm')return ids.includes('chest')&&ids.includes(side+'.upperArm');
  if(kind==='head')return ['chest','neck','head'].every(id=>ids.includes(id));
- return ids.includes('pelvis')&&['L','R'].every(s=>['upperLeg','lowerLeg','foot'].every(part=>ids.includes(s+'.'+part)));
+ const support=side==='L'?'R':'L';
+ return ids.includes('pelvis')&&ids.includes(side+'.upperLeg')&&['upperLeg','lowerLeg','foot'].every(part=>ids.includes(support+'.'+part));
 }
 export function strikeSource(kind:StrikeKind,side:'L'|'R',ids?:readonly string[]):string{
- return kind==='head'?'head':side+(kind==='leg'?'.foot':ids&&!ids.includes(side+'.hand')?'.lowerArm':'.hand');
+ if(kind==='head')return 'head';
+ const chain=kind==='arm'?['hand','lowerArm','upperArm']:['foot','lowerLeg','upperLeg'];
+ return side+'.'+(chain.find(part=>!ids||ids.includes(side+'.'+part))??chain[2]);
 }
 export function strikeOrigin(kind:StrikeKind,side:'L'|'R'):string{return kind==='head'?'neck':side+(kind==='leg'?'.upperLeg':'.upperArm');}
 /** A grounded dual attack always leaves a leg available for support.
@@ -54,7 +57,7 @@ export function strikeAge(p:Punch,tick:number):number{
  const fast=ticks(AUTHORED_THRUST_SECONDS);
  return age<W+fast?W+(age-W)*T/fast:age+(T-fast);
 }
-const sourcesUsable=(p:Punch,ids:readonly string[])=>strikeChannels(p).every(c=>usableStrike(ids,c.kind??'arm',c.side))&&(!p.pounce||usableStrike(ids,'leg','L'));
+const sourcesUsable=(p:Punch,ids:readonly string[])=>strikeChannels(p).every(c=>usableStrike(ids,c.kind??'arm',c.side))&&(!p.pounce||usableStrike(ids,'leg','L')&&usableStrike(ids,'leg','R'));
 export class StrikeState{
  private current:Punch|null=null;private last=-Infinity;private done=false;private sequence=0;
  private contacted=new Set<number>();
@@ -139,16 +142,22 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
  }
  if(punch.kind&&punch.kind!=='arm')return stabilized(extraStrikePose(pose,punch,phase,progress,ground,coordinated?load*weight:1,coordinated,weight,supportPlant));
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');
- if(!u||!l)return pose;
+ if(!u)return pose;
  const a=u.a,low=coordinated?lowTargetAmount(punch.aim,ground):0;
  const aimYaw=coordinated?punch.yaw+strikeBearing(pose,punch.aim,punch.yaw):punch.yaw;
  const back:Vec3=[a[0]-Math.sin(aimYaw)*.13,a[1]-.25+.24*low,a[2]+Math.cos(aimYaw)*.13];
- const base=l.b;
- const aim:Vec3=coordinated?[punch.aim[0],Math.max(punch.aim[1],ground(punch.aim[0],punch.aim[2])+Math.max(l.radius,h?.radius??0)),punch.aim[2]]:punch.aim;
+ const base=l?.b??u.b;
+ const aim:Vec3=coordinated?[punch.aim[0],Math.max(punch.aim[1],ground(punch.aim[0],punch.aim[2])+(h??l??u).radius),punch.aim[2]]:punch.aim;
  const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,progress,low,'arm',aimYaw,punch.side):age<W?mix(base,back,smooth(age/W)):age<W+T?mix(back,aim,smooth((age-W+1)/T)):mix(aim,base,smooth((age-W-T)/R));
  const target=weight===1?rawTarget:mix(base,rawTarget,weight);
  if(age===0)return pose;
  const strikePole:Vec3=[Math.cos(punch.yaw)*(punch.side==='L'?-1:1),-.65,Math.sin(punch.yaw)*(punch.side==='L'?-1:1)];
+ if(!l){
+  const d:Vec3=[target[0]-a[0],target[1]-a[1],target[2]-a[2]],n=Math.hypot(...d);
+  if(n<1e-8)return pose;
+  const end=mix(a,target,Math.hypot(u.b[0]-a[0],u.b[1]-a[1],u.b[2]-a[2])/n);
+  return stabilized(pose.map(p=>p===u?{...p,b:end}:p));
+ }
  const ik=coordinated?authoredArmStrike(u,l,target,punch.yaw,punch.side,load*weight):solveTwoBone(a,target,.36,.32,strikePole);
  const end=ik.end;
  return stabilized(pose.map(p=>p.id===u.id?{...p,b:ik.joint}:p.id===l.id?{...p,a:ik.joint,b:end}:h&&p.id===h.id?{...p,a:end,b:end}:p));

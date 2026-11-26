@@ -32,13 +32,19 @@ export function proneStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase
  }
  if(p.kind==='leg')return pose;
  const key=p.side+'.',u=pose.find(v=>v.id===key+'upperArm'),l=pose.find(v=>v.id===key+'lowerArm'),h=pose.find(v=>v.id===key+'hand');
- if(!u||!l)return pose;
- const base=l.b,side=p.side==='L'?-1:1;
+ if(!u)return pose;
+ const base=l?.b??u.b,side=p.side==='L'?-1:1;
  const back=add(u.a,[-forward[0]*.12+Math.cos(p.yaw)*side*.16,.18,-forward[2]*.12+Math.sin(p.yaw)*side*.16]);
- const aim:Vec3=[p.aim[0],Math.max(p.aim[1],ground(p.aim[0],p.aim[2])+l.radius),p.aim[2]];
+ const aim:Vec3=[p.aim[0],Math.max(p.aim[1],ground(p.aim[0],p.aim[2])+(h??l??u).radius),p.aim[2]];
  const raw=phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
  for(const lift of [0,.04,.08,.16]){
-  const target:Vec3=[raw[0],Math.max(raw[1]+lift,ground(raw[0],raw[2])+l.radius),raw[2]];
+  const target:Vec3=[raw[0],Math.max(raw[1]+lift,ground(raw[0],raw[2])+(h??l??u).radius),raw[2]];
+  if(!l){
+   const end=add(u.a,mul(unit(sub(target,u.a),unit(sub(u.b,u.a),forward)),Math.hypot(...sub(u.b,u.a))));
+   const stump={...u,b:end};
+   if(clear(stump,ground))return pose.map(v=>v===u?stump:v);
+   continue;
+  }
   const ik=solveTwoBone(u.a,target,.36,.32,[Math.cos(p.yaw)*side*.35,1,Math.sin(p.yaw)*side*.35]);
   const pu={...u,b:ik.joint},pl={...l,a:ik.joint,b:ik.end},ph=h?{...h,a:ik.end,b:ik.end}:null;
   if(clear(pu,ground)&&clear(pl,ground)&&(!ph||clear(ph,ground)))return pose.map(v=>v.id===u.id?pu:v.id===l.id?pl:ph&&v.id===ph.id?ph:v);

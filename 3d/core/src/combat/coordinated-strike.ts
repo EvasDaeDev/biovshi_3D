@@ -34,7 +34,9 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
  const low=kind==='arm'?clamp((shoulder[1]-p.aim[1]-.35)*.55,0,.48):0;
  // Real shoulder advancement for a punch; counter-lean against the
  // extended kicking leg. No change to bone lengths or damage reach.
- const bend=amount*(kind==='head'?-.26:kind==='arm'?-.22-low:.20);
+ const stump=kind==='arm'&&!pose.some(v=>v.id===p.side+'.hand');
+ const armBend=-(.22+low)*(stump?(pose.some(v=>v.id===p.side+'.lowerArm')?.72:.50):1);
+ const bend=amount*(kind==='head'?-.26:kind==='arm'?armBend:.20);
  const baseYaw=kind==='leg'?turn:kind==='head'?side*amount*.08:turn*.45;
  const body=(point:Vec3):Vec3=>{
   const local=yaw(sub(point,pivot),p.yaw);

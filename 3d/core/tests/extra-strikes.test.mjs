@@ -59,6 +59,6 @@ test('the live sources are fist, forearm tip without a hand, foot and head',()=>
  assert.equal(contact([arm],.38,'arm'),'L.lowerArm');
  assert.equal(contact([shin,foot],0,'leg'),null);
  assert.equal(contact([shin,foot],.59,'leg'),'L.foot');
- assert.equal(contact([shin],.50,'leg'),null);
+ assert.equal(contact([shin],.50,'leg'),'L.lowerLeg');
  assert.equal(contact([capsule('head',[.4,1,0])],.45,'head'),'head');
 });

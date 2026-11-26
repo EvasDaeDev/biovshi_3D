@@ -23,7 +23,7 @@ test('a standing patient can select low head, chest and arm capsules for a real 
   }
   const far={id:'head',a:[0,.2,-4],b:[0,.2,-4],radius:.14};
   assert.equal(chooseExtra(pose,ids,[far],0,()=>true,'leg',flat,undefined,true),null);
-  assert.equal(chooseExtra(pose,ids.filter(id=>id!=='R.foot'),[{id:'head',a:foot.a,b:foot.a,radius:.14}],0,()=>true,'leg',flat,undefined,true),null);
+  assert.equal(chooseExtra(pose,ids.filter(id=>!id.endsWith('.foot')),[{id:'head',a:foot.a,b:foot.a,radius:.14}],0,()=>true,'leg',flat,undefined,true),null);
  }finally{c.dispose();}
 });
 test('standing versus legless fixture produces real damage to the prone patient',()=>{

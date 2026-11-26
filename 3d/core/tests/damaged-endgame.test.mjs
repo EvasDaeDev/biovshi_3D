@@ -5,12 +5,11 @@ import {hasAttackSource} from '../dist/combat/disarmed.js';
 
 const source=createLabConfig(19).fighters;
 const legIds=['L.upperLeg','L.lowerLeg','L.foot'];
-// An incomplete right support, no head or arms: able to move, unable to attack.
+// The second leg, head and arms are absent: able to move, unable to attack.
 // This fixture is intentionally undamaged at spawn: missing parts must NOT
 // manufacture bleeding wounds or an automatic time-based defeat.
 const disarmed=source[0].segmentIds.filter(id=>
- legIds.includes(id)||id==='pelvis'||id==='abdomen'||id==='chest'||
- id==='R.upperLeg'||id==='R.lowerLeg'
+ legIds.includes(id)||id==='pelvis'||id==='abdomen'||id==='chest'
 );
 const idle=ids=>({commands:ids.map(fighterId=>({fighterId,forward:0,turn:0,sprint:false,attack:false}))});
 const noneTerminal=event=>!['fighter-damaged','fighter-incapacitated','fight-ended','strike-contact'].includes(event.type);

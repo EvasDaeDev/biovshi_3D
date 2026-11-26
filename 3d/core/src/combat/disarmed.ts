@@ -6,7 +6,7 @@ import { tacticalEscape, type PointXZ, type EscapeGoalClear } from './escape.js'
  * The native leg strike requires a second intact leg for support. */
 export function hasAttackSource(ids:readonly string[],expandedStrikes:boolean):boolean{
  return usableStrike(ids,'arm','L')||usableStrike(ids,'arm','R')||
-  (expandedStrikes&&(usableStrike(ids,'head','L')||usableStrike(ids,'leg','L')));
+  (expandedStrikes&&(usableStrike(ids,'head','L')||usableStrike(ids,'leg','L')||usableStrike(ids,'leg','R')));
 }
 
 export interface FleeActor extends PointXZ {readonly id:number}

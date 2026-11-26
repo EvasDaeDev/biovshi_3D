@@ -37,17 +37,26 @@ export function balanceSingleSupport(pose:readonly RigPose[],active:readonly str
   for(const k of ['L','R'] as const){
    const u=k+'.upperLeg',l=k+'.lowerLeg',f=k+'.foot',upper=get(u),lower=get(l),foot=get(f);
    const root=k==='L'?pelvis.a:pelvis.b;
-   const footOffset=sub(lower.b,foot.a);
-   const raw=swingTarget&&k!==side?swingTarget:transform(foot.a);
+   if(!upper)continue;
+   if(!lower){
+    const target=swingTarget??transform(upper.b);
+    const direction=sub([target[0],Math.max(target[1],ground(target[0],target[2])+upper.radius),target[2]],root);
+    const distance=Math.hypot(...direction);
+    const end:Vec3=distance>1e-8?[root[0]+.49*direction[0]/distance,root[1]+.49*direction[1]/distance,root[2]+.49*direction[2]/distance]:transform(upper.b);
+    out[index.get(u)!]={...upper,a:root,b:end};
+    continue;
+   }
+   const footOffset=foot?sub(lower.b,foot.a):[0,0,0] as const;
+   const raw=swingTarget&&k!==side?swingTarget:transform(foot?.a??lower.b);
    // The other, incomplete leg can follow the body, but cannot drive
    // the correction or be counted as an additional supporting foot.
-   const end:Vec3=k===side?ankle:add([raw[0],Math.max(raw[1],ground(raw[0],raw[2])+foot.radius),raw[2]],footOffset);
+   const end:Vec3=k===side?ankle:add([raw[0],Math.max(raw[1],ground(raw[0],raw[2])+(foot??lower).radius),raw[2]],footOffset);
    const pole:Vec3=yaw===undefined?sub(upper.b,upper.a):[Math.sin(yaw),.02,-Math.cos(yaw)];
    const ik=solveTwoBone(root,end,.49,.50,pole);
    const p=sub(ik.end,footOffset);
    out[index.get(u)!]={...upper,a:root,b:ik.joint};
    out[index.get(l)!]={...lower,a:ik.joint,b:ik.end};
-   out[index.get(f)!]={...foot,a:p,b:p};
+   if(foot)out[index.get(f)!]={...foot,a:p,b:p};
   }
   return out;
  };

@@ -1,13 +1,15 @@
 import type {AuthoredMotion} from '../rig/authored-motion.js';
 import type { PhysicsSegmentPose } from '../types.js';
 import { closestAim,type PunchChoice } from './punch-choice.js';
+import {reserveTarget} from './reach-reserve.js';
 import { punchPose,usableStrike,strikeOrigin,strikeSource,type Punch } from './strike.js';
 import { firstStrikeContact } from './swept-contact.js';
 export interface ExtraChoice extends PunchChoice {kind:'leg'|'head'}
 /** Evaluate real attack geometry before committing to a kick or head strike.
  * Bounded candidate list; actual contact still resolved at fixed ticks. */
-export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:'leg'|'head',ground:(x:number,z:number)=>number,motion?:AuthoredMotion,groundTarget=false,score?:(choice:PunchChoice)=>number):ExtraChoice|null{
+export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:'leg'|'head',ground:(x:number,z:number)=>number,motion?:AuthoredMotion,groundTarget=false,score?:(choice:PunchChoice)=>number,reserve=false):ExtraChoice|null{
  let best:ExtraChoice|null=null;
+ const rangeTarget=reserve?reserveTarget(pose,victim):victim;
  const targets=kind==='head'?['head','neck','chest','L.upperArm','R.upperArm']:['pelvis','abdomen','L.upperLeg','R.upperLeg','L.lowerLeg','R.lowerLeg','L.foot','R.foot'];
  // A grounded victim has its head, torso and arms at foot height.
  // Keep the accepted standing-victim target order; only broaden the grounded case.
@@ -20,16 +22,18 @@ export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly stri
    if(!usableStrike(ids,kind,side))continue;
    const origin=pose.find(v=>v.id===strikeOrigin(kind,side))?.a;if(!origin)continue;
    const aim=closestAim(origin,part),distance=Math.hypot(aim[0]-origin[0],aim[1]-origin[1],aim[2]-origin[2]);
-   const tip=pose.find(v=>v.id===strikeSource(kind,side));if(!tip)continue;
+   const tip=pose.find(v=>v.id===strikeSource(kind,side,ids));if(!tip)continue;
    const ankle=kind==='leg'?pose.find(v=>v.id===side+'.lowerLeg')?.b:undefined;
-   const chain=kind==='head'?.33:.99+(ankle?Math.hypot(...ankle.map((v,i)=>v-tip.a[i]!)):0);
+   const chain=kind==='head'?.33:tip.id.endsWith('.upperLeg')?.49:.99+(ankle&&tip.id.endsWith('.foot')?Math.hypot(...ankle.map((v,i)=>v-tip.a[i]!)):0);
    // The torso or pelvis can advance the real source before extension.
    const bodyTravel=motion?.stalk?(kind==='head'?.27:.22):motion?.12:0;
    if(distance>chain+tip.radius+part.radius+bodyTravel)continue;
    const p:Punch={side,kind,targetId:0,aim,start:0,yaw,targetSegment:id};
    let before=punchPose(pose,p,19,ground,motion);
    for(const age of [23,27,31]){
-    const after=punchPose(pose,p,age,ground,motion),contactId=firstStrikeContact(before,after,victim,victim,side,kind);
+    const after=punchPose(pose,p,age,ground,motion);
+    let contactId=firstStrikeContact(before,after,rangeTarget,rangeTarget,side,kind);
+    if(contactId&&reserve)contactId=firstStrikeContact(before,after,victim,victim,side,kind);
     if(contactId){if(eligible(contactId)){
      const choice:ExtraChoice={side,kind,id,aim,contactId,distance};
      if(!score)return choice;

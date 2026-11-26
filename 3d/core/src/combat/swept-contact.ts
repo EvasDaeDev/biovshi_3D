@@ -17,16 +17,16 @@ export function sweptContact(a0:PhysicsSegmentPose,a1:PhysicsSegmentPose,b0:Phys
 }
 export interface StrikeContactDetail {readonly id:string;readonly source:string;readonly time:number;readonly point:Vec3}
 export function firstStrikeContactDetail(previous:readonly PhysicsSegmentPose[],current:readonly PhysicsSegmentPose[],victimPrevious:readonly PhysicsSegmentPose[],victimCurrent:readonly PhysicsSegmentPose[],side:'L'|'R',kind:StrikeKind='arm'):StrikeContactDetail|null{
- const distal=strikeSource(kind,side);
- const currentPart=current.find(p=>p.id===distal)??(kind==='arm'?current.find(p=>p.id===side+'.lowerArm'):undefined);
+ const distal=strikeSource(kind,side,current.map(p=>p.id));
+ const currentPart=current.find(p=>p.id===distal);
  if(!currentPart)return null;
  const source=currentPart.id;
  const previousPart=previous.find(p=>p.id===source);
  if(!previousPart)return null;
- // With a missing hand only the rounded end of the surviving forearm
- // can hit. A capsule brushing someone near the elbow is not a punch.
- const a0=source.endsWith('.lowerArm')?{...previousPart,a:previousPart.b}:previousPart;
- const a=source.endsWith('.lowerArm')?{...currentPart,a:currentPart.b}:currentPart;
+ // A stump can hit only with its rounded distal end.
+ const stump=/Arm$|Leg$/.test(source);
+ const a0=stump?{...previousPart,a:previousPart.b,radius:previousPart.radius*.72}:previousPart;
+ const a=stump?{...currentPart,a:currentPart.b,radius:currentPart.radius*.72}:currentPart;
  const vp=new Map(victimPrevious.map(p=>[p.id,p]));
  let best:StrikeContactDetail|null=null,time=Infinity;
  for(const b of victimCurrent){

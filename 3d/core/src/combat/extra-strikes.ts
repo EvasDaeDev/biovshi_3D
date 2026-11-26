@@ -25,13 +25,13 @@ export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase
   return pose.map(v=>v.id==='neck'?{...v,b:joint}:v.id==='head'?{...v,a:center,b:center}:v);
  }
  if(p.kind==='leg'){
-  const foot=pose.find(v=>v.id===p.side+'.foot'),support=p.side==='L'?'R':'L',plant=pose.find(v=>v.id===support+'.foot');
+  const foot=pose.find(v=>v.id===p.side+'.foot'),shin=pose.find(v=>v.id===p.side+'.lowerLeg'),support=p.side==='L'?'R':'L',plant=pose.find(v=>v.id===support+'.foot');
   const hip=pose.find(v=>v.id===p.side+'.upperLeg');
-  if(!foot||!plant||!hip)return pose;
-  const base=foot.a,low=coordinated?lowTargetAmount(p.aim,ground):0;
+  if(!plant||!hip)return pose;
+  const source=foot??shin??hip,base=foot?.a??source.b,low=coordinated?lowTargetAmount(p.aim,ground):0;
   const aimYaw=coordinated?p.yaw+strikeBearing(pose,p.aim,p.yaw):p.yaw;
   const back:Vec3=[hip.a[0]-Math.sin(aimYaw)*.14,Math.max(base[1]+.23,hip.a[1]-.48)+.08*low,hip.a[2]+Math.cos(aimYaw)*.14];
-  const aim:Vec3=[p.aim[0],Math.max(ground(p.aim[0],p.aim[2])+foot.radius,p.aim[1]),p.aim[2]];
+  const aim:Vec3=[p.aim[0],Math.max(ground(p.aim[0],p.aim[2])+source.radius,p.aim[1]),p.aim[2]];
   const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,t,low,'leg',aimYaw,p.side):phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
   if(p.pounce){
    // In flight neither leg is a world-space support anchor. Reconnect

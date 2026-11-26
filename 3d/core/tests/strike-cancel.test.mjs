@@ -17,7 +17,7 @@ test('cancel immediately removes damage authority but retains fading visual stat
 });
 test('remaining visual cannot recreate a lost source or affect legacy or prone attacks',()=>{
  const s=new StrikeState();s.start(0,'L',1,[0,1,-.5],0);s.advance(25,false,ids,true);
- s.advance(26,false,ids.filter(id=>id!=='L.lowerArm'),true);assert.equal(s.visual(26),null);
+ s.advance(26,false,ids.filter(id=>id!=='L.upperArm'),true);assert.equal(s.visual(26),null);
  const l=new StrikeState();l.start(0,'L',1,[0,1,-.5],0);l.advance(25,false,ids);assert.equal(l.visual(25),null);
  const p=new StrikeState();p.start(0,'L',1,[0,1,-.5],0,undefined,'arm',true);p.advance(25,false,ids,true);assert.equal(p.visual(25),null);
 });
