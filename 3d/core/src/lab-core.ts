@@ -362,7 +362,7 @@ export class LabSimulationCore implements SimulationCore {
         ?opponents.find(b=>b.id===chosen)
         :opponents.sort((b,c)=>distanceTo(b)-distanceTo(c)||b.id-c.id)[0];
       const raidOpponent=(b:Actor):RaidOpponent=>({id:b.id,x:b.x,z:b.z,yaw:b.segments.includes('head')?b.perception.gaze(b.yaw):b.yaw,grounded:b.gait.posture!=='upright',
-        threatening:telegraphs?.get(b.id)?.targetId===a.id&&['windup','thrust'].includes(telegraphs?.get(b.id)?.phase??'idle')});
+        threatening:telegraphs?.get(b.id)?.targetId===a.id&&['windup','thrust'].includes(telegraphs?.get(b.id)?.phase??'idle'),recovering:telegraphs?.get(b.id)?.phase==='recover'});
       const observed=raiding?visible.map(raidOpponent):[];
       const clearRaid=(goal:PointXZ)=>this.navigation.clear(goal,goal,.50)&&this.navigation.clear(a,goal,.30)&&!observed.some(o=>Math.hypot(o.x-goal.x,o.z-goal.z)<.55);
       const raidStep=(b:Actor|null)=>a.raid.advance({tick:this.tick,here:a,target:b&&visibleIds.includes(b.id)?raidOpponent(b):null,visible:observed,strike:a.strike.phase(this.tick),interrupted:a.impact.active||a.knockdown.blocked,ready:a.strike.ready(this.tick)&&a.behavior.ready(this.tick),clear:clearRaid});
@@ -572,7 +572,11 @@ export class LabSimulationCore implements SimulationCore {
       const id=firstStrikeContact(a0,a1,b0,b1,p.side,p.kind??'arm');
       if(id){a.strike.resolve();this.events.push({tick:this.tick,type:'strike-contact',fighterId:b.id,attackerId:a.id,segmentId:id,sourceSegment:strikeSource(p.kind??'arm',p.side),strikeKind:p.kind??'arm',proneStrike:!!p.prone});requests.push({fighterId:b.id,segmentId:id,attackerId:a.id,amount:b.health.canDamage(id,this.tick)?a.behavior.damage():1});}
     }
-    for(const request of requests)this.applyDamage(request);
+    for(const request of requests){
+      if(this.applyDamage(request)&&this.ringCombat&&this.authored?.stalk){
+        this.actors.find(a=>a.id===request.attackerId)?.raid.damagedTarget(request.fighterId);
+      }
+    }
   }
   private finishFight():void{
     if(this.fightEnded||this.actors.length<2)return;

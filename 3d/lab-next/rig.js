@@ -298,7 +298,7 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  stats.dataset.hunts=(s.hunts??[]).map(h=>h.phase).join('/');
  stats.dataset.raids=(s.raids??[]).map(h=>h.phase).join('/');
  const raidStatus=document.getElementById('raid-status');raidStatus.hidden=scenario.value!=='location-ring';
- if(!raidStatus.hidden){const labels={search:'поиск',observe:'наблюдение',flank:'обход',rush:'рывок',attack:'атака',withdraw:'отход',reassess:'оценка'};raidStatus.textContent=(s.raids??[]).map((r,i)=>'№'+s.fighterIds[i]+' '+(s.lifeStates[i]!=='active'?'выбыл':controlPatient.value===String(s.fighterIds[i])?'ручное':labels[r.phase]??r.phase)+(r.targetId===null?'':' → №'+r.targetId)).join(' | ');}
+ if(!raidStatus.hidden){const labels={search:'поиск',observe:'наблюдение',flank:'обход',rush:'рывок',attack:'атака',withdraw:'отход',reassess:'оценка'};raidStatus.textContent=(s.raids??[]).map((r,i)=>'№'+s.fighterIds[i]+' '+(s.lifeStates[i]!=='active'?'выбыл':controlPatient.value===String(s.fighterIds[i])?'ручное':labels[r.phase]??r.phase)+(r.targetId===null?'':' → №'+r.targetId)+(r.attempts?' · серия '+r.hits+'/'+r.attempts+' · азарт '+Math.round(r.rush*100)+'%':'')).join(' | ');}
   stats.dataset.playback=String(playback.rate);stats.dataset.reviewPhase=scenario.value==='motion-review'?reviewInput(s.tick).phase:'';
   stats.dataset.motionPeak=motionPeak?motionPeak.max.toFixed(4):'';
   const motionStatus=document.getElementById('motion-status');motionStatus.hidden=scenario.value!=='motion-review';

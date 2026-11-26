@@ -32,6 +32,7 @@ for(const location of Object.values(catalog)){
  let minActive=location.capacity,peakRagdolls=0,peakCones=0,damageEvents=0;
  let windups=0,contacts=0,oilDrops=0,terminalEvents=0,finishTick=null,lastHitTick=0,maxQuietTicks=0;
  let longestStationarySeconds=0,stationaryPatientId=null;
+ const seriesSamples={maxAttempts:0,maxHits:0,maxRush:0,activeSamples:0,heatedSamples:0,crowdedSamples:0};
  try{
   core.initialize(config);
   world.reset(location.walls,null,location.id,location,config.gradedSurface);
@@ -68,6 +69,16 @@ for(const location of Object.values(catalog)){
    }
    if(tick%60!==0)continue;
    const state=core.getSnapshot(),bodies=world.bodySnapshot(),debris=world.snapshot();
+   // Once per simulated second; diagnostic lower bounds, not exact counts.
+   if(!state.fight.ended)for(let i=0;i<state.fighterIds.length;i++){
+    const raid=state.raids?.[i];if(state.lifeStates[i]!=='active'||!raid)continue;
+    seriesSamples.maxAttempts=Math.max(seriesSamples.maxAttempts,raid.attempts);
+    seriesSamples.maxHits=Math.max(seriesSamples.maxHits,raid.hits);
+    seriesSamples.maxRush=Math.max(seriesSamples.maxRush,raid.rush);
+    if(raid.phase==='attack'){seriesSamples.activeSamples++;if(raid.rush>=.65)seriesSamples.heatedSamples++;}
+    const x=state.roots[i*4],z=state.roots[i*4+2];
+    if(state.lifeStates.filter((life,j)=>j!==i&&life==='active'&&Math.hypot(state.roots[j*4]-x,state.roots[j*4+2]-z)<1.35).length>=2)seriesSamples.crowdedSamples++;
+   }
    assert.ok([...state.roots].every(Number.isFinite),location.id+' produced nonfinite root');
    assert.ok(state.rigSegments.flat().every(p=>[...p.a,...p.b,p.radius].every(Number.isFinite)),location.id+' broke visible anatomy');
    assert.ok(bodies.every(b=>b.parts.every(p=>[...p.a,...p.b,p.radius].every(Number.isFinite))),location.id+' broke falling rig');
@@ -117,6 +128,7 @@ for(const location of Object.values(catalog)){
    longestNoHitSeconds:round(Math.max(maxQuietTicks,(finishTick??state.tick)-lastHitTick)/60),
    longestStationarySeconds,stationaryPatientId,
    collisionStats:state.collisionStats,
+   seriesSamples:{...seriesSamples,maxRush:round(seriesSamples.maxRush),samplePeriodSeconds:1},
    cpuMs:summary(samples),wallClockMs:round(performance.now()-start)};
   if(!state.fight.ended)report.survivors=Array.from(state.fighterIds).flatMap((id,i)=>
    state.lifeStates[i]==='active'?[{id,root:Array.from(state.roots.slice(i*4,i*4+4)),mobility:state.mobilityModes[i],
