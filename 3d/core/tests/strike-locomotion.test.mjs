@@ -30,7 +30,7 @@ test('authored manual punch can continue moving and turning during recovery',()=
  core.initialize({seed:7,patientScale:.81,patientPoses:{schemaVersion:1,stature:1.65,slots},combatEnabled:true,expandedStrikes:true,
   fighters:[{...cfg.fighters[0],origin:[0,0,.78],yawRad:0},{...cfg.fighters[1],origin:[0,0,0],yawRad:Math.PI}]});
  try{
-  let started=false,recovery=null, moved=false, turned=false;
+  let started=false,recovery=null,frontmostZ=null,moved=false,turned=false;
   for(let i=0;i<150;i++){
    const before=core.getSnapshot(),phase=before.strikes[0].phase;
    const backward=phase==='recover';
@@ -38,7 +38,11 @@ test('authored manual punch can continue moving and turning during recovery',()=
    const s=core.getSnapshot();started||=s.strikes[0].phase!=='idle';
    if(s.strikes[0].phase==='recover'){
     recovery??=Array.from(s.roots.slice(0,4));
-    moved||=s.roots[2]-recovery[2]>.02;
+    // Forward motion carries into recovery while the fighter brakes.
+    // Measure the commanded reversal from the frontmost position reached
+    // during recovery rather than subtracting the braking distance.
+    frontmostZ=Math.min(frontmostZ??s.roots[2],s.roots[2]);
+    moved||=s.roots[2]-frontmostZ>.02;
     turned||=Math.abs(s.roots[3]-recovery[3])>.015;
    }else if(recovery)break;
   }
