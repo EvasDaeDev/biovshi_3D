@@ -22,8 +22,10 @@ export function attackScore(kind:StrikeKind,c:PunchChoice,context:FightOpportuni
  const threat=context.opponent.phase==='windup'||context.opponent.phase==='thrust';
  const recovery=context.opponent.phase==='recover';
  let score=1.1-.65*c.distance/reach;
+ if(c.contactId==='head')score+=.72;
+ else if(c.contactId==='neck')score+=.16;
  if(kind==='arm')score+=.23;
- if(kind==='leg')score+=context.grounded?.95:context.distance>.68?.28:-.16;
+ if(kind==='leg')score+=context.grounded?.52:context.distance>.68?.28:-.16;
  if(kind==='head')score+=context.distance<.42?.32:-.25;
  if(c.contactId===context.opponent.source&&threat)score+=.32;
  if(recovery&&kind==='arm')score+=.18;

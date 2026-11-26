@@ -3,7 +3,7 @@ import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import {crouchPunchBase} from './crouch-punch.js';
 import { punchPose,usableArm,type Punch } from './strike.js';
 import { firstStrikeContact } from './swept-contact.js';
-export interface PunchChoice {side:'L'|'R';id:string;aim:Vec3;contactId:string;distance:number;crouch?:boolean}
+export interface PunchChoice {side:'L'|'R';id:string;aim:Vec3;contactId:string;distance:number;crouch?:boolean;pounce?:boolean}
 export function closestAim(origin:Vec3,part:PhysicsSegmentPose):Vec3{
  const v=part.b.map((x,i)=>x-part.a[i]!) as [number,number,number];
  const length=v[0]**2+v[1]**2+v[2]**2;

@@ -5,7 +5,7 @@ export interface HopSample { readonly distance:number; readonly lift:number; rea
  * even if input is released. Horizontal displacement uses v1's smooth curve. */
 export class HopCycle {
  private age=0;private travel=0;private running=false;
- constructor(private readonly preparation=0,private readonly flightTime:number=MOVEMENT.hopFlightSeconds,private readonly pauseTime:number=MOVEMENT.hopPauseSeconds,private readonly absorb=false){}
+ constructor(private readonly preparation=0,private readonly flightTime:number=MOVEMENT.hopFlightSeconds,private readonly pauseTime:number=MOVEMENT.hopPauseSeconds,private readonly absorb=false,private readonly maxDistance=MOVEMENT.hopMaxDistance){}
  reset():void{this.age=0;this.travel=0;this.running=false;}
  advance(dt:number,speed:number):HopSample{
   const flight=this.flightTime,pause=this.pauseTime,takeoff=this.preparation,landing=takeoff+flight,cycle=landing+pause;
@@ -14,7 +14,7 @@ export class HopCycle {
    if(!this.running){
     if(Math.abs(speed)<.03)break;
     this.running=true;this.age=0;
-    this.travel=Math.sign(speed)*Math.min(MOVEMENT.hopMaxDistance,Math.abs(speed)*cycle);
+    this.travel=Math.sign(speed)*Math.min(this.maxDistance,Math.abs(speed)*cycle);
    }
    const end=this.age<takeoff-1e-10?takeoff:this.age<landing-1e-10?landing:cycle;
    const delta=Math.min(remaining,end-this.age);

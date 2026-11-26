@@ -48,7 +48,7 @@ test('heat raises willingness to accept counterattacks without altering hit auth
  assert.ok(seriesRisk(p,.9)>seriesRisk(p,.1));
  assert.equal(continueSeries(p,1,.14,false,counter,0,0),false);
  assert.equal(continueSeries(p,3,.84,true,counter,0,0),true);
- assert.equal(continueSeries(p,5,1,true,{...opponent,grounded:true},1,.16),false);
+ assert.equal(continueSeries(p,8,1,true,{...opponent,grounded:true},1,.16),false);
 });
 test('series varies with visible opportunities and stable per-commit decisions; heat clears on reassessment',()=>{
  const lengths=new Set(),near={x:0,z:.8};
@@ -58,7 +58,7 @@ test('series varies with visible opportunities and stable per-commit decisions; 
   assert.equal(state.advance(input(0,near,target)).phase,'observe');
   assert.equal(state.advance(input(60,near,target)).phase,'rush');
   let attempts=0,previous=0,tick=70;
-  for(let n=1;n<=5;n++,tick+=68){
+  for(let n=1;n<=8;n++,tick+=68){
    state.committed(tick,1);attempts=n;
    if(id%3!==1)state.damagedTarget(1);
    const h=state.snapshot();
@@ -71,7 +71,7 @@ test('series varies with visible opportunities and stable per-commit decisions; 
    assert.equal(state.advance(input(tick+65,near,target)).attack,true);
   }
   lengths.add(attempts);
-  assert.ok(attempts>=3&&attempts<=5,JSON.stringify({id,attempts,profile:state.profile}));
+  assert.ok(attempts>=3&&attempts<=8,JSON.stringify({id,attempts,profile:state.profile}));
   assert.equal(state.snapshot().phase,'reassess');
   state.advance(input(tick+120,{x:0,z:3},null));
   assert.equal(state.snapshot().rush,0);assert.equal(state.snapshot().attempts,0);
@@ -108,13 +108,13 @@ test('safe completed series holds position; a real counterattack still triggers 
  const near={x:0,z:.8},state=new RaidState(7,0,'impulsive'),target={...opponent,grounded:true};
  state.advance(input(0,near,target));state.advance(input(60,near,target));
  let end;
- for(let n=0;n<5;n++){
+ for(let n=0;n<8;n++){
   const tick=70+n*66;state.committed(tick,1);state.damagedTarget(1);
   end=state.advance(input(tick+33,near,target,{strike:'recover'}));
   if(end.phase==='reassess')break;
  }
  assert.equal(end.phase,'reassess');assert.equal(end.goal,null);assert.equal(end.pace,0);assert.equal(end.attack,false);
  const threat={...opponent,threatening:true};
- const out=state.advance(input(400,near,threat,{strike:'recover'}));
+ const out=state.advance(input(650,near,threat,{strike:'recover'}));
  assert.equal(out.phase,'withdraw');assert.ok(out.goal);
 });

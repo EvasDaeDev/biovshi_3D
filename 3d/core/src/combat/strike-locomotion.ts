@@ -4,6 +4,7 @@ import type {Punch,StrikePhase} from './strike.js';
  * continue to run their own gait; the kick has a separate support limit. */
 export function strikeLocomotion(command:FighterCommand,punch:Punch,phase:StrikePhase):FighterCommand{
  if(punch.prone||phase==='idle')return command;
+ if(punch.pounce)return {...command,forward:0,turn:0,sprint:false,jump:phase==='windup'};
  if(punch.crouch)return {...command,forward:0,turn:0,sprint:false,jump:false};
  const kind=punch.kind??'arm';
  const forward=kind==='leg'?.42:kind==='head'?.75:.85;

@@ -24,19 +24,19 @@ export function raidProfile(seed:number,id:number,temperament:PatientTraits['tem
  return Object.freeze({patience:(aggressive?.32:cautious?.70:.48)+u*.18,risk:aggressive?.78:cautious?.26:.48,
   safeDistance:(aggressive?1.45:cautious?2.05:1.75)+u*.18,drive:.85+((h>>>10)&255)/255*.30,initiative:.86+((h>>>18)&255)/255*.28,side:(h&256)?1:-1});
 }
-/** Typical series are 3–5 attempts; the ceiling is only a safety bound.
+/** Typical series vary with opportunity, up to eight attempts; the ceiling is only a safety bound.
  * Commitment builds heat, damage reinforces it. Heat weakens the response
  * to a visible counterattack; it never changes hit or damage authority. */
 export function seriesRisk(profile:RaidProfile,rush:number):number{
  return profile.risk+(1-profile.risk)*clamp(rush,0,1)*.85;
 }
 export function continueSeries(profile:RaidProfile,attempts:number,rush:number,landed:boolean,target:RaidOpponent,exposure:number,bias:number):boolean{
- if(attempts>=5)return false;
+ if(attempts>=8)return false;
  const heat=clamp(rush,0,1),danger=target.threatening&&!target.grounded;
  if(danger&&seriesRisk(profile,heat)<.48)return false;
  const value=.83+.12*profile.risk+.12*heat+.12*clamp(exposure,0,1)
   +(target.grounded?.16:0)+(target.recovering?.10:0)-(landed?0:.10)
-  -.24*Math.max(0,attempts-2)-(danger?.50*(1-.85*heat):0)+clamp(bias,-.16,.16);
+  -.13*Math.max(0,attempts-2)-(danger?.50*(1-.85*heat):0)+clamp(bias,-.16,.16);
  return value>=.49;
 }
 /** Prefer the unguarded side, but avoid the attack lanes of other observed
@@ -93,7 +93,7 @@ export class RaidState{
   this.attempts++;this.landed=false;this.rush=clamp(this.rush+.14*this.profile.drive,0,1);
   // One stable willingness sample per committed attack; no per-tick rerolls.
   this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;this.bias=(this.rng/4294967296-.5)*.32;
-  if(this.phase!=='attack')this.enter('attack',tick,6.5);
+  if(this.phase!=='attack')this.enter('attack',tick,10.8);
  }
  damagedTarget(targetId:number,companion=false):void{
   if(this.phase!=='attack'||this.targetId!==targetId&&!companion||!this.attempts||this.landed)return;

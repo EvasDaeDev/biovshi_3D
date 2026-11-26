@@ -238,3 +238,7 @@ bfeebc7 CI 45841052541: tsc OK, 273/274; guard→run hand delta regression. Sign
 ### P4-M — crawl frame / добивание (26.11.2026)
 
 ace1758 CI 45842588209 success. Anatomical box frames, nearest visible segment pursuit for grounded target, optional two-foot squat punch with shared IK/swept preview and smooth recovery. Regressions added; new CI, audit and visual acceptance pending.
+
+### P4-M — faster thrust, head preference, max8, pounce (26.11.2026)
+
+2d3f7b9 CI45844615839 success. Authored thrust .15s, head priority actual preview, series up to8, sustained squat incl standing target, pounce arm/leg/head with actual flight swept contacts. Tests/docs updated, new CI/runtime success rate and performance pending.

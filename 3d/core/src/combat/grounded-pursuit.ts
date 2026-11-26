@@ -11,7 +11,7 @@ export function groundedContactPoint(here:PointXZ,parts:readonly PhysicsSegmentP
   const point={x:p.a[0]+dx*t,z:p.a[2]+dz*t};
   const d=Math.hypot(here.x-point.x,here.z-point.z);
   // Mild preference for core/arm contacts, not a mandatory rear flank.
-  const value=d-(p.id==='head'||p.id==='chest'||p.id==='abdomen'?.06:0);
+  const value=d-(p.id==='head'?.24:p.id==='chest'||p.id==='abdomen'?.06:0);
   if(value<score){score=value;best=point;}
  }
  return best;

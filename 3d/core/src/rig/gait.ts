@@ -1,4 +1,5 @@
 import {compensateHead} from '../animation/body-compensation.js';
+import {POUNCE} from '../combat/pounce.js';
 import {ArmCarriage} from '../animation/arm-carriage.js';
 import {pivotPlan} from '../animation/turn-motion.js';
 import {kickTravelLimit} from '../combat/strike-locomotion.js';
@@ -62,7 +63,7 @@ export class PatientGait {
   private get organic():boolean{return this.groundedStride&&!!this.authored?.stalk;}
   private supportDrop=0;
   private hop:HopCycle;
-  private leap:HopCycle;
+  private leap:HopCycle;private attackLeap=new HopCycle(POUNCE.prepare,POUNCE.flight,POUNCE.settle,true,POUNCE.distance);private pouncing=false;
   private leapHeld=false;private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
   get hopHeight():number{return this.hopSample.lift;}
   get hopPhase():HopSample['phase']{return this.hopSample.phase;}
@@ -70,15 +71,19 @@ export class PatientGait {
   private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
-  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R'):number{
+  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R',pounce=false):number{
     if(mobility.mode==='biped'&&this.groundedStride){
-      const launch=jump&&!this.leapHeld&&!this.sprintCycle;
+      const attackLaunch=pounce&&jump&&!this.pouncing&&this.hopSample.phase==='idle'&&!this.sprintCycle;
+      const launch=attackLaunch||jump&&!this.leapHeld&&!this.sprintCycle&&!this.pouncing;
       this.leapHeld=jump;
+      if(attackLaunch){this.pouncing=true;this.attackLeap.reset();}
       if(launch||this.hopSample.phase!=='idle'){
-        this.hopSample=this.leap.advance(dt,launch?(Math.abs(speed)>.03?speed:.035):0);
+        const leap=this.pouncing?this.attackLeap:this.leap;
+        this.hopSample=leap.advance(dt,attackLaunch?POUNCE.distance/(POUNCE.prepare+POUNCE.flight+POUNCE.settle):launch?(Math.abs(speed)>.03?speed:.035):0);
+        if(this.hopSample.phase==='idle')this.pouncing=false;
         return this.hopSample.distance;
       }
-    }else{this.leap.reset();this.leapHeld=jump;}
+    }else{this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.leapHeld=jump;}
     if(this.anchored(mobility)&&this.proneAmount===1){
       const before=this.pose(id,root,yaw,t);
       this.anchors.advance(dt,speed,yaw,before,mobility,ground);
@@ -87,7 +92,7 @@ export class PatientGait {
     }
     this.anchors.reset();
     if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,this.organic&&!driveRequested?0:speed);return this.hopSample.distance;}
-    this.hop.reset();this.leap.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+    this.hop.reset();this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
     if(!mobility.prone){
       if(!this.groundedStride||mobility.mode!=='biped')return speed*dt;
       const direction=Math.sign(speed);
@@ -142,7 +147,7 @@ export class PatientGait {
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const amount=clamp(forcedProne);
       if(this.knockdownMotion&&amount<this.proneAmount)this.knockdownRising=true;
-      this.proneAmount=amount;this.anchors.reset();this.hop.reset();this.leap.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
+      this.proneAmount=amount;this.anchors.reset();this.hop.reset();this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
       this.crawlEffort=0;this.signedSpeed=0;this.moveAmount=0;this.runAmount=0;this.stepWait=0;
       this.supportDrop=0;
       for(let i=0;i<2;i++){
