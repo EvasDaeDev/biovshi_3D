@@ -39,7 +39,7 @@ export function bipedStep(speed:number){
 }
 export const CRAWL_TIMING=Object.freeze({swing:.30,plant:.55,reach:.40});
 /** Authored full-scale horror profile; v1 calibration stays unchanged. */
-export const HORROR_MOVEMENT=Object.freeze({walkSpeed:1.80,minWalkSpeed:.80,maxWalkSpeed:2.20,sprintSpeed:6.25,minSprintSpeed:5.50,maxSprintSpeed:7.00,crawlMultiplier:1.45,stanceReach:.55,maxStrideSpeed:4.3,maxRunSpeed:8.7});
+export const HORROR_MOVEMENT=Object.freeze({walkSpeed:1.35,minWalkSpeed:.60,maxWalkSpeed:1.65,sprintSpeed:4.6875,minSprintSpeed:4.125,maxSprintSpeed:5.25,crawlMultiplier:1.45*4/3,residualCrawlMultiplier:4/3,stanceReach:.52,runLandingLead:.53,maxStrideSpeed:4.3,maxRunSpeed:6.525});
 export const HORROR_CRAWL_TIMING=Object.freeze({swing:.27,plant:.49,reach:.48});
 export function horrorBipedStep(speed:number,tempo=1){
  const plan=bipedStep(speed),v=Math.min(HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,tempo),Math.abs(speed)),run=Math.max(0,Math.min(1,(v-1.2)/1.6));
@@ -47,7 +47,7 @@ export function horrorBipedStep(speed:number,tempo=1){
  // just toward the present root. Shorten cadence with increased speed.
  const sprint=Math.max(0,Math.min(1,(v-2.8)/1.5));
  const interval=(.41-.11*run-.115*sprint)*tempo,swing=(.28-.055*run-.09*sprint)*tempo;
- return {...plan,interval,swing,run,lead:Math.sign(speed)*Math.min(.96+.10*sprint,v*(swing+interval*.5)+.065*sprint),lift:.082+.045*run+.025*sprint,sprint};
+ return {...plan,interval,swing,run,lead:Math.sign(speed)*Math.min(1.01+.10*sprint,v*(swing+interval*.5)+.065*sprint+.05*Math.min(1,v/.8)),lift:.082+.045*run+.025*sprint,sprint};
 }
 
 /** Nominal healthy world-space speed. Small input values still permit
@@ -64,11 +64,19 @@ export function horrorRunStep(speed:number,tempo=1){
  const v=Math.min(HORROR_MOVEMENT.maxRunSpeed,Math.max(0,speed));
  // Keep the stance distance within the same anatomical envelope as walking.
  // Quantize both clocks together. Stance lasts 2*interval-swing;
- // cap its travel below the available .47 front + .55 rear reach.
+ // cap its travel below the available .53 front + .52 rear reach.
  // Otherwise tick rounding alone can introduce a recurrent root stall.
  const intervalTicks=Math.max(10,Math.round(Math.min(.22*tempo,Math.max(.185,1.62/Math.max(1,v)))/FIXED_DT));
  const stanceTicks=Math.max(1,Math.floor(.98/(Math.max(1,v)*FIXED_DT)));
  const swingTicks=Math.max(intervalTicks+5,2*intervalTicks-stanceTicks);
  const interval=intervalTicks*FIXED_DT,swing=swingTicks*FIXED_DT;
- return {interval,swing,lead:v*swing+.47,lift:.25+.04*Math.min(1,v/8.7)};
+ return {interval,swing,lead:v*swing+HORROR_MOVEMENT.runLandingLead,lift:.25+.04*Math.min(1,v/HORROR_MOVEMENT.maxRunSpeed)};
+}
+
+/** Bring the trailing leg forward earlier without a discontinuity at
+ * takeoff or landing. The planted leg is never shifted by this curve. */
+export function patientSwingProgress(phase:number):{travel:number;lift:number}{
+ const q=Math.max(0,Math.min(1,phase)),s=Math.sin(Math.PI*q);
+ const early=q+.07*s;
+ return {travel:q*q*(3-2*q)+.12*s*s,lift:Math.sin(Math.PI*early)**2};
 }

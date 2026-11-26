@@ -148,7 +148,7 @@ function renderPose(){
   joint.position.add(new THREE.Vector3(...(params.offset??[0,0,0])));
   joint.rotation.set(...(params.rotation??[0,0,0]));
   (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
-  const geometry=axis.lengthSq()>1e-12?new THREE.CapsuleGeometry(part.radius,axis.length(),6,12):new THREE.SphereGeometry(part.radius,18,12);
+  const geometry=new THREE.BoxGeometry(part.radius*2,Math.max(axis.length(),part.radius*2),part.radius*2);
   const mesh=new THREE.Mesh(geometry,part.id===segmentSelect.value?selected:primary);
   mesh.userData.segment=part.id;mesh.position.copy(a).lerp(b,.5).sub(anchor);
   if(axis.lengthSq()>1e-12)mesh.quaternion.setFromUnitVectors(up,axis.normalize());

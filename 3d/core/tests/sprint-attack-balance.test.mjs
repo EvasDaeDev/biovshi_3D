@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PatientGait} from '../dist/rig/gait.js';
-import {HORROR_MOVEMENT,horrorBipedStep,horrorRunStep,patientDriveSpeed} from '../dist/rig/movement-timing.js';
+import {HORROR_MOVEMENT,horrorBipedStep,horrorRunStep,patientDriveSpeed,patientSwingProgress} from '../dist/rig/movement-timing.js';
 import {coordinatedStrikeBody} from '../dist/combat/coordinated-strike.js';
 import {punchPose} from '../dist/combat/strike.js';
 import {compileAuthoredMotion} from '../dist/rig/authored-motion.js';
@@ -26,9 +26,9 @@ test('forward punch and backward kick counter-lean move real girdles, not reach 
  }
 });
 test('healthy run reaches requested speed range with alternating takeoffs and overlapping flight',()=>{
- assert.equal(patientDriveSpeed(1,true,.8),5.5);assert.equal(patientDriveSpeed(1,true,1),6.25);assert.equal(patientDriveSpeed(1,true,1.2),7);
- assert.equal(patientDriveSpeed(1,false,1.4),2.2);assert.equal(patientDriveSpeed(0,false,1),0);
- assert.ok(patientDriveSpeed(-1,true,1)<0&&patientDriveSpeed(-1,true,1)>=-2.2);
+ assert.equal(patientDriveSpeed(1,true,.8),4.125);assert.equal(patientDriveSpeed(1,true,1),4.6875);assert.equal(patientDriveSpeed(1,true,1.2),5.25);
+ assert.equal(patientDriveSpeed(1,false,1.4),1.65);assert.equal(patientDriveSpeed(0,false,1),0);
+ assert.ok(patientDriveSpeed(-1,true,1)<0&&patientDriveSpeed(-1,true,1)>=-1.65);
  const run=speed=>{
   const g=new PatientGait([0,0,0],0,true,motion);
   let root=[0,0,0],old=g.footStates,start=0,last=-1,steps=0,air=0,stalls=0;
@@ -48,21 +48,21 @@ test('healthy run reaches requested speed range with alternating takeoffs and ov
   }
   return {pace:(start-root[2])/5,steps,air,stalls};
  };
- const walk=run(1.8/.81),fast=run(HORROR_MOVEMENT.sprintSpeed/.81);
- assert.ok(fast.pace*.81>=5.5&&fast.pace*.81<=7.0,JSON.stringify({walk,fast}));
+ const walk=run(HORROR_MOVEMENT.walkSpeed/.81),fast=run(HORROR_MOVEMENT.sprintSpeed/.81);
+ assert.ok(fast.pace*.81>=4.125&&fast.pace*.81<=5.25,JSON.stringify({walk,fast}));
  assert.ok(fast.air>30&&walk.air===0);
  assert.ok(fast.steps>walk.steps);
  // The full requested range must be real travel, not configured speed.
- for(const requested of [5.5,6.25,7]){
-  const result=requested===6.25?fast:run(requested/.81);
+ for(const requested of [4.125,4.6875,5.25]){
+  const result=requested===4.6875?fast:run(requested/.81);
   assert.ok(Math.abs(result.pace*.81-requested)<.05,JSON.stringify({requested,result}));
   assert.equal(result.stalls,0,JSON.stringify({requested,result}));
  }
- assert.ok(horrorRunStep(7.7).swing>horrorRunStep(7.7).interval);
+ assert.ok(horrorRunStep(5.8).swing>horrorRunStep(5.8).interval);
 });
 
 test('running cycle survives a brief constrained tick but exits on sustained blocking',()=>{
- const g=new PatientGait([0,0,0],0,true,motion),speed=6.25/.81;
+ const g=new PatientGait([0,0,0],0,true,motion),speed=HORROR_MOVEMENT.sprintSpeed/.81;
  let root=[0,0,0];
  for(let i=0;i<180;i++){
   const d=g.travel(dt,speed,mobility,0,root,0,i*dt,()=>0);
@@ -73,4 +73,17 @@ test('running cycle survives a brief constrained tick but exits on sustained blo
  assert.equal(g.running,true);
  for(let i=0;i<18;i++)g.advance(root,0,0,dt,()=>0,mobility,ids,undefined,false,0,speed);
  assert.equal(g.running,false);
+});
+
+test('revised swing lifts and advances the trailing foot early without reversing or jumping endpoints',()=>{
+ assert.deepEqual(patientSwingProgress(0),{travel:0,lift:0});
+ assert.ok(Math.abs(patientSwingProgress(1).travel-1)<1e-12&&patientSwingProgress(1).lift<1e-12);
+ assert.ok(patientSwingProgress(.25).travel>.25**2*(3-2*.25));
+ assert.ok(patientSwingProgress(.25).lift>Math.sin(Math.PI*.25)**2);
+ let last=0;for(let i=1;i<=100;i++){const s=patientSwingProgress(i/100);assert.ok(s.travel>=last&&s.travel<=1+1e-12);last=s.travel;}
+ assert.ok(Math.abs(HORROR_MOVEMENT.crawlMultiplier/1.45-4/3)<1e-12);
+ assert.equal(HORROR_MOVEMENT.residualCrawlMultiplier,4/3);
+ const g=new PatientGait([0,0,0],0,true,motion);
+ const pose=g.pose(0,[0,0,0],0,0),pelvis=center(get(pose,'pelvis'));
+ assert.ok(pelvis[1]>.96,'raised pelvis '+pelvis[1]);
 });
