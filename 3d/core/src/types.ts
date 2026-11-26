@@ -6,6 +6,7 @@ import type { GradeSurface } from './arena/graded-surface.js';
 import type { PointXZ } from './combat/escape.js';
 import type { PerceptionSnapshot } from './combat/perception.js';
 import type { EscapePlan } from './combat/escape.js';
+import type {HuntSnapshot} from './combat/hunt-state.js';
 import type { TacticalSnapshot } from './combat/tactics.js';
 import type { PatientProfile,PatientTraits } from './combat/patient-profile.js';
 import type { StrikeSnapshot,StrikeKind } from './combat/strike.js';
@@ -89,6 +90,7 @@ export interface WorldSnapshot {
   readonly perception?: readonly PerceptionSnapshot[];
   readonly escapes?: readonly {readonly stationaryTicks:number;readonly plan:EscapePlan|null}[];
   readonly tactics?: readonly TacticalSnapshot[];
+  readonly hunts?: readonly HuntSnapshot[];
   readonly patientTraits?: readonly (PatientTraits & {readonly targetId:number|null;readonly noticedAt:number;readonly nextAttack:number})[];
   readonly strikes?: readonly StrikeSnapshot[];
   readonly fight?: Readonly<{ended:boolean;winnerId:number|null}>;
