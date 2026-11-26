@@ -70,6 +70,12 @@ try{
   return d?.state==='running'&&d.location==='ring'&&d.patients==='3'&&Number(d.hits)>0;},{},{timeout:45000});
  await page.locator('#patient-count').selectOption('2');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='ring'&&d.patients==='2'&&Number(d.tick)>3;});
+ await page.locator('#control-patient').selectOption('1');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.controlled==='1');
+ const controlStart=await page.locator('#stats').evaluate(el=>[Number(el.dataset.controlledX),Number(el.dataset.controlledZ)]);
+ await page.keyboard.down('KeyW');
+ try{await page.waitForFunction(([x,z])=>{const d=document.getElementById('stats')?.dataset;return Math.hypot(Number(d.controlledX)-x,Number(d.controlledZ)-z)>.035;},controlStart,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
+ await page.locator('#control-patient').selectOption('');
  await page.locator('#patient-count').selectOption('full');
  await page.locator('#vision-debug').uncheck();
  await page.locator('#route-debug').uncheck();

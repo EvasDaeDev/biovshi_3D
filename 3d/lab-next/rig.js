@@ -1,6 +1,7 @@
 import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
+import {manualInput} from './manual-control.js';
 import {Playback} from './playback.js';
 import {reviewInput,measureMotion} from './motion-review.js';
 import {OilMarks} from './oil.js';
@@ -74,6 +75,17 @@ function assertSnapshot(s){
  if(!n||s.roots?.length!==n*4||s.rigVersion!==2||s.rigSegments?.length!==n||s.mobilityModes?.length!==n||s.postures?.length!==n||s.bodyTerrainStates?.length!==n||s.oil?.length!==n||s.impacts?.length!==n||!Array.isArray(s.oilMarks)||s.strikes?.length!==n||!s.fight||s.health?.length!==n||s.lifeStates?.length!==n||s.balanceStates?.length!==n||s.stepCounts?.length!==n||s.footStates?.length!==n||s.hopHeights?.length!==n||s.hopPhases?.length!==n||s.supports?.length!==n||s.crawlAnchors?.length!==n||s.residualTraction?.length!==n||!s.damageStats||!s.collisionStats)throw new Error('Несогласованные файлы симуляции и рендера. Обновите страницу; сборка '+stats.dataset.build);
 }
 const scenario=document.getElementById('scenario'),patientCount=document.getElementById('patient-count');
+const controlPatient=document.getElementById('control-patient');
+let controlScenario=null;
+function resetControl(s){
+ const old=controlPatient.value,changed=controlScenario!==scenario.value;controlScenario=scenario.value;
+ const auto=document.createElement('option');auto.value='';auto.textContent='Все под ИИ';controlPatient.replaceChildren(auto);
+ for(const id of s.fighterIds){const o=document.createElement('option');o.value=String(id);o.textContent='Пациент № '+id;controlPatient.append(o);}
+ const autonomous=scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||!!selectedLocation();
+ controlPatient.value=!changed&&Array.from(s.fighterIds).includes(Number(old))&&old!==''?old:!changed&&old===''?'':autonomous?'':String(s.fighterIds[0]);
+ controlPatient.disabled=scenario.value==='motion-review';
+}
+controlPatient.onchange=()=>{keys.clear();controlPatient.blur();if(controlPatient.value!==''&&cameraControl.mode==='head')document.getElementById('camera-patient').value=controlPatient.value;};
 const seedInput=document.getElementById('round-seed');
 const requestedSeed=query.get('seed');
 if(requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff)seedInput.value=requestedSeed;
@@ -153,17 +165,17 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
   stats.dataset.authoredObjects=String(location?.objects.length??0);
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
-const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
-addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
+const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyJ','KeyK','KeyL']);
+addEventListener('keydown',e=>{if(controls.has(e.code)&&!['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
-const input=()=>scenario.value==='motion-review'?reviewInput(currentFrame.state.tick).input:scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight'),jump:!!has('Space')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
+const input=()=>scenario.value==='motion-review'?reviewInput(currentFrame.state.tick).input:manualInput(currentFrame.state.fighterIds,currentFrame.state.lifeStates,controlPatient.value,has,scenario.value==='fall');
 document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);keys.clear();last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};
  rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
  stepButton.onclick=()=>{if(stats.dataset.state==='running'&&paused)playback.requestStep();};
@@ -194,7 +206,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(p
   reset();
   if(warning)floorStatus.textContent=warning;
  };
- scenario.onchange=()=>{void restoreScenario();};
+ scenario.onchange=()=>{scenario.blur();void restoreScenario();};
  patientCount.onchange=()=>{if(selectedLocation()&&scenario.value!=='motion-review')void restoreScenario();};
  document.getElementById('next-round').onclick=async()=>{
   // A premature click must not invalidate an in-flight load or clear.
@@ -282,6 +294,10 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  stats.dataset.drawnRoutes=String(routeLines.filter(l=>l?.visible).length);
  stats.dataset.drawnVision=String(visionFields.filter(f=>f?.visible).length);
  stats.dataset.routes=String(s.routes.filter(r=>r.length).length);stats.dataset.visible=s.perception.map(p=>p.visibleIds.length).join('/');stats.dataset.active=String(s.lifeStates.filter(v=>v==='active').length);stats.dataset.targets=s.tactics.map(t=>t.targetId===null?'-':t.targetId).join('/');stats.dataset.tactics=s.tactics.map(t=>t.mode).join('/');stats.dataset.escapes=String(s.escapes.filter(e=>e.plan).length);
+ const controlled=controlPatient.value===''?-1:s.fighterIds.indexOf(Number(controlPatient.value));
+ stats.dataset.controlled=controlled>=0?String(s.fighterIds[controlled]):'';
+ stats.dataset.controlledX=controlled>=0?String(s.roots[4*controlled]):'';
+ stats.dataset.controlledZ=controlled>=0?String(s.roots[4*controlled+2]):'';
  stats.dataset.hunts=(s.hunts??[]).map(h=>h.phase).join('/');
   stats.dataset.playback=String(playback.rate);stats.dataset.reviewPhase=scenario.value==='motion-review'?reviewInput(s.tick).phase:'';
   stats.dataset.motionPeak=motionPeak?motionPeak.max.toFixed(4):'';

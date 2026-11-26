@@ -10,7 +10,7 @@ import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
 import { mobilityFor, type Mobility } from './mobility.js';
 import { pronePose, blendGroundPose } from './prone.js';
-import { MOVEMENT,bipedStep } from './movement-timing.js';
+import { MOVEMENT,bipedStep,HORROR_MOVEMENT,horrorBipedStep } from './movement-timing.js';
 import { HopCycle, type HopSample } from './hop-cycle.js';
 import { constrainRig } from './rig-constraints.js';
 import { balanceStandingPose } from './balance.js';
@@ -58,11 +58,11 @@ export class PatientGait {
   private leapHeld=false;private hopSample:HopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
   get hopHeight():number{return this.hopSample.lift;}
   get hopPhase():HopSample['phase']{return this.hopSample.phase;}
-  private anchors=new CrawlAnchors();
+  private anchors:CrawlAnchors;
   private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
-  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false):number{
+  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true):number{
     if(mobility.mode==='biped'&&this.groundedStride){
       const launch=jump&&!this.leapHeld;
       this.leapHeld=jump;
@@ -78,7 +78,7 @@ export class PatientGait {
       return planted?speed*dt*(mobility.arms.filter(n=>n>=2).length===1?1.35:1):0;
     }
     this.anchors.reset();
-    if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,speed);return this.hopSample.distance;}
+    if(mobility.mode==='single-support'){this.hopSample=this.hop.advance(dt,this.organic&&!driveRequested?0:speed);return this.hopSample.distance;}
     this.hop.reset();this.leap.reset();this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
     if(!mobility.prone){
       if(!this.groundedStride||mobility.mode!=='biped')return speed*dt;
@@ -86,7 +86,7 @@ export class PatientGait {
       const stance=this.feet.filter(foot=>!foot.moving);
       const reach=Math.min(...stance.map(({plant})=>{
         const behind=((root[0]-plant[0])*Math.sin(yaw)-(root[2]-plant[2])*Math.cos(yaw))*direction;
-        return .48-behind;
+        return (this.organic?HORROR_MOVEMENT.stanceReach:.48)-behind;
       }));
       return direction*Math.min(Math.abs(speed)*dt,Math.max(0,reach));
     }
@@ -109,6 +109,7 @@ export class PatientGait {
   private feet:[Foot,Foot];
   constructor(root:Vec3,yaw=0,private readonly groundedStride=false,private readonly authored?:AuthoredMotion,private readonly motionProfile:MotionProfile=BASE_MOTION_PROFILE){
     this.motion=new LocomotionMotion(motionProfile);
+    this.anchors=new CrawlAnchors(this.organic);
     this.expression=new PoseTransition(groundedStride&&authored?.stalk?.size ? .18 : .10);
     this.hop=new HopCycle(groundedStride?.14:0);
     const foot=(side:number):Foot=>{
@@ -145,7 +146,7 @@ export class PatientGait {
       if(Math.abs(speed)>.005)this.crawlDirection=Math.sign(speed);
       if(this.proneAmount>=1)this.crawlPhase+=dt*Math.PI*this.crawlEffort/(MOVEMENT.hopFlightSeconds+MOVEMENT.hopPauseSeconds);
     }
-    const plan=bipedStep(speed);
+    const plan=this.organic?horrorBipedStep(speed):bipedStep(speed);
     this.signedSpeed=speed;
     this.runAmount+=(plan.run-this.runAmount)*(1-Math.exp(-5*dt));
     const single=support[0]!==support[1];
@@ -298,7 +299,7 @@ export class PatientGait {
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
       return balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0}:undefined);
     }
-    const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground);
+    const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
     if(this.knockdownMotion){
       const source=this.knockdownRising?balanceStandingPose(constrainRig(standing),this.active,['L.foot','R.foot'],this.ground):this.knockdownMotion.source(root);
       return blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true);

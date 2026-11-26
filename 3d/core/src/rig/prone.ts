@@ -9,7 +9,7 @@ const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,
 const scale=(a:Vec3,n:number):Vec3=>[a[0]*n,a[1]*n,a[2]*n];
 /** Kinematic ground locomotion. No rigid body or renderer dependency.
  * Pose is pure: repeated collision passes never advance phase. */
-export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direction:number,mobility:Mobility,ground:(x:number,z:number)=>number):readonly RigPose[]{
+export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direction:number,mobility:Mobility,ground:(x:number,z:number)=>number,organic=false):readonly RigPose[]{
  const c=Math.cos(yaw),s=Math.sin(yaw),wave=Math.sin(phase),w=effort*wave;
  const world=(p:Vec3):Vec3=>add(root,[c*p[0]-s*p[2],p[1],s*p[0]+c*p[2]]);
  const floorAt=(x:number,z:number)=>{const p=world([x,0,z]);return ground(p[0],p[2])-root[1];};
@@ -39,11 +39,11 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
   const arm=mobility.arms[i]??0;
   const offset=mobility.arms[0]&&mobility.arms[1]?i*Math.PI:0;
   const stroke=Math.sin(phase+offset),recovery=Math.max(0,Math.cos(phase+offset));
-  const x=shoulder[0]+side*.12,z=shoulder[2]-.17-direction*effort*stroke*.20;
+  const x=shoulder[0]+side*.12,z=shoulder[2]-.17-direction*effort*stroke*(organic?.27:.20);
   const height=arm===1?.10:.083;
   const target:Vec3=[x,Math.max(height,floorAt(x,z)+height)+effort*recovery*.095,z];
   if(arm===1){
-   const delta:Vec3=[side*.12,-.25-effort*.08*Math.max(0,Math.cos(phase+offset))+effort*.10*Math.max(0,-Math.cos(phase+offset)),-.17-direction*effort*stroke*.09],len=Math.hypot(...delta);
+   const delta:Vec3=[side*.12,-.25-effort*.08*Math.max(0,Math.cos(phase+offset))+effort*.10*Math.max(0,-Math.cos(phase+offset)),-.17-direction*effort*stroke*(organic?.12:.09)],len=Math.hypot(...delta);
    const elbow=add(shoulder,len>1e-8?scale(delta,.36/len):[0,-.36,0]);
    put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,add(elbow,[0,0,-.32]));put(key+'hand',add(elbow,[0,0,-.32]));
   }else{
