@@ -5,6 +5,14 @@ export function segmentTint(age,critical){
  if(!Number.isFinite(age)||age<0)return 0;
  return critical?Math.max(0,1-age/CRIT_SECONDS):age<HIT_SECONDS?HIT_TINT:0;
 }
+const CHEST_PULSE_TICKS=90;
+/** One smoothly eased pulse per 1.5 simulation seconds. */
+export function chestCountdownTint(oil,life,fight,tick){
+ if(life!=='active'||fight?.ended||oil?.failureStartTick==null||oil.failureTick==null
+   ||oil.remainingTicks<=0||tick<oil.failureStartTick||tick>=oil.failureTick)return 0;
+ const withinCycle=(tick-oil.failureStartTick)%CHEST_PULSE_TICKS;
+ return .40*Math.sin(Math.PI*withinCycle/CHEST_PULSE_TICKS)**2;
+}
 const key=(id,segment)=>id+':'+segment;
 export class SegmentTints{
  constructor(){this.reset();}

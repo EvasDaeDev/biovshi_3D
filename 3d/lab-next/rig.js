@@ -3,7 +3,7 @@ import {createSegmentVisual} from './segment-visual.js';
 import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
-import {SegmentTints} from './segment-tints.js';
+import {SegmentTints,chestCountdownTint} from './segment-tints.js';
 import {HitParticles} from './hit-particles.js';
 import {PatientHud} from './patient-hud.js';
 import {manualInput,capturesTextInput} from './manual-control.js';
@@ -47,11 +47,12 @@ const visionMaterial=new THREE.MeshBasicMaterial({color:0xffca62,transparent:tru
 const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
 const patientHud=new PatientHud(document.getElementById('patient-hud'));
 const hitParticles=new HitParticles(THREE,scene),segmentTints=new SegmentTints(),red=new THREE.Color(1,0,0);
-function paintSegment(m,fighterId,tint){
+function paintSegment(m,fighterId,tint,pulse=0){
  const base=materials[fighterId===0?0:1],material=m.children[0].material;
  material.color.copy(base.color);material.emissive.setRGB(0,0,0);
  if(tint.critical)material.emissive.setRGB(tint.strength,0,0);
- else if(tint.strength)material.color.lerp(red,tint.strength);
+ const redMix=Math.max(pulse,tint.critical?0:tint.strength);
+ if(redMix)material.color.lerp(red,redMix);
 }
 const supportDebug=document.getElementById('support-debug'),supportGroup=new THREE.Group();scene.add(supportGroup);supportGroup.visible=false;
 const contactMaterial=new THREE.MeshBasicMaterial({color:0x72df9c}),massMaterial=new THREE.MeshBasicMaterial({color:0xffca62});
@@ -252,7 +253,7 @@ function segmentFrame(p,parts,yaw,head){
 }
 function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;patientHud.draw(s);if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;
- const tinted=[];
+ const tinted=[],renderTick=prior.tick+(s.tick-prior.tick)*alpha;
  s.rigSegments.forEach((parts,i)=>{
   const j=prior.fighterIds.indexOf(s.fighterIds[i]),oldParts=j>=0?prior.rigSegments[j]:null;
   // Never resurrect severed anatomy or interpolate across an ownership handoff.
@@ -261,7 +262,9 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
    const id=s.fighterIds[i],key=id+':'+p.id,f=segmentFrame(p,parts,s.roots[i*4+3],s.headFrames?.[i]);
    let m=meshes.get(key);if(!m){m=createSegmentVisual(p.id,p.radius,f.length,materials[id===0?0:1].clone());meshes.set(key,m);scene.add(m);}
    m.visible=true;m.position.copy(v(f.center));frameRotation(f,m.quaternion);
-   const tint=segmentTints.sample(id,p.id,s.tick);paintSegment(m,id,tint);if(tint.strength)tinted.push(key);
+   const tint=segmentTints.sample(id,p.id,s.tick);
+   const pulse=p.id==='chest'?chestCountdownTint(s.oil[i],s.lifeStates[i],s.fight,renderTick):0;
+   paintSegment(m,id,tint,pulse);if(tint.strength)tinted.push(key);
    const old=compatible&&alpha<1?oldParts.find(q=>q.id===p.id):null;
    if(old){
     const o=segmentFrame(old,oldParts,prior.roots[j*4+3],prior.headFrames?.[j]);

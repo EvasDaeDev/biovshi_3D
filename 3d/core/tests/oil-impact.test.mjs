@@ -16,6 +16,7 @@ test('no working limbs starts v1 oil-loss deadline, but pre-damaged diagnostic d
  const c=make();for(const id of ['L.upperLeg','R.upperLeg','L.upperArm','R.upperArm'])cut(c,id);
  run(c,1);const deadline=c.getSnapshot().oil[0].failureTick;assert.ok(deadline>=601&&deadline<=901);
  assert.equal(c.getSnapshot().oil[0].remainingTicks,deadline-1);
+ assert.equal(c.getSnapshot().oil[0].failureStartTick,1);
  run(c,deadline-2);assert.equal(c.getSnapshot().oil[0].remainingTicks,1);assert.equal(c.getSnapshot().lifeStates[0],'active');run(c,1);
  assert.equal(c.getSnapshot().health[0].cause,'oil-loss');assert.ok(c.drainEvents().some(e=>e.type==='fighter-incapacitated'&&e.cause==='oil-loss'));
  const d=new LabSimulationCore();d.initialize({seed:7,fighters:[{...f,segmentIds:f.segmentIds.filter(s=>!s.includes('.'))}]});run(d,1000);assert.equal(d.getSnapshot().lifeStates[0],'active');assert.equal(d.getSnapshot().oilMarks.length,0);
@@ -41,13 +42,16 @@ test('destroyed chest starts the delayed knockout with intact limbs and no open 
   const s=c.getSnapshot(),deadline=s.oil[0].failureTick;
   assert.ok(Number.isInteger(deadline)&&deadline-s.tick>=600&&deadline-s.tick<=900);
   assert.deepEqual(s.oil[0].wounds,[]);
+  assert.equal(s.oil[0].failureStartTick,s.tick);
   assert.equal(s.health[0].segments.find(p=>p.id==='chest').attached,true);
   assert.equal(s.mobilityModes[0],'biped');
   run(c,deadline-s.tick-1);
   assert.equal(c.getSnapshot().lifeStates[0],'active');
   assert.equal(c.getSnapshot().oil[0].failureTick,deadline);
+  assert.equal(c.getSnapshot().oil[0].failureStartTick,s.tick);
   run(c,1);
   assert.equal(c.getSnapshot().health[0].cause,'torso-failure');
+  assert.equal(c.getSnapshot().oil[0].failureStartTick,null);
   assert.equal(c.drainEvents().filter(e=>e.type==='fighter-incapacitated'&&e.cause==='torso-failure').length,1);
  }finally{c.dispose();}
 });

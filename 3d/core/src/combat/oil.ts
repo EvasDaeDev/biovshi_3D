@@ -6,7 +6,7 @@ import { FIXED_DT } from '../fixed-clock.js';
  * Chest destruction uses the same timer without requiring an open stump. */
 export const OIL=Object.freeze({minInterval:.5,maxInterval:.7,limit:2000,drySeconds:18,failureMin:10,failureMax:15});
 export interface OilMark {readonly id:number;readonly fighterId:number;readonly point:Vec3;readonly tick:number}
-export interface OilSnapshot {readonly wounds:readonly string[];readonly failureTick:number|null;readonly remainingTicks:number|null}
+export interface OilSnapshot {readonly wounds:readonly string[];readonly failureTick:number|null;readonly failureStartTick:number|null;readonly remainingTicks:number|null}
 interface Wound {id:string;parent:string;nextTick:number}
 const parentById=new Map(LAB_SEGMENTS.map(p=>[p.id,p.parent]));
 const ticks=(s:number)=>Math.ceil(s/FIXED_DT);
@@ -16,7 +16,7 @@ export function hasWorkingLimb(ids:readonly string[]):boolean{
 }
 export class OilState{
  private wounds=new Map<string,Wound>();
- private deadline:number|null=null;private lastTick=0;
+ private deadline:number|null=null;private failureStart:number|null=null;private lastTick=0;
  cut(root:string,removed:readonly string[],active:readonly string[],tick:number,random:()=>number):void{
   for(const [id,w] of this.wounds)if(removed.includes(w.parent))this.wounds.delete(id);
   const parent=parentById.get(root);
@@ -25,8 +25,11 @@ export class OilState{
  advance(tick:number,active:readonly string[],pose:()=>readonly PhysicsSegmentPose[],random:()=>number,emit:(id:string,origin:Vec3)=>void,chestDestroyed=false):boolean{
   this.lastTick=tick;
   const failing=chestDestroyed||(this.wounds.size>0&&!hasWorkingLimb(active));
-  if(!failing)this.deadline=null;
-  else if(this.deadline===null)this.deadline=tick+span(OIL.failureMin,OIL.failureMax,random());
+  if(!failing){this.deadline=null;this.failureStart=null;}
+  else if(this.deadline===null){
+   this.failureStart=tick;
+   this.deadline=tick+span(OIL.failureMin,OIL.failureMax,random());
+  }
   if(this.deadline!==null&&tick>=this.deadline)return true;
   let parts:readonly PhysicsSegmentPose[]|undefined;
   for(const w of this.wounds.values()){
@@ -40,6 +43,6 @@ export class OilState{
   }
   return false;
  }
- clear():void{this.wounds.clear();this.deadline=null;}
- snapshot():OilSnapshot{return {wounds:[...this.wounds.keys()],failureTick:this.deadline,remainingTicks:this.deadline===null?null:Math.max(0,this.deadline-this.lastTick)};}
+ clear():void{this.wounds.clear();this.deadline=null;this.failureStart=null;}
+ snapshot():OilSnapshot{return {wounds:[...this.wounds.keys()],failureTick:this.deadline,failureStartTick:this.failureStart,remainingTicks:this.deadline===null?null:Math.max(0,this.deadline-this.lastTick)};}
 }
