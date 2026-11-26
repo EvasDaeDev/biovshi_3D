@@ -55,7 +55,7 @@ test('series varies with visible opportunities and stable per-commit decisions; 
  for(let id=0;id<16;id++){
   const state=new RaidState(7,id,id%2?'hesitant':'impulsive');
   const target={...opponent,yaw:Math.PI,grounded:id%3===0,recovering:id%4===0};
-  state.advance(input(0,near,target));
+  assert.equal(state.advance(input(0,near,target)).phase,'observe');
   assert.equal(state.advance(input(60,near,target)).phase,'rush');
   let attempts=0,previous=0,tick=70;
   for(let n=1;n<=5;n++,tick+=68){
@@ -80,7 +80,26 @@ test('series varies with visible opportunities and stable per-commit decisions; 
 });
 test('crowd and actual interruption still break a heated series',()=>{
  const state=new RaidState(7,0,'impulsive'),near={x:0,z:.8};
- state.advance(input(0,near));state.advance(input(60,near));
+ assert.equal(state.advance(input(0,near)).phase,'observe');
+ assert.equal(state.advance(input(60,near)).phase,'rush');
  state.committed(70,1);state.damagedTarget(1);
+ assert.equal(state.snapshot().phase,'attack');assert.equal(state.snapshot().hits,1);
+ assert.ok(state.snapshot().rush>0);
  assert.equal(state.advance(input(75,near,opponent,{strike:'windup',interrupted:true})).phase,'withdraw');
+});
+
+test('selected close opponent is not a third-party danger before acquisition',()=>{
+ const near={x:0,z:.8};
+ const state=new RaidState(7,1,'hesitant');
+ assert.equal(state.advance(input(0,near)).phase,'observe');
+ assert.equal(state.snapshot().targetId,1);
+ assert.equal(state.advance(input(60,near)).phase,'rush');
+ // A real counterattack remains a reason for a cautious patient to abort.
+ const danger={...opponent,threatening:true};
+ const cautious=new RaidState(7,1,'hesitant');
+ assert.equal(cautious.advance(input(0,near,danger)).phase,'withdraw');
+ // A genuine second nearby patient is still a crowd.
+ const other={...opponent,id:2,x:.8,z:.8};
+ const crowded=new RaidState(7,0,'impulsive');
+ assert.equal(crowded.advance(input(0,near,opponent,{visible:[opponent,other]})).phase,'withdraw');
 });

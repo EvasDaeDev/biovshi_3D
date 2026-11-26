@@ -106,7 +106,12 @@ export class RaidState{
   if(target&&target.id===this.targetId)this.remembered={x:target.x,z:target.z};
   const active=strike!=='idle',danger=visible.filter(o=>!o.grounded&&dist(here,o)<1.45&&(o.threatening||dist(here,o)<.95));
   const crowded=visible.filter(o=>dist(here,o)<1.35).length>=2;
-  if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==this.targetId)&&!active))this.withdraw(tick);
+  // The candidate selected this tick is already our intended opponent,
+  // even before observe acquires its ID. Do not mistake it for a third
+  // party. Close telegraphed attacks are still handled in observe/rush
+  // and the situation-dependent series evaluation.
+  const intendedTarget=target?.id??this.targetId;
+  if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==intendedTarget)&&!active))this.withdraw(tick);
   if(this.phase==='attack'&&this.attempts>0&&(strike==='recover'||!active)){
    const exposure=target?Math.abs(wrap(bearing(target,here)-target.yaw))/Math.PI:0;
    if(!target||target.id!==this.targetId||dist(here,target)>1.45||tick>=this.deadline||!continueSeries(this.profile,this.attempts,this.rush,this.landed,target,exposure,this.bias))this.withdraw(tick);
