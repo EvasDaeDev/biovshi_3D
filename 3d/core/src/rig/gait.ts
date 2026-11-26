@@ -1,3 +1,4 @@
+import {braceFall,type FallBrace} from '../animation/fall-brace.js';
 import {compensateHead} from '../animation/body-compensation.js';
 import {POUNCE} from './pounce-timing.js';
 import {ArmCarriage} from '../animation/arm-carriage.js';
@@ -158,10 +159,11 @@ export class PatientGait {
   }
   private knockdownMotion:KnockdownMotion|null=null;
   private knockdownRising=false;
+  private fallBrace:FallBrace|null=null;
   get hasKnockdownMotion():boolean{return this.knockdownMotion!==null;}
-  beginKnockdown(root:Vec3,pose:readonly RigPose[]):void{
-    if(!this.organic||this.mobility.mode!=='biped'||pose.length!==LAB_SEGMENTS.length)return;
-    this.knockdownMotion=new KnockdownMotion(root,pose,this.feet.map(f=>f.plant));this.knockdownRising=false;
+  beginKnockdown(root:Vec3,pose:readonly RigPose[],brace:FallBrace|null=null):void{
+    if(!this.organic||this.mobility.prone||pose.length!==LAB_SEGMENTS.length)return;
+    this.knockdownMotion=new KnockdownMotion(root,pose,this.feet.map(f=>f.plant));this.knockdownRising=false;this.fallBrace=brace;
   }
   private proneAmount=0;private crawlPhase=0;private crawlEffort=0;private crawlDirection=1;
   private mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id));
@@ -208,10 +210,10 @@ export class PatientGait {
         const p=this.knockdownMotion&&!this.knockdownRising?this.knockdownMotion.foot(i,target,amount):target;
         f.plant=p;f.start=p;f.target=p;f.phase=0;f.moving=false;
       }
-      if(this.knockdownRising&&amount===0){this.knockdownMotion=null;this.knockdownRising=false;}
+      if(this.knockdownRising&&amount===0){this.knockdownMotion=null;this.knockdownRising=false;this.fallBrace=null;}
       return;
     }
-    this.knockdownMotion=null;this.knockdownRising=false;
+    this.knockdownMotion=null;this.knockdownRising=false;this.fallBrace=null;
     this.proneAmount=clamp(this.proneAmount+(mobility.prone?1:-1)*dt/.65);
     if(mobility.prone){
       const desired=mobility.speedScale>0?clamp(Math.abs(speed)/(MOVEMENT.walkSpeed*mobility.speedScale)):0;
@@ -341,6 +343,16 @@ export class PatientGait {
       this.motion.advance(dt,this.proneAmount===0?speed:0,phase,this.proneAmount===0?weightSide:0);
     }
   }
+  plantedBrace(pose:readonly RigPose[]):boolean{
+    if(!this.fallBrace||this.proneAmount<.25||this.proneAmount>.85)return false;
+    const hand=pose.find(p=>p.id===this.fallBrace!.side+'.hand');
+    return !!hand&&Math.abs(hand.a[1]-hand.radius-this.ground(hand.a[0],hand.a[2]))<.018;
+  }
+  private bracedFall(pose:readonly RigPose[],grounded:readonly RigPose[]):readonly RigPose[]{
+    const brace=this.fallBrace;
+    if(!brace||!['upperArm','lowerArm','hand'].every(segment=>this.active.includes(brace.side+'.'+segment)))return pose;
+    return braceFall(pose,grounded,brace,this.proneAmount,this.ground);
+  }
   pose(id:number,root:Vec3,yaw:number,t:number,_hurt=false,look=0,reaction?:ImpactMotionSample,gazePitch=-.14):readonly RigPose[]{
     if(this.knockdownMotion&&!this.knockdownRising&&this.proneAmount===0)return this.knockdownMotion.source(root);
     const secondary=this.organic?this.motion.sample:null;
@@ -450,19 +462,18 @@ export class PatientGait {
        fixed=constrainRig(flying,undefined,1,this.organic,neckFollow);
       }
       if(lift>0)return steady(fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])})),lift);
-      if(single)return steady(fixed);
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
-      const upright=steady(balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined));
+      const upright=single?steady(fixed):steady(balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined));
       if(rising&&this.proneAmount>0){
         const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
-        return blendGroundPose(upright,grounded,this.proneAmount,this.active,this.ground,true,true);
+        return this.bracedFall(blendGroundPose(upright,grounded,this.proneAmount,this.active,this.ground,true,true),grounded);
       }
       return upright;
     }
     const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
     if(this.knockdownMotion){
       const source=this.knockdownMotion.source(root);
-      return blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true);
+      return this.bracedFall(blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true),grounded);
     }
     const prone=blendGroundPose(standing,grounded,this.proneAmount,this.active,this.ground);
     return this.proneAmount===1&&this.anchored(this.mobility)?this.anchors.apply(prone,this.mobility,this.ground):prone;

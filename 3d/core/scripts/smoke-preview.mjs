@@ -29,6 +29,8 @@ try{
   await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&Number(document.getElementById('stats')?.dataset.tick)>2,{},{timeout:45000});
  }catch(e){throw new Error('Lab startup failed: '+await page.locator('#stats').innerText()+'; browser errors: '+errors.join('; '),{cause:e});}
  assert.equal(await page.locator('canvas').count(),1);
+ assert.match(await page.locator('#round-clock').textContent(),/^\d+:\d{2}$/);
+ await page.waitForFunction(()=>/^\d+ FPS · CPU \d+%.*GPU/.test(document.querySelector('#frame-meter').textContent));
  assert.equal(await page.locator('#patient-hud .patient-card').count(),3);
  const openingSeed=await page.locator('#stats').getAttribute('data-seed');
  await page.locator('#reset').click();
@@ -56,6 +58,7 @@ try{
  await page.waitForFunction(()=>document.getElementById('stats')?.textContent.includes('PAUSED'));
  await page.locator('#reset').click();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===0);
+ assert.equal(await page.locator('#round-clock').textContent(),'0:00');
  await page.locator('#scenario').selectOption('motion-review');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.patients==='2'&&d.reviewPhase==='idle'&&Number(d.tick)===0;});
  await page.locator('#playback-rate').selectOption('0.25');

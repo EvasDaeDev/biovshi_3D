@@ -224,7 +224,9 @@ export class LabSimulationCore implements SimulationCore {
       if(Math.hypot(dx,dz)<1e-8){dx=-Math.sin(a.yaw);dz=Math.cos(a.yaw);}
       a.impact.hit(segmentId,dx,dz,result.critical);
       if(source&&(result.critical||a.gait.footStates.some(f=>f.moving))){
-        this.recoverCombatSupport(a,dx,dz);
+        if(this.ringCombat&&this.authored?.stalk&&result.critical&&a.gait.recoveringSupport&&!mobilityFor(a.segments).prone){
+          this.startCombatFall(a,dx,dz,KNOCKDOWN.hardDisplacement,null);
+        }else this.recoverCombatSupport(a,dx,dz);
       }
     }
     return true;
@@ -343,6 +345,16 @@ export class LabSimulationCore implements SimulationCore {
       if(!f.ended)keep.push(flight);
     }
     this.flights=keep;
+  }
+  private startCombatFall(a:Actor,dx:number,dz:number,displacement:number,margin:number|null):boolean{
+    if(!a.knockdown.observe(displacement,margin,true))return false;
+    const root=this.gaitPoint([a.x,a.y,a.z]),direction=Math.hypot(dx,dz);
+    const onset=a.gait.pose(a.id,root,a.yaw,this.tick*FIXED_DT);
+    const preferred=dx*Math.cos(a.yaw)+dz*Math.sin(a.yaw)<0?'L':'R';
+    const side=([preferred,preferred==='L'?'R':'L'] as const).find(s=>['upperArm','lowerArm','hand'].every(p=>a.segments.includes(s+'.'+p)));
+    a.gait.beginKnockdown(root,onset,side&&direction>0?{side,direction:[dx/direction,0,dz/direction]}:null);
+    a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
+    return true;
   }
   private recoverCombatSupport(a:Actor,dx:number,dz:number):boolean{
     if(!this.ringCombat||!this.authored?.stalk||this.fightEnded||a.fixed||a.knockdown.blocked||a.strike.punch?.kind==='leg')return false;
@@ -816,6 +828,9 @@ export class LabSimulationCore implements SimulationCore {
         const ground=(x:number,z:number)=>this.ground(a,x,z);
         a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
         a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,dt,this.gaitGround(a),mobility,a.segments,a.knockdown.amount??0);
+        if(a.knockdown.phase==='falling'&&this.ringCombat&&a.gait.plantedBrace(this.actorPose(a,true))&&a.knockdown.brace()){
+          this.events.push({tick:this.tick+1,type:'fighter-braced',fighterId:a.id});
+        }
         if(this.authored?.stalk&&this.combat)a.perception.advanceLook(a.yaw,a,a.lookTarget);
         a.gait.advanceExpression(dt,a.impact.active);
         continue;
@@ -892,17 +907,20 @@ export class LabSimulationCore implements SimulationCore {
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||(a.gait.hopHeight>.025||a.gait.runningAirborne))continue;
       if(combatBalance){
-        this.recoverCombatSupport(a,a.x-old[0],a.z-old[1]);
-        if(!this.dynamicBalance)continue;
-        if(a.gait.recoveringSupport)continue;
+        // A severe shove can overtake a catch step already in progress.
+        if(displacement<KNOCKDOWN.hardDisplacement){
+          this.recoverCombatSupport(a,a.x-old[0],a.z-old[1]);
+          if(!this.dynamicBalance||a.gait.recoveringSupport)continue;
+        }
       }
       const root=this.gaitPoint([a.x,a.y,a.z]);
        const full=a.gait.pose(a.id,root,a.yaw,this.tick*FIXED_DT,false,this.authored?.stalk?a.perception.gaze(a.yaw)-a.yaw:0,this.authored?.stalk?a.impact.reaction:undefined,a.gazePitch.pitch);
        const parts=full.filter(p=>a.segments.includes(p.id));
       const world=this.worldPose(parts);
       const support=analyzeSupport(this.gradeContact?.(world,a.baseY)??world,(x,z)=>this.ground(a,x,z));
-      const onset=this.authored?.stalk&&this.patientScale!==1&&mobility.mode==='biped'?(parts.length===full.length?this.actorPose(a,true):full):null;
-      if(a.knockdown.observe(displacement,support.margin,true)){
+      const onset=this.authored?.stalk&&this.patientScale!==1&&!mobility.prone?(parts.length===full.length?this.actorPose(a,true):full):null;
+      if(combatBalance)this.startCombatFall(a,a.x-old[0],a.z-old[1],displacement,support.margin);
+      else if(a.knockdown.observe(displacement,support.margin,true)){
         if(onset)a.gait.beginKnockdown(root,onset);
         a.speed=0;this.events.push({tick:this.tick,type:'fighter-knocked-down',fighterId:a.id});
       }
