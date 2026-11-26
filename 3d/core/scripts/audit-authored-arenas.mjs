@@ -6,6 +6,7 @@ import {buildLocationCatalog} from './catalog-locations.mjs';
 import {LabSimulationCore,createAuthoredCombatConfig,PolygonNavigation,FIXED_DT} from '../dist/index.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
 import {advanceCombatStep} from '../../lab-next/combat-step.js';
+import {auditMotion} from './audit-motion.mjs';
 import {assertVisibleAnatomy,segmentKey} from './arena-audit-invariants.mjs';
 
 /** P4 acceptance telemetry, never a manufactured knockout.
@@ -130,6 +131,8 @@ const status={cases:reports.length,totalPatients:reports.reduce((n,r)=>n+r.capac
  secondsPerArena:seconds,slowestP95Ms:Math.max(...reports.map(r=>r.cpuMs.p95)),
  longestQuietSeconds:Math.max(...reports.map(r=>r.longestNoHitSeconds)),
  longestStationarySeconds:Math.max(...reports.map(r=>r.longestStationarySeconds))};
+const motionReview=catalog.ring?auditMotion(catalog.ring):[];
+for(const r of motionReview)console.log('MOTION_AUDIT '+JSON.stringify({scenario:r.scenario,events:r.events,phases:r.phases,cpuMs:r.cpuMs,peaks:Object.fromEntries(Object.entries(r.motion).map(([phase,g])=>[phase,Object.fromEntries(Object.entries(g.metrics).map(([key,m])=>[key,m.top[0]??null]))]))}));
 await writeFile(new URL('../authored-arena-audit.json',import.meta.url),
- JSON.stringify({status,reports},null,2)+'\n');
+ JSON.stringify({status,reports,motionReview},null,2)+'\n');
 console.log('AUTHORED_AUDIT_SUMMARY '+JSON.stringify(status));
