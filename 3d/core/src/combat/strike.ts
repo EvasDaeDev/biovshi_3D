@@ -5,6 +5,7 @@ import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import { FIXED_DT } from '../fixed-clock.js';
 import { proneStrikePose } from './prone-strike.js';
 import { extraStrikePose } from './extra-strikes.js';
+import {authoredArmStrike} from '../rig/arm-strike-ik.js';
 import { solveTwoBone } from '../rig/two-bone.js';
 export const STRIKE=Object.freeze({windup:.32,thrust:.20,recover:.26,cooldown:.90});
 const ticks=(s:number)=>Math.ceil(s/FIXED_DT-1e-9);
@@ -91,9 +92,7 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
  const target=weight===1?rawTarget:mix(base,rawTarget,weight);
  if(age===0)return pose;
  const strikePole:Vec3=[Math.cos(punch.yaw)*(punch.side==='L'?-1:1),-.65,Math.sin(punch.yaw)*(punch.side==='L'?-1:1)];
- const basePole:Vec3=[u.b[0]-u.a[0],u.b[1]-u.a[1],u.b[2]-u.a[2]];
- const pole=coordinated?mix(basePole,strikePole,load*weight):strikePole;
- const ik=solveTwoBone(a,target,.36,.32,pole);
+ const ik=coordinated?authoredArmStrike(u,l,target,punch.yaw,punch.side,load*weight):solveTwoBone(a,target,.36,.32,strikePole);
  const end=ik.end;
  return pose.map(p=>p.id===u.id?{...p,b:ik.joint}:p.id===l.id?{...p,a:ik.joint,b:end}:h&&p.id===h.id?{...p,a:end,b:end}:p);
 }

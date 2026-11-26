@@ -5,6 +5,7 @@ const unit=(slot:ExpressionSlot):number[]=>EXPRESSION_SLOTS.map(s=>Number(s===sl
 /** Advance exactly once per simulation tick, never from a pose query.
  * Rebase interrupted transitions on their currently evaluated weights. */
 export class PoseTransition {
+ constructor(private readonly hurtDuration=duration.hurt){}
  private target:ExpressionSlot='stance';
  private start=unit('stance');
  private current=unit('stance');
@@ -12,8 +13,9 @@ export class PoseTransition {
  advance(slot:ExpressionSlot,dt:number):void{
   if(!Number.isFinite(dt)||dt<0)throw new RangeError('Invalid pose delta');
   if(slot!==this.target){this.start=[...this.current];this.target=slot;this.elapsed=0;}
-  this.elapsed=Math.min(duration[slot],this.elapsed+dt);
-  const t=this.elapsed/duration[slot],w=t*t*(3-2*t);
+  const seconds=slot==='hurt'?this.hurtDuration:duration[slot];
+  this.elapsed=Math.min(seconds,this.elapsed+dt);
+  const t=this.elapsed/seconds,w=t*t*(3-2*t);
   this.current=this.start.map((v,i)=>v+(Number(EXPRESSION_SLOTS[i]===slot)-v)*w);
  }
  get weights():readonly number[]{return [...this.current];}

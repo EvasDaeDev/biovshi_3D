@@ -27,7 +27,7 @@ export class PatientGait {
   private moveAmount=0; private next=0;private stepWait=0;private steps=0;private runAmount=0;private signedSpeed=0;
   get stepCount():number{return this.steps;}
   get footStates(){return this.feet.map(f=>({moving:f.moving,target:[...f.target] as Vec3,point:[...f.plant] as Vec3}));}
-  private expression=new PoseTransition();
+  private expression:PoseTransition;
   private expressive:ReadonlyMap<string,RigPose>|undefined;
   /** Resolve expressive targets once per fixed tick. IK still owns lengths and supports. */
   advanceExpression(dt:number,hurt=false,intent:'stance'|'aggressive'|'stalk'|'freeze'='stance'):void{
@@ -108,6 +108,7 @@ export class PatientGait {
   private feet:[Foot,Foot];
   constructor(root:Vec3,yaw=0,private readonly groundedStride=false,private readonly authored?:AuthoredMotion,private readonly motionProfile:MotionProfile=BASE_MOTION_PROFILE){
     this.motion=new LocomotionMotion(motionProfile);
+    this.expression=new PoseTransition(groundedStride&&authored?.stalk?.size ? .18 : .10);
     this.hop=new HopCycle(groundedStride?.14:0);
     const foot=(side:number):Foot=>{
       const reference=authored?.stance?.get(side<0?'L.foot':'R.foot')?.a;
