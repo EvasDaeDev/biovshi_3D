@@ -32,7 +32,7 @@ export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase
   const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,t,low,'leg',p.yaw,p.side):phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
   // Same mass-driven support solver as the one-legged gait. It includes
   // the swinging leg in COM and maintains the opposite world foot anchor.
-  return balanceSingleSupport(pose,pose.map(v=>v.id),support,supportPlant??plant.a,ground,weight===1?rawTarget:mix(base,rawTarget,weight),supportLoad);
+  return balanceSingleSupport(pose,pose.map(v=>v.id),support,supportPlant??plant.a,ground,weight===1?rawTarget:mix(base,rawTarget,weight),supportLoad,coordinated?p.yaw:undefined);
  }
  return pose;
 }

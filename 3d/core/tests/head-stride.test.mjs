@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PatientPerception,PATIENT_HEAD,gazeAwareRoute} from '../dist/combat/perception.js';
+import {PatientPerception,PATIENT_HEAD,gazeAwareRoute,patientTrackingRate} from '../dist/combat/perception.js';
 import {PatientGait} from '../dist/rig/gait.js';
 import {horrorBipedStep} from '../dist/rig/movement-timing.js';
 import {compileAuthoredMotion} from '../dist/rig/authored-motion.js';
@@ -9,12 +9,20 @@ import {LAB_SEGMENTS} from '../dist/rig/anatomy.js';
 import {mobilityFor} from '../dist/rig/mobility.js';
 const mobility=mobilityFor(LAB_SEGMENTS.map(p=>p.id));
 const dt=1/60,dist=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
-test('authored neck turns 80 degrees from center in one second, two seconds side to side',()=>{
+test('authored neck scans deliberately and tracks faster when target/body moves',()=>{
  const p=new PatientPerception(7,0,true),here={x:0,z:0};
- for(let i=0;i<60;i++)p.advanceLook(0,here,{x:2,z:0});
- assert.ok(Math.abs(p.snapshot(0).look-PATIENT_HEAD.limit)<1e-9);
- for(let i=0;i<120;i++){const before=p.snapshot(0).look;p.advanceLook(0,here,{x:-2,z:0});assert.ok(Math.abs(p.snapshot(0).look-before)<=PATIENT_HEAD.trackSpeed*dt+1e-9);}
+ for(let i=0;i<60;i++)p.advanceLook(0,here,null);
  assert.ok(Math.abs(p.snapshot(0).look+PATIENT_HEAD.limit)<1e-9);
+ assert.ok(patientTrackingRate(1,.7,4,true)>patientTrackingRate(1,3,0,false));
+ let reached=false;
+ for(let i=0;i<45;i++){
+  const before=p.snapshot(0).look;p.advanceLook(0,here,{x:1,z:0},4,true);
+  const after=p.snapshot(0).look;
+  assert.ok(Math.abs(after-before)<=PATIENT_HEAD.maxTrackSpeed*dt+1e-9);
+  if(Math.abs(after-PATIENT_HEAD.limit)<1e-9)reached=true;
+ }
+ assert.ok(reached);
+ assert.ok(Math.abs(p.snapshot(0).look-PATIENT_HEAD.limit)<1e-9);
  assert.deepEqual(gazeAwareRoute(0,0),{heading:0,backward:false});
  const out=gazeAwareRoute(Math.PI,0);assert.ok(out.backward&&Math.abs(out.heading)<1e-9);
 });

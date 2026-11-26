@@ -371,7 +371,7 @@ export class LabSimulationCore implements SimulationCore {
           const raid=raidStep(null);
           if(raid.phase==='withdraw'||raid.phase==='reassess'){
             const heading=raid.goal?this.routeHeading(a,raid.goal):0;
-            a.tactics.setMode('retreat');
+            a.tactics.setMode(raid.phase==='withdraw'?'retreat':'search');
             commands.set(a.id,{fighterId:a.id,forward:raid.goal?Math.max(0,Math.cos(heading))*raid.pace:0,turn:clamp(heading*2,-1,1),sprint:raid.sprint});
             if(sensing)this.lookAt(a,a.perception.recalled(this.tick,a,opponents.map(b=>b.id))?.point??null);
             continue;
@@ -485,7 +485,7 @@ export class LabSimulationCore implements SimulationCore {
       }
       const lowVictim=this.expandedStrikes&&!prone&&target.gait.posture!=='upright';
       const groundedPair=this.expandedStrikes&&(prone||target.gait.posture!=='upright');
-      const previewRange=groundedPair?2.65:this.expandedStrikes?1.05:.82;
+      const previewRange=groundedPair?2.65:this.expandedStrikes?(mobileStrikes?1.18:1.05):.82;
       let checkedStrikeGeometry=false,preparingLowKick=false;
       if(unobstructed&&seen&&allowed&&!retreat&&!deliberateHold&&!a.impact.active&&(command?.attack??!command)&&Math.abs(turn)<.65&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         checkedStrikeGeometry=true;
@@ -612,7 +612,7 @@ export class LabSimulationCore implements SimulationCore {
       if(this.authored?.stalk){
        const stableHead=a.strike.visual(this.tick)?.punch.kind==='head'&&!a.knockdown.blocked;
        const h=(stableHead?this.actorPose(a,false,true):this.handoffPrevious?.get(a.id))?.find(p=>p.id==='head');
-       a.gazePitch.advance(dt,h?.a??[a.x,a.y+1.5,a.z],a.gazeFocus);
+       a.gazePitch.advance(dt,h?.a??[a.x,a.y+1.5,a.z],a.gazeFocus,!!a.strike.punch||a.raid.snapshot().phase==='rush');
       }
       let target = 0;
       const mobility=mobilityFor(a.segments);
@@ -649,7 +649,7 @@ export class LabSimulationCore implements SimulationCore {
       }
       target*=mobility.speedScale*flinch*a.behavior.traits.movementMultiplier*(organic&&mobility.mode==='arm-crawl'?HORROR_MOVEMENT.crawlMultiplier:1);
       const kick=a.strike.punch?.kind==='leg',kickSupport=organic&&kick?(a.strike.punch!.side==='L'?'R':'L'):undefined;
-      a.speed = mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,3);
+      a.speed = mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
       const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),c?.jump,Math.abs(target)>.025,kickSupport)*this.patientScale;
       const oldX=a.x,oldZ=a.z;
@@ -658,7 +658,7 @@ export class LabSimulationCore implements SimulationCore {
       if(this.navigation instanceof PolygonNavigation||this.navigation.walls.length){const p=this.navigation.move({x:oldX,z:oldZ},a);a.x=p.x;a.z=p.z;}
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       // Update local neck angle against the new body yaw/position, once per tick.
-      if(this.authored?.stalk&&this.combat&&!this.fightEnded)a.perception.advanceLook(a.yaw,a,a.lookTarget);
+      if(this.authored?.stalk&&this.combat&&!this.fightEnded)a.perception.advanceLook(a.yaw,a,a.lookTarget,(a.yaw-beforeYaw)/dt,!!a.strike.punch||!!c?.sprint);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
       a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,a.strike.punch?.kind==='leg',(a.yaw-beforeYaw)/dt,a.speed/this.patientScale);
       const mode=a.tactics.snapshot().mode;

@@ -202,3 +202,7 @@ fc38ecc: CI 45787417000, 239/239 tests и P3/P4 audit пройдены, smoke ti
 ### P4-M — индивидуальные моторные часы и компенсация (26.11.2026)
 
 4be1ec4 прошёл CI 45808232484. Индивидуальные cadence/lead foot/strike phase & cooldown/hop, initiative; физическая компенсация шеи, противодвижение свободной руки, landing absorption. Намеренный взгляд не фильтруется. Три регрессии; новый CI и визуальная/CPU приёмка ожидаются. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).
+
+### P4-M — ситуационный взгляд, безопасная переоценка и sprint (26.11.2026)
+
+ebba0cd прошёл CI 45811257465. Ring 22 hits/34 attempts, p95 2.059ms; walk peak .0603m, leg recovery .6272m. Адаптивный tracking 120–360°/s, reassess без обязательного отхода, arm forward lean/kick backward counter-lean, kick knee pole, sprint target3.45 m/s и cadence. Новые/обновлённые регрессии; новый CI/скорость/CPU/пики и визуальная приёмка ожидаются.

@@ -10,8 +10,12 @@ const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a));
 const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
 const distance=(a:PointXZ,b:PointXZ)=>Math.hypot(a.x-b.x,a.z-b.z);
 export const VISION=Object.freeze({fov:rad(100),range:metres(300),nearby:metres(75),touch:metres(32),limit:rad(60),scanSpeed:rad(20),trackSpeed:rad(40),memoryTicks:ticks(2.4),arrival:metres(35)});
-// Authored patient: neutral to either neck limit in one second.
-export const PATIENT_HEAD=Object.freeze({limit:rad(80),trackSpeed:rad(80),scanSpeed:rad(80)});
+// Search remains deliberate, while target tracking responds to error,
+// proximity and body rotation. Limit is relative to the torso.
+export const PATIENT_HEAD=Object.freeze({limit:rad(80),trackSpeed:rad(120),maxTrackSpeed:rad(360),scanSpeed:rad(80)});
+export function patientTrackingRate(error:number,distance:number,bodyTurnRate=0,urgent=false):number{
+ return clamp(PATIENT_HEAD.trackSpeed+Math.abs(error)*1.2+Math.abs(bodyTurnRate)*.95+rad(55)*clamp((2-distance)/1.5,0,1)+(urgent?rad(45):0),PATIENT_HEAD.trackSpeed,PATIENT_HEAD.maxTrackSpeed);
+}
 /** Choose a backward approach/exit when it preserves sight better than a
  * forward turn. The route itself is unchanged and remains collision checked. */
 export function gazeAwareRoute(heading:number,targetBearing:number):{heading:number;backward:boolean}{
@@ -47,11 +51,12 @@ export class PatientPerception{
  gaze(bodyYaw:number):number{return bodyYaw+this.look;}
  setVisible(ids:readonly number[]):void{this.visible=[...ids];}
  /** v1 updateHead: bounded local tracking or reflected scan. */
- advanceLook(bodyYaw:number,origin:PointXZ,target:PointXZ|null):void{
+ advanceLook(bodyYaw:number,origin:PointXZ,target:PointXZ|null,bodyTurnRate=0,urgent=false):void{
   const motion=this.authored?PATIENT_HEAD:VISION;
   if(target){
    const desired=clamp(wrap(Math.atan2(target.x-origin.x,-(target.z-origin.z))-bodyYaw),-motion.limit,motion.limit);
-   this.look=clamp(this.look+clamp(desired-this.look,-motion.trackSpeed*FIXED_DT,motion.trackSpeed*FIXED_DT),-motion.limit,motion.limit);
+   const rate=this.authored?patientTrackingRate(desired-this.look,distance(origin,target),bodyTurnRate,urgent):motion.trackSpeed;
+   this.look=clamp(this.look+clamp(desired-this.look,-rate*FIXED_DT,rate*FIXED_DT),-motion.limit,motion.limit);
   }else{
    this.look+=this.direction*motion.scanSpeed*FIXED_DT;
    if(this.look>motion.limit){this.look=2*motion.limit-this.look;this.direction=-1;}

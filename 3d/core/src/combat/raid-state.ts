@@ -100,6 +100,12 @@ export class RaidState{
   this.landed=true;this.hits++;this.rush=clamp(this.rush+.12*this.profile.drive,0,1);
  }
  private withdraw(tick:number){this.lastTarget=this.targetId;this.side=this.side===1?-1:1;this.enter('withdraw',tick,2.1);}
+ private finish(tick:number,threatened:boolean){
+  if(threatened){this.withdraw(tick);return;}
+  // Ending a series is not an instruction to take a backward step.
+  this.lastTarget=this.targetId;this.side=this.side===1?-1:1;
+  this.enter('reassess',tick,this.profile.patience*.7);
+ }
  private intent(goal:PointXZ|null,pace:number,sprint:boolean,attack:boolean):RaidIntent{return {phase:this.phase,goal,pace,sprint,attack};}
  advance(i:RaidInput):RaidIntent{
   const {tick,here,target,visible,strike,interrupted,ready,clear}=i;
@@ -111,10 +117,11 @@ export class RaidState{
   // party. Close telegraphed attacks are still handled in observe/rush
   // and the situation-dependent series evaluation.
   const intendedTarget=target?.id??this.targetId;
-  if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==intendedTarget)&&!active))this.withdraw(tick);
+  const counter=!!target&&!target.grounded&&target.threatening&&dist(here,target)<1.45;
+  if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==intendedTarget)&&!active||this.phase==='reassess'&&counter))this.withdraw(tick);
   if(this.phase==='attack'&&this.attempts>0&&(strike==='recover'||!active)){
    const exposure=target?Math.abs(wrap(bearing(target,here)-target.yaw))/Math.PI:0;
-   if(!target||target.id!==this.targetId||dist(here,target)>1.45||tick>=this.deadline||!continueSeries(this.profile,this.attempts,this.rush,this.landed,target,exposure,this.bias))this.withdraw(tick);
+   if(!target||target.id!==this.targetId||dist(here,target)>1.45||tick>=this.deadline||!continueSeries(this.profile,this.attempts,this.rush,this.landed,target,exposure,this.bias))this.finish(tick,counter);
   }
   if(this.phase==='withdraw'){
    const threats:PointXZ[]=visible.length?[...visible]:this.remembered?[this.remembered]:[];
@@ -129,12 +136,12 @@ export class RaidState{
    return this.intent(this.goal,1,true,false);
   }
   if(this.phase==='reassess'){
-   if(tick<this.deadline)return this.intent(null,0,false,false);
+   if(active||tick<this.deadline)return this.intent(null,0,false,false);
    this.reset(tick);
   }
   if(!target){
    if(this.targetId!==null&&(this.phase==='attack'||this.phase==='rush')){
-    this.withdraw(tick);return this.advance(i);
+    this.finish(tick,false);return this.intent(null,0,false,false);
    }
    this.reset(tick);return this.intent(null,0,false,false);
   }
@@ -160,11 +167,11 @@ export class RaidState{
    else return this.intent(null,0,false,false);
   }
   if(this.phase==='rush'){
-   if(tick>=this.deadline||target.threatening&&d<1.15&&this.profile.risk<.4&&!ready){this.withdraw(tick);return this.advance(i);}
+   if(tick>=this.deadline||target.threatening&&d<1.15&&this.profile.risk<.4&&!ready){this.finish(tick,counter);return this.advance(i);}
    return this.intent(target,1,d>1.05,true);
   }
   if(this.phase==='attack'){
-   if(tick>=this.deadline||d>1.45){this.withdraw(tick);return this.advance(i);}
+   if(tick>=this.deadline||d>1.45){this.finish(tick,counter);return this.advance(i);}
    return this.intent(target,d>.65?.65+.35*this.rush:0,false,true);
   }
   return this.intent(null,0,false,false);

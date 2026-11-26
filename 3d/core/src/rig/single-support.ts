@@ -11,7 +11,7 @@ const bound=(x:number,z:number,max:number):readonly [number,number]=>{const n=Ma
  * and solve legs again without changing the supporting foot's world target.
  * Tilt is preferred to translation; the latter handles residual reach error.
  * No dynamic angular momentum or forces are integrated here. */
-export function balanceSingleSupport(pose:readonly RigPose[],active:readonly string[],side:'L'|'R',plant:Vec3,ground:(x:number,z:number)=>number,swingTarget?:Vec3,load=1):readonly RigPose[]{
+export function balanceSingleSupport(pose:readonly RigPose[],active:readonly string[],side:'L'|'R',plant:Vec3,ground:(x:number,z:number)=>number,swingTarget?:Vec3,load=1,yaw?:number):readonly RigPose[]{
  load=Math.max(0,Math.min(1,load));
  const ids=new Set(active),index=new Map(pose.map((p,i)=>[p.id,i]));
  const get=(id:string)=>pose[index.get(id)!]!;
@@ -42,7 +42,8 @@ export function balanceSingleSupport(pose:readonly RigPose[],active:readonly str
    // The other, incomplete leg can follow the body, but cannot drive
    // the correction or be counted as an additional supporting foot.
    const end:Vec3=k===side?ankle:add([raw[0],Math.max(raw[1],ground(raw[0],raw[2])+foot.radius),raw[2]],footOffset);
-   const ik=solveTwoBone(root,end,.49,.50,sub(upper.b,upper.a));
+   const pole:Vec3=yaw===undefined?sub(upper.b,upper.a):[Math.sin(yaw),.02,-Math.cos(yaw)];
+   const ik=solveTwoBone(root,end,.49,.50,pole);
    const p=sub(ik.end,footOffset);
    out[index.get(u)!]={...upper,a:root,b:ik.joint};
    out[index.get(l)!]={...lower,a:ik.joint,b:ik.end};

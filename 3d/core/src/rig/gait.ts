@@ -217,6 +217,12 @@ export class PatientGait {
         preparing=false;
       }
     }
+    // At a fast cadence the next support transfer starts late in the
+    // preceding swing. Do not wait through a second full preparation
+    // after touchdown, which would repeatedly stall the root.
+    if(!preparing&&this.organic&&Math.abs(plannedSpeed)>2.875&&!holdFeet&&support[0]&&support[1]&&this.feet.some(f=>f.moving&&f.phase>=.55)){
+      this.motion.prepare(this.next===0?0:1,dt);preparing=true;
+    }
     if(!preparing)this.motion.clearPreparation();
     if(this.organic){
       const swing=this.feet.findIndex(f=>f.moving);
