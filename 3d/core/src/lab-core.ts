@@ -136,8 +136,11 @@ export class LabSimulationCore implements SimulationCore {
   private actorPose(a:Actor):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const pose=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,a.impact.active,a.perception.gaze(a.yaw)-a.yaw,this.authored?.stalk?a.impact.reaction:undefined).filter(p=>a.segments.includes(p.id));
-    const strike=a.strike.punch;
-    const posed=strike&&!a.knockdown.blocked?punchPose(pose,{...strike,aim:this.gaitPoint(strike.aim)},this.tick,this.gaitGround(a),this.authored):pose;
+    const visual=a.strike.visual(this.tick),strike=visual?.punch;
+    // A residual pose is compatible only with the same upright support
+    // configuration. Missing source, flight and ground transitions win.
+    const compatible=visual?.weight===1||a.gait.posture==='upright'&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare';
+    const posed=strike&&visual&&compatible&&!a.knockdown.blocked&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,aim:this.gaitPoint(strike.aim)},visual.tick,this.gaitGround(a),this.authored,visual.weight):pose;
     const world=this.worldPose(posed);
     return this.gradeContact?.(world,a.baseY)??world;
   }
@@ -257,7 +260,7 @@ export class LabSimulationCore implements SimulationCore {
       const mobility=mobilityFor(a.segments),prone=this.expandedStrikes&&mobility.prone&&a.gait.posture==='prone';
       const allowed=!a.fixed&&!a.knockdown.blocked&&!this.fightEnded&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare'&&((!mobility.prone&&a.gait.posture==='upright')||prone);
       const compatible=!a.strike.punch||!!a.strike.punch.prone===prone;
-      a.strike.advance(this.tick,allowed&&compatible,a.segments);
+      a.strike.advance(this.tick,allowed&&compatible&&(!this.authored?.stalk||!a.strike.punch||this.actors.some(b=>b.id===a.strike.punch?.targetId&&!b.fixed)),a.segments,!!this.authored?.stalk&&!a.fixed&&!a.knockdown.blocked&&a.gait.posture==='upright'&&a.gait.hopPhase==='idle');
       if(a.fixed){a.tactics.setMode('inactive');continue;}
       const command=commands.get(a.id);
       const horror=this.ringCombat&&!!this.authored?.stalk&&!command;
@@ -475,7 +478,7 @@ export class LabSimulationCore implements SimulationCore {
     const active=this.actors.filter(a=>!a.fixed);
     if(active.length>1)return;
     this.fightEnded=true;this.winnerId=active[0]?.id??null;
-    for(const a of this.actors)a.strike.advance(this.tick,false,a.segments);
+    for(const a of this.actors)a.strike.advance(this.tick,false,a.segments,!!this.authored?.stalk&&!a.fixed&&!a.knockdown.blocked&&a.gait.posture==='upright'&&a.gait.hopPhase==='idle');
     this.events.push({tick:this.tick,type:'fight-ended',fighterId:this.winnerId??0});
   }
   step(dt: number, input: InputFrame): void {
