@@ -51,7 +51,7 @@ export function approachLane(here:PointXZ,target:RaidOpponent,visible:readonly R
   if(pathDistance(here,goal,target)<.73)continue;
   const exposure=Math.abs(wrap(a-target.yaw))/Math.PI;
   const crowd=others.reduce((sum,o)=>sum+Math.max(0,1.6-pathDistance(here,goal,o))*(o.threatening?1.4:1),0);
-  const score=exposure*(1.4-profile.risk*.5)-dist(here,goal)*.32-crowd*.9+(offset*side>0?.09:0);
+  const score=(target.grounded?0:exposure*(1.4-profile.risk*.5))-dist(here,goal)*.32-crowd*.9+(offset*side>0?.09:0);
   if(score>bestScore){bestScore=score;best=goal;}
  }
  return best;
@@ -171,6 +171,9 @@ export class RaidState{
    else return this.intent(null,0,false,false);
   }
   if(this.phase==='rush'){
+   // A vulnerable moving target may need a longer straight approach.
+   // Re-evaluation still occurs when a real threat appears.
+   if(target.grounded&&d>1.05&&tick>=this.deadline&&tick-this.since<ticks(4.0))this.deadline=tick+ticks(.65);
    if(tick>=this.deadline||target.threatening&&d<1.15&&this.profile.risk<.4&&!ready){this.finish(tick,counter);return this.advance(i);}
    return this.intent(target,1,d>1.05,true);
   }

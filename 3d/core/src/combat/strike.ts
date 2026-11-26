@@ -1,3 +1,4 @@
+import {crouchPunchBase} from './crouch-punch.js';
 import {clampStrikeAim,strikeBearing} from './strike-sector.js';
 import {compensateHead} from '../animation/body-compensation.js';
 import {lowTargetAmount,strikeTrajectory} from './strike-trajectory.js';
@@ -19,8 +20,8 @@ export type StrikeKind='arm'|'leg'|'head';
 const CANCEL_TICKS=ticks(.24);
 export interface StrikeVisual {readonly punch:Punch;readonly tick:number;readonly weight:number}
 export interface StrikeChannel {readonly side:'L'|'R';readonly kind:'arm'|'leg';readonly targetId:number;readonly aim:Vec3;readonly targetSegment?:string}
-export interface Punch {readonly secondary?:StrikeChannel;readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string;readonly tempo?:number}
-export interface StrikeSnapshot {readonly phase:StrikePhase;readonly kind?:StrikeKind;readonly prone?:boolean;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean;readonly hitIds?:readonly number[];readonly targetIds?:readonly number[];readonly secondarySource?:string}
+export interface Punch {readonly crouch?:boolean;readonly secondary?:StrikeChannel;readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string;readonly tempo?:number}
+export interface StrikeSnapshot {readonly phase:StrikePhase;readonly kind?:StrikeKind;readonly prone?:boolean;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean;readonly hitIds?:readonly number[];readonly targetIds?:readonly number[];readonly secondarySource?:string;readonly crouch?:boolean}
 export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
 }
@@ -72,10 +73,11 @@ export class StrikeState{
   if(!this.cancelled||tick>=this.cancelled.tick+CANCEL_TICKS)return null;
   return {punch:this.cancelled.punch,tick:this.cancelled.tick,weight:1-smooth((tick-this.cancelled.tick)/CANCEL_TICKS)};
  }
- start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm',prone=false,secondary?:StrikeChannel):boolean{
+ start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm',prone=false,secondary?:StrikeChannel,crouch=false):boolean{
+  if(crouch&&(prone||kind!=='arm'||secondary))return false;
   if(!this.ready(tick)||secondary&&!compatibleChannels({side,kind,targetId,prone},secondary))return false;
   this.cancelled=null;
-  this.current={side,kind,prone,targetId,aim:[...aim],start:tick,yaw,...(secondary?{secondary:{...secondary,aim:[...secondary.aim] as Vec3}}:{}),...(this.tempo===1?{}:{tempo:this.tempo}),...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.contacted.clear();this.sequence++;return true;
+  this.current={side,kind,prone,targetId,aim:[...aim],start:tick,yaw,...(crouch?{crouch:true}:{}),...(secondary?{secondary:{...secondary,aim:[...secondary.aim] as Vec3}}:{}),...(this.tempo===1?{}:{tempo:this.tempo}),...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.contacted.clear();this.sequence++;return true;
  }
  /** Track the target only during preparation; commit the aim for thrust. */
  track(tick:number,aim:Vec3,targetId?:number):void{
@@ -89,7 +91,7 @@ export class StrikeState{
  canContact(id:number):boolean{return !!this.current&&!this.exhausted&&!this.contacted.has(id)&&(id===this.current.targetId||id===this.current.secondary?.targetId);}
  resolveTarget(id:number):boolean{if(!this.canContact(id))return false;this.contacted.add(id);this.done=true;return true;}
  resolve():void{if(this.current)for(const p of strikeChannels(this.current))this.contacted.add(p.targetId);this.done=true;}
- snapshot(tick:number):StrikeSnapshot{return {phase:this.phase(tick),kind:this.current?.kind??'arm',prone:this.current?.prone??false,source:this.current?strikeSource(this.current.kind??'arm',this.current.side):null,targetId:this.current?.targetId??null,resolved:this.current!==null&&this.done,...(this.current&&this.multiTarget?{hitIds:[...this.contacted],targetIds:strikeChannels(this.current).map(p=>p.targetId),secondarySource:strikeSource(this.current.secondary!.kind,this.current.secondary!.side)}:{})};}
+ snapshot(tick:number):StrikeSnapshot{return {phase:this.phase(tick),kind:this.current?.kind??'arm',prone:this.current?.prone??false,source:this.current?strikeSource(this.current.kind??'arm',this.current.side):null,targetId:this.current?.targetId??null,resolved:this.current!==null&&this.done,...(this.current?.crouch?{crouch:true}:{}),...(this.current&&this.multiTarget?{hitIds:[...this.contacted],targetIds:strikeChannels(this.current).map(p=>p.targetId),secondarySource:strikeSource(this.current.secondary!.kind,this.current.secondary!.side)}:{})};}
 }
 /** The actual rendered forearm and hand are the attacking geometry.
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
@@ -98,6 +100,13 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
  const age=(tick-punch.start)/(punch.tempo??1);if(age<0||age>=W+T+R||age===0)return pose;
  if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
  const coordinated=!!motion?.stalk;
+ // Full squat reached before thrust; rise throughout recovery. The same
+ // trajectory runs in preview, collision and render. Cancellation weight
+ // also releases the squat rather than snapping the pelvis upward.
+ if(coordinated&&punch.crouch&&!bodyAlreadyCoordinated){
+  const squat=age<W?smooth(age/W):age<W+T?1:1-smooth((age-W-T)/R);
+  pose=crouchPunchBase(pose,punch.yaw,squat*weight,ground);
+ }
  if(coordinated&&punch.kind!=='head')punch={...punch,aim:clampStrikeAim(pose,punch.aim,punch.yaw),...(punch.secondary?{secondary:{...punch.secondary,aim:clampStrikeAim(pose,punch.secondary.aim,punch.yaw)}}:{})};
  const headReference=coordinated&&!bodyAlreadyCoordinated&&punch.kind!=='head'?pose.find(p=>p.id==='head')?.a:undefined;
  const stabilized=(parts:readonly PhysicsSegmentPose[])=>headReference?compensateHead(parts,headReference,.78):parts;

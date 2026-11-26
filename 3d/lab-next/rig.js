@@ -12,7 +12,7 @@ import RAPIER from '@rapier';
 import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
 import {LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
-import {boneFrame} from '../core/dist/rig/bone-frame.js';
+import {boneFrame,anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
 import {HEAD_CAMERA_CLEARANCE} from '../core/dist/rig/head-frame.js';
 import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
@@ -241,17 +241,9 @@ addEventListener('resize',()=>{cameraControl.resize(innerWidth/innerHeight);rend
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4(),priorRotation=new THREE.Quaternion();
 function frameRotation(f,out){return out.setFromRotationMatrix(basis.makeBasis(v(f.x),v(f.y),v(f.z)));}
 function segmentFrame(p,parts,yaw,head){
- const forward=[Math.sin(yaw),0,-Math.cos(yaw)];
- if(p.id==='chest'){
-  const abdomen=parts.find(q=>q.id==='abdomen');
-  if(abdomen){const center=p.a.map((n,i)=>(n+p.b[i])*.5),up=center.map((n,i)=>n-abdomen.b[i]),axis=p.b.map((n,i)=>n-p.a[i]);
-   const front=[up[1]*axis[2]-up[2]*axis[1],up[2]*axis[0]-up[0]*axis[2],up[0]*axis[1]-up[1]*axis[0]];
-   if(Math.hypot(...front)>1e-8)return boneFrame(p.a,p.b,front);
-  }
- }
  if(p.id==='head'&&head){const f=boneFrame(p.a,p.a.map((n,i)=>n+head.up[i]),head.forward);return {...f,center:p.a,length:0};}
- if(p.id.endsWith('.hand')){const arm=parts.find(q=>q.id===p.id.replace('.hand','.lowerArm'));if(arm){const f=boneFrame(arm.a,arm.b,forward);return {...f,center:p.a,length:0};}}
- return boneFrame(p.a,p.b,forward);
+ if(p.id.endsWith('.hand')){const arm=parts.find(q=>q.id===p.id.replace('.hand','.lowerArm'));if(arm){const f=anatomicalBoneFrame(arm,parts,yaw);return {...f,center:p.a,length:0};}}
+ return anatomicalBoneFrame(p,parts,yaw);
 }
 function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;

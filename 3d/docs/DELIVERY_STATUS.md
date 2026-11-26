@@ -234,3 +234,7 @@ b772cea CI 45825659732: 259/260 (pitch bound), f87f0ef CI 45826695875: 260/261 (
 ### P4-M — устранение рывка кисти (26.11.2026)
 
 bfeebc7 CI 45841052541: tsc OK, 273/274; guard→run hand delta regression. Signed pitch/lateral angular interpolation вместо normalized lerp; tau run .21/guard .18. Численная проверка .1620→.0914 native/tick; расширена regression across108 combinations. Ринг9м/конечные позы сохранены, тесты не ослаблены. Новый CI ожидается.
+
+### P4-M — crawl frame / добивание (26.11.2026)
+
+ace1758 CI 45842588209 success. Anatomical box frames, nearest visible segment pursuit for grounded target, optional two-foot squat punch with shared IK/swept preview and smooth recovery. Regressions added; new CI, audit and visual acceptance pending.

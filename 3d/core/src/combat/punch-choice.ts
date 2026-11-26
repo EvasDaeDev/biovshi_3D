@@ -1,8 +1,9 @@
 import type {AuthoredMotion} from '../rig/authored-motion.js';
 import type { Vec3,PhysicsSegmentPose } from '../types.js';
+import {crouchPunchBase} from './crouch-punch.js';
 import { punchPose,usableArm,type Punch } from './strike.js';
 import { firstStrikeContact } from './swept-contact.js';
-export interface PunchChoice {side:'L'|'R';id:string;aim:Vec3;contactId:string;distance:number}
+export interface PunchChoice {side:'L'|'R';id:string;aim:Vec3;contactId:string;distance:number;crouch?:boolean}
 export function closestAim(origin:Vec3,part:PhysicsSegmentPose):Vec3{
  const v=part.b.map((x,i)=>x-part.a[i]!) as [number,number,number];
  const length=v[0]**2+v[1]**2+v[2]**2;
@@ -12,7 +13,8 @@ export function closestAim(origin:Vec3,part:PhysicsSegmentPose):Vec3{
 /** Select from attacks whose actual fixed-length IK can contact a live
  * damageable capsule in a static preview. The preview does not deal damage;
  * real moving geometry is still tested during thrust. */
-export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,sequence:number,motion?:AuthoredMotion,ground:(x:number,z:number)=>number=()=>0,score?:(choice:PunchChoice)=>number):PunchChoice|null{
+export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,sequence:number,motion?:AuthoredMotion,ground:(x:number,z:number)=>number=()=>0,score?:(choice:PunchChoice)=>number,crouch=false):PunchChoice|null{
+ const aimPose=crouch?crouchPunchBase(pose,yaw,1,ground):pose;
  const choices:PunchChoice[]=[];
  const order=['chest','L.lowerArm','R.lowerArm','head','abdomen','L.upperArm','R.upperArm','neck','pelvis','L.hand','R.hand','L.upperLeg','R.upperLeg'];
  for(const id of order){
@@ -20,10 +22,10 @@ export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly stri
   const part=victim.find(p=>p.id===id);if(!part)continue;
   for(const side of ['L','R'] as const){
    if(!usableArm(ids,side))continue;
-   const shoulder=pose.find(p=>p.id===side+'.upperArm')!.a,aim=closestAim(shoulder,part);
+   const shoulder=aimPose.find(p=>p.id===side+'.upperArm')!.a,aim=closestAim(shoulder,part);
    const distance=Math.hypot(shoulder[0]-aim[0],shoulder[1]-aim[1],shoulder[2]-aim[2]);
    if(distance>.68+part.radius+.083-.015+(motion?.stalk?.size ? .26 : motion ? .16 : 0))continue;
-   const punch:Punch={side,targetId:0,aim,start:0,yaw};
+   const punch:Punch={side,targetId:0,aim,start:0,yaw,...(crouch?{crouch:true}:{})};
    let before=punchPose(pose,punch,19,ground,motion),contactId:string|null=null;
    for(const age of [23,27,31]){
     const after=punchPose(pose,punch,age,ground,motion);
@@ -31,7 +33,7 @@ export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly stri
     if(contactId)break;
     before=after;
    }
-   if(contactId&&eligible(contactId))choices.push({side,id,aim,contactId,distance});
+   if(contactId&&eligible(contactId))choices.push({side,id,aim,contactId,distance,...(crouch?{crouch:true}:{})});
   }
  }
  if(score)return choices.reduce<PunchChoice|null>((best,c)=>!best||score(c)>score(best)?c:best,null);

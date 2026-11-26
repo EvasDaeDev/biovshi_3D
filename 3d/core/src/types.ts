@@ -134,6 +134,7 @@ export interface SimulationEvent {
   readonly targetId?: FighterId;
   readonly strikeKind?: StrikeKind;
   readonly proneStrike?: boolean;
+  readonly crouchStrike?: boolean;
   readonly sourceSegment?: SegmentId;
   readonly secondaryTargetId?: FighterId;
   readonly secondarySourceSegment?: SegmentId;
