@@ -31,6 +31,7 @@ import { ContactEpisodes, type SegmentContact } from './collision/contact-episod
 import { resolveCollisions, type CollisionStats } from './collision/resolve.js';
 import { PatientGait,type RigPose } from './rig/gait.js';
 import { FIXED_DT } from './fixed-clock.js';
+import {patientMotionProfile} from './animation/motion-profile.js';
 import {HuntState} from './combat/hunt-state.js';
 import {captureSegmentMotion} from './animation/handoff-motion.js';
 import type { FighterCommand, InputFrame, SimulationCore, SimulationEvent, WorldConfig, WorldSnapshot, PhysicsSegmentPose, DamageRequest } from './types.js';
@@ -106,8 +107,9 @@ export class LabSimulationCore implements SimulationCore {
         throw new RangeError('Invalid transform');
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
+      const motionProfile=patientMotionProfile(config.seed,f.id,authored?.stalk&&f.profile?(f.profile.temperament??'balanced'):undefined);
       return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad,scale!==1,authored),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),hunt:new HuntState(config.seed,f.id),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad,scale!==1,authored,motionProfile),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),hunt:new HuntState(config.seed,f.id,motionProfile),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
