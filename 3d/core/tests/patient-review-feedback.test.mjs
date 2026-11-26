@@ -23,7 +23,11 @@ test('tactical decisions depend on visible opening, threat and reachable source,
  const c={distance:.85,facing:0,grounded:false,opponent:idle,temperament:'balanced'};
  const arm={side:'L',id:'chest',contactId:'chest',aim:[0,1,0],distance:.45};
  const leg={...arm,contactId:'L.lowerLeg',distance:.7};
- assert.ok(attackScore('arm',arm,c)>attackScore('leg',leg,c));
+ // Close-range contact favors an arm; at the longer range a reachable
+ // kick has an explicit range advantage. Both must still pass real preview.
+ const close={...c,distance:.60};
+ assert.ok(attackScore('arm',arm,close)>attackScore('leg',leg,close));
+ assert.ok(attackScore('leg',leg,c)>attackScore('arm',arm,c));
  assert.ok(attackScore('leg',leg,{...c,grounded:true})>attackScore('arm',arm,{...c,grounded:true}));
  assert.ok(attackScore('arm',arm,{...c,lastKind:'arm',lastContact:'chest'})<attackScore('arm',arm,c));
  const threat={...c,opponent:{...idle,phase:'windup',source:'R.lowerArm'}};
