@@ -6,7 +6,8 @@ import { firstStrikeContact } from './swept-contact.js';
 export interface ExtraChoice extends PunchChoice {kind:'leg'|'head'}
 /** Evaluate real attack geometry before committing to a kick or head strike.
  * Bounded candidate list; actual contact still resolved at fixed ticks. */
-export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:'leg'|'head',ground:(x:number,z:number)=>number,motion?:AuthoredMotion,groundTarget=false):ExtraChoice|null{
+export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:'leg'|'head',ground:(x:number,z:number)=>number,motion?:AuthoredMotion,groundTarget=false,score?:(choice:PunchChoice)=>number):ExtraChoice|null{
+ let best:ExtraChoice|null=null;
  const targets=kind==='head'?['head','neck','chest','L.upperArm','R.upperArm']:['pelvis','abdomen','L.upperLeg','R.upperLeg','L.lowerLeg','R.lowerLeg','L.foot','R.foot'];
  // A grounded victim has its head, torso and arms at foot height.
  // Keep the accepted standing-victim target order; only broaden the grounded case.
@@ -24,10 +25,14 @@ export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly stri
    let before=punchPose(pose,p,19,ground,motion);
    for(const age of [23,27,31]){
     const after=punchPose(pose,p,age,ground,motion),contactId=firstStrikeContact(before,after,victim,victim,side,kind);
-    if(contactId){if(eligible(contactId))return {side,kind,id,aim,contactId,distance};break;}
+    if(contactId){if(eligible(contactId)){
+     const choice:ExtraChoice={side,kind,id,aim,contactId,distance};
+     if(!score)return choice;
+     if(!best||score(choice)>score(best))best=choice;
+    }break;}
     before=after;
    }
   }
  }
- return null;
+ return best;
 }

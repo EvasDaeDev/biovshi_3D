@@ -28,7 +28,7 @@ export class LocomotionMotion {
   this.pelvis=follow(this.pelvis,stride,dt,.055);
   this.chest=follow(this.chest,this.pelvis,dt,.12*this.profile.lag);
   this.arms=follow(this.arms,this.chest,dt,.17*this.profile.lag);
-  this.weight=follow(this.weight,support,dt,.09);
+  this.weight=follow(this.weight,support,dt,.12);
  }
  get sample(){return {drive:this.drive,pelvis:this.pelvis,chest:this.chest,arms:this.arms,weight:this.weight,inertia:this.inertia};}
 }

@@ -12,7 +12,7 @@ export function closestAim(origin:Vec3,part:PhysicsSegmentPose):Vec3{
 /** Select from attacks whose actual fixed-length IK can contact a live
  * damageable capsule in a static preview. The preview does not deal damage;
  * real moving geometry is still tested during thrust. */
-export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,sequence:number,motion?:AuthoredMotion,ground:(x:number,z:number)=>number=()=>0):PunchChoice|null{
+export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,sequence:number,motion?:AuthoredMotion,ground:(x:number,z:number)=>number=()=>0,score?:(choice:PunchChoice)=>number):PunchChoice|null{
  const choices:PunchChoice[]=[];
  const order=['chest','L.lowerArm','R.lowerArm','head','abdomen','L.upperArm','R.upperArm','neck','pelvis','L.hand','R.hand','L.upperLeg','R.upperLeg'];
  for(const id of order){
@@ -34,6 +34,7 @@ export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly stri
    if(contactId&&eligible(contactId))choices.push({side,id,aim,contactId,distance});
   }
  }
+ if(score)return choices.reduce<PunchChoice|null>((best,c)=>!best||score(c)>score(best)?c:best,null);
  // De-duplicate actual hit segments, prefer shortest source for each.
  const distinct=[...new Map(choices.sort((a,b)=>b.distance-a.distance).map(c=>[c.contactId,c])).values()];
  // Reachable chest remains an option; a depleted chest cannot be selected.

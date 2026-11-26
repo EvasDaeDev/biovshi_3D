@@ -7,13 +7,18 @@ const project=(a:Vec3,b:Vec3):Vec3=>{const d=dot(a,b);return [a[0]-d*b[0],a[1]-d
 export const HEAD_CAMERA_CLEARANCE=.05;
 /** Presentation frame for a spherical head: perception yaw, final neck tilt.
  * Does not alter horizontal P3 perception or the collision geometry. */
-export function headFrame(parts:readonly PhysicsSegmentPose[],gazeYaw:number):HeadFrame|null{
+export function headFrame(parts:readonly PhysicsSegmentPose[],gazeYaw:number,pitch?:number):HeadFrame|null{
  const h=parts.find(p=>p.id==='head');if(!h)return null;
  const n=parts.find(p=>p.id==='neck');
  const up:Vec3=n?norm([n.b[0]-n.a[0],n.b[1]-n.a[1],n.b[2]-n.a[2]],[0,1,0]):[0,1,0];
  const heading:Vec3=[Math.sin(gazeYaw),0,-Math.cos(gazeYaw)],right:Vec3=[Math.cos(gazeYaw),0,Math.sin(gazeYaw)];
  const lateral=project(right,up);
  const forward=Math.hypot(...lateral)<1e-5?norm(project(heading,up),[0,0,-1]):norm(cross(up,norm(lateral,right)),heading);
+ if(pitch!==undefined){
+  const aimed:Vec3=[Math.sin(gazeYaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(gazeYaw)*Math.cos(pitch)];
+  const crown=norm(project(up,aimed),[-Math.sin(gazeYaw)*Math.sin(pitch),Math.cos(pitch),Math.cos(gazeYaw)*Math.sin(pitch)]);
+  return {center:[(h.a[0]+h.b[0])/2,(h.a[1]+h.b[1])/2,(h.a[2]+h.b[2])/2],radius:h.radius,up:crown,forward:aimed};
+ }
  return {center:[(h.a[0]+h.b[0])/2,(h.a[1]+h.b[1])/2,(h.a[2]+h.b[2])/2],radius:h.radius,up,forward};
 }
 export function headCameraPosition(h:HeadFrame):Vec3{

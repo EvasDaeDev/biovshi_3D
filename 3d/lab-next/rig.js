@@ -74,6 +74,11 @@ function assertSnapshot(s){
  if(!n||s.roots?.length!==n*4||s.rigVersion!==2||s.rigSegments?.length!==n||s.mobilityModes?.length!==n||s.postures?.length!==n||s.bodyTerrainStates?.length!==n||s.oil?.length!==n||s.impacts?.length!==n||!Array.isArray(s.oilMarks)||s.strikes?.length!==n||!s.fight||s.health?.length!==n||s.lifeStates?.length!==n||s.balanceStates?.length!==n||s.stepCounts?.length!==n||s.footStates?.length!==n||s.hopHeights?.length!==n||s.hopPhases?.length!==n||s.supports?.length!==n||s.crawlAnchors?.length!==n||s.residualTraction?.length!==n||!s.damageStats||!s.collisionStats)throw new Error('Несогласованные файлы симуляции и рендера. Обновите страницу; сборка '+stats.dataset.build);
 }
 const scenario=document.getElementById('scenario'),patientCount=document.getElementById('patient-count');
+const seedInput=document.getElementById('round-seed');
+const requestedSeed=query.get('seed');
+if(requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff)seedInput.value=requestedSeed;
+function roundSeed(){const n=Number(seedInput.value);return Number.isInteger(n)&&n>=0&&n<=0xffffffff?n:7;}
+document.getElementById('new-seed').onclick=()=>{seedInput.value=String((roundSeed()+1)>>>0);void restoreScenario();};
 const requestedPatients=Number(new URLSearchParams(location.search).get('patients'));
 if(requestedPatients===2)patientCount.value='2';
 function authoredPatients(loc){return patientCount.value==='full'?loc.capacity:Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
@@ -102,7 +107,7 @@ function scenarioConfig(){
  }
  if(mode.startsWith('location-')){
   const location=selectedLocation();if(!location)throw Error('Неизвестная авторская 3D арена');
-  return createAuthoredCombatConfig(7,location,authoredPatients(location));
+  return createAuthoredCombatConfig(roundSeed(),location,authoredPatients(location));
  }
 if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
 function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
@@ -205,6 +210,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(p
    try{await saveFloorHistory(floorSession,arena,saved);}
    catch(error){warning='Следующий раунд запущен, но запись пола не удалась: '+error.message;}
    if(operation!==floorOperation||arena!==floorArenaId())return;
+   if(scenario.value==='location-ring')seedInput.value=String((roundSeed()+1)>>>0);
    reset(saved);
    if(warning)floorStatus.textContent=warning;
    else floorStatus.textContent+=' Сохранено в IndexedDB ('+floorSession+').';

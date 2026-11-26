@@ -181,7 +181,7 @@ export class PatientGait {
     }
     const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+FOOT_RADIUS,z];};
     let weightSide:-1|0|1=0,preparing=false;
-    if(!holdFeet&&support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&this.stepWait<=1e-8){
+    if(!holdFeet&&support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&(this.stepWait<=1e-8||this.organic&&this.stepWait<=.10)){
       const moving=Math.abs(speed)>.055,lead=moving?plan.lead:0;
       const error=(i:number)=>{const f=this.feet[i]!,p=ideal(i===0?-1:1,0);return Math.hypot(f.plant[0]-p[0],f.plant[2]-p[2]);};
       let index=this.next;
@@ -190,16 +190,16 @@ export class PatientGait {
       // At low speeds wait until there is a meaningful displacement; at
       // normal speed the alternating cadence gives a full stance interval.
       const separation=Math.hypot(f.plant[0]-target[0],f.plant[2]-target[2]);
-      const threshold=moving?.16:.13;
+      const threshold=this.organic?(moving?.13:.13):(moving?.16:.13);
       let loaded=true;
       if(this.organic&&this.proneAmount===0&&separation>threshold*.70){
         preparing=true;weightSide=index===0?1:-1;
         loaded=this.motion.prepare(index===0?0:1,dt);
       }
-      if(separation>threshold&&loaded){
+      if(separation>threshold&&loaded&&this.stepWait<=1e-8){
         f.start=f.plant;f.target=target;f.phase=0;f.moving=true;
         const swing=moving?plan.swing:.32,lift=moving?plan.lift:.07;
-        const timing=this.organic?organicSwing(index===0?0:1,swing,lift,this.motionProfile.asymmetry):{duration:swing,lift};
+        const timing=this.organic?organicSwing(index===0?0:1,swing,lift,this.motionProfile.asymmetry*.5):{duration:swing,lift};
         f.duration=timing.duration;f.lift=timing.lift;
         this.next=1-index;this.stepWait=moving?plan.interval:.50;this.steps++;
         preparing=false;
@@ -214,7 +214,7 @@ export class PatientGait {
       this.motion.advance(dt,this.proneAmount===0?speed:0,phase,this.proneAmount===0?weightSide:0);
     }
   }
-  pose(id:number,root:Vec3,yaw:number,t:number,_hurt=false,look=0,reaction?:ImpactMotionSample):readonly RigPose[]{
+  pose(id:number,root:Vec3,yaw:number,t:number,_hurt=false,look=0,reaction?:ImpactMotionSample,gazePitch=-.14):readonly RigPose[]{
     if(this.knockdownMotion&&!this.knockdownRising&&this.proneAmount===0)return this.knockdownMotion.source(root);
     const secondary=this.organic?this.motion.sample:null;
     const reactive=this.organic&&reaction&&this.proneAmount===0&&this.hopSample.phase!=='flight'?reaction:null;
@@ -227,7 +227,7 @@ export class PatientGait {
     const gaitPhase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
     const lean=(secondary?secondary.drive*(.045+this.runAmount*.055)+secondary.inertia*.025:Math.sign(this.signedSpeed)*moving*(.045+this.runAmount*.055))+Math.sin(t*.72+id)*.012,bob=moving*.012*(1-Math.abs(gaitPhase))+breathing*.006;
     const preload=this.hopSample.crouch??0;
-    const stanceDrop=preload+(reactive?.compression??0)+(this.groundedStride?moving*(.012+.018*this.runAmount):this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0);
+    const stanceDrop=preload+(reactive?.compression??0)+(this.groundedStride?moving*(.012+.018*this.runAmount+(this.organic?.028:0)):this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0);
     const base=this.authored?.stance;
     const expressive=this.expressive??base;
     const center=(part:RigPose):Vec3=>mix(part.a,part.b,.5);
@@ -257,7 +257,7 @@ export class PatientGait {
     put('abdomen',add(hip,[0,.035,0]),add(chestPose,[0,-.095,0]));
     put('chest',shoulderAt(-1),shoulderAt(1));const referenceHead=expressive?.get('head'),referenceChest=baseChest?center(baseChest):undefined;
     const headBias:Vec3=referenceHead&&referenceChest?[Math.max(-.085,Math.min(.085,(referenceHead.a[0]-referenceChest[0])*.55)),0,Math.max(-.10,Math.min(.10,(referenceHead.a[2]-referenceChest[2])*.55))]:[0,0,0];
-    const looking=add(add(add(head,headBias),torsoHit),add(headHit,[Math.sin(look)*.09,0,-Math.abs(look)*.04]));put('neck',chestPose,add(looking,[0,-.14,0]));put('head',looking);
+    const looking=add(add(add(head,headBias),torsoHit),add(headHit,[Math.sin(look)*.09,this.organic?-.025*Math.max(0,-gazePitch):0,-Math.abs(look)*.04+(this.organic?.065*Math.min(0,gazePitch):0)]));put('neck',chestPose,add(looking,[0,-.14,0]));put('head',looking);
     for(let i=0;i<2;i++){
       const side=i===0?-1:1,key=i===0?'L.':'R.',hipRoot=hipAt(side),shoulder=shoulderAt(side);
       const foot=local(this.feet[i]!.plant);
@@ -293,7 +293,7 @@ export class PatientGait {
       if(lift>0)return fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])}));
       if(single)return fixed;
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
-      return balanceStandingPose(fixed,this.active,stance,this.ground);
+      return balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0}:undefined);
     }
     const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground);
     if(this.knockdownMotion){
