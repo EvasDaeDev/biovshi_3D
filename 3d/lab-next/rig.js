@@ -1,7 +1,7 @@
 import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
-import {manualInput} from './manual-control.js';
+import {manualInput,capturesTextInput} from './manual-control.js';
 import {Playback} from './playback.js';
 import {reviewInput,measureMotion} from './motion-review.js';
 import {OilMarks} from './oil.js';
@@ -173,7 +173,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
 const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyJ','KeyK','KeyL']);
-addEventListener('keydown',e=>{if(controls.has(e.code)&&!['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
+addEventListener('keydown',e=>{if(controls.has(e.code)&&!capturesTextInput(document.activeElement)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const input=()=>scenario.value==='motion-review'?reviewInput(currentFrame.state.tick).input:manualInput(currentFrame.state.fighterIds,currentFrame.state.lifeStates,controlPatient.value,has,scenario.value==='fall');
 document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);keys.clear();last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};

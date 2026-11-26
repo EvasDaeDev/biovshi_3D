@@ -140,3 +140,9 @@ Lab: отдельный control-patient (all AI / конкретный ID), W/S,
 ### Исправление CI effa039 (26.11.2026)
 
 [CI 45733878575](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45733878575): build TypeScript успешен, 238/239 тестов прошли, deploy пропущен. В movement-control-variety.test.mjs ошибочно экранирован regex удаления R.leg, поэтому fixture сохранял обе ноги и не мог пройти assert.ok(flight). Заменён на явный Set трёх ID, проверены удаление трёх сегментов, single-support, наличие L.foot и отсутствие удалённых капсул. Проверки полёта и прекращения движения сохранены без ослабления; runtime не изменён. Новый CI ожидается.
+
+### Исправление browser smoke fc38ecc (26.11.2026)
+
+[CI 45787417000](https://github.com/EvasDaeDev/biovshi_3D/actions/runs/45787417000): 239/239 Node tests, P4 capacity/CPU, P3 integrated audit прошли; Chromium timeout на hill traversal (smoke-preview.mjs:111), deploy пропущен. После debug checkbox handler блокировал движение на любом INPUT; новая capturesTextInput блокирует только редактирование текста/чисел/contenteditable, при входе в поле очищает keys. Регрессия явно фокусирует terrain-debug перед W, проверяет выбранный ID=0, сохраняет исходный порог подъёма .11 м и добавляет diagnostic snapshot на timeout. Unit test добавлен. Это исправление установленного дефекта UI, окончательная причина timeout проверяется новым CI; физика/скорости не изменены.
+
+Результаты audit этого CI: ring seed19 завершился за 57.567 s, 52 hits, 71 windups, p95 integrated 4.503 ms; motion review seed7: walk local peak .1833 m, brake .1321 m, combat leg thrust .6422 m/126.12°, combat step p95 5.670 ms. Существенная регрессия плавности и CPU после ускорения/дополнительных preview, требует отдельной коррекции; успешный Node audit не означает художественную приёмку. P4 открыт.

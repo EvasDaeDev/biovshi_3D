@@ -107,8 +107,16 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.balance==='standing'&&Number(d.tick)>100;},{},{timeout:30000});
  await page.locator('#scenario').selectOption('terrain-hill');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.graded==='4'&&Number(d.tick)>4;},{},{timeout:45000});
+ assert.equal(await page.locator('#control-patient').inputValue(),'0','hill uses selected patient zero');
+ // Regression: a focused debug checkbox must not capture movement keys.
+ await page.locator('#terrain-debug').focus();
  await page.keyboard.down('KeyW');
- try{await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.y)>.11,{},{timeout:30000});}finally{await page.keyboard.up('KeyW');}
+ try{
+  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.y)>.11,{},{timeout:30000});
+ }catch(error){
+  const diagnostic=await page.evaluate(()=>({stats:{...document.getElementById('stats').dataset},control:document.getElementById('control-patient').value,focused:document.activeElement?.id,focusType:document.activeElement?.type}));
+  throw new Error('Hill traversal failed: '+JSON.stringify(diagnostic)+'; browser errors: '+errors.join('; '),{cause:error});
+ }finally{await page.keyboard.up('KeyW');}
  await page.locator('#scenario').selectOption('walk');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&document.getElementById('stats')?.dataset.mode==='biped');
  await page.locator('#next-round').click();

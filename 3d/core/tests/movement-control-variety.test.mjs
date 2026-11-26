@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {FightVariety} from '../dist/combat/fight-variety.js';
 import {HORROR_MOVEMENT,HORROR_CRAWL_TIMING,CRAWL_TIMING,bipedStep,horrorBipedStep} from '../dist/rig/movement-timing.js';
-import {manualInput} from '../../lab-next/manual-control.js';
+import {manualInput,capturesTextInput} from '../../lab-next/manual-control.js';
 import {LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
 import {referencePose} from '../dist/rig/pose-editor.js';
 const dt=FIXED_DT;
@@ -43,4 +43,13 @@ test('authored travel profile increases pace and reach; one leg stops hopping at
  const stopped=core.getSnapshot();assert.equal(stopped.hopPhases[0],'idle');
  for(let i=0;i<60;i++){const s=step(0);assert.equal(s.hopPhases[0],'idle');assert.equal(s.roots[2],stopped.roots[2]);}
  core.dispose();
+});
+
+test('debug checkbox focus never captures motion keys; editing seed or text does',()=>{
+ for(const type of ['checkbox','radio','button','range'])assert.equal(capturesTextInput({tagName:'INPUT',type}),false,type);
+ for(const type of ['number','text','search','password'])assert.equal(capturesTextInput({tagName:'INPUT',type}),true,type);
+ assert.equal(capturesTextInput({tagName:'TEXTAREA'}),true);
+ assert.equal(capturesTextInput({tagName:'DIV',isContentEditable:true}),true);
+ assert.equal(capturesTextInput({tagName:'BODY'}),false);
+ assert.equal(capturesTextInput(null),false);
 });
