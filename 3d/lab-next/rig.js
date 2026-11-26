@@ -1,6 +1,8 @@
 import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
+import {Playback} from './playback.js';
+import {reviewInput,measureMotion} from './motion-review.js';
 import {OilMarks} from './oil.js';
 import {loadFloorHistory,saveFloorHistory,clearFloorHistory} from './floor-storage.js';
 import RAPIER from '@rapier';
@@ -50,9 +52,18 @@ function drawSupport(state){supportGroup.visible=supportDebug.checked;if(!suppor
 const terrainDebug=document.getElementById('terrain-debug'),bodyConeMaterial=new THREE.MeshBasicMaterial({color:0xffca62,wireframe:true});
 const moundMeshes=new Map(),cone=new THREE.ConeGeometry(1,1,14),moundMaterial=new THREE.MeshStandardMaterial({color:0x4d574c,roughness:1,flatShading:true});
 let paused=false,last=null,frameRequest=0,checkSnapshot=true,floorOperation=0;
+const playback=new Playback(clock),stepButton=document.getElementById('frame-step'),rateInput=document.getElementById('playback-rate');
+let motionPeak=null,motionLast=null;
 let previousFrame=null,currentFrame=null;
 const captureFrame=()=>({state:core.getSnapshot(),debris:debris.snapshot()});
 function resetFrameHistory(){previousFrame=currentFrame=captureFrame();}
+function tickFrame(t){
+ previousFrame=currentFrame;advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();
+ if(scenario.value==='motion-review'){
+  motionLast=measureMotion(previousFrame.state,currentFrame.state);
+  if(!motionPeak||motionLast.max>motionPeak.max)motionPeak=motionLast;
+ }
+}
 const query=new URLSearchParams(location.search);
 const requestedSession=query.get('session');
 const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:'lab-preview';
@@ -72,18 +83,23 @@ const queueDamage=amount=>{if(scenario.value==='damage'&&!paused)pendingDamage={
 document.getElementById('damage-hit').onclick=()=>queueDamage(1);document.getElementById('damage-crit').onclick=()=>queueDamage(2);
 const requestedScenario=new URLSearchParams(location.search).get('scenario');
 if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario))scenario.value=requestedScenario;
-function selectedLocation(){return scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
+function selectedLocation(){return scenario.value==='motion-review'?authoredLocations.ring:scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
 function floorArenaId(){
  const location=selectedLocation();
  const ring=location??(scenario.value.startsWith('duel')?authoredLocations.ring:null);
  const revision=ring?.terrain?.revision??ring?.floorRevision;
- const scope=location?.id??scenario.value;
+ const scope=scenario.value==='motion-review'?'motion-review':location?.id??scenario.value;
  return revision?scope+'@'+revision+'-165':scope+'@165';
 }
 function scenarioConfig(){
  const mode=scenario.value,base=createLabConfig(7);
  const cfg=mode.startsWith('duel')?{...base,location:authoredLocations.ring}:base;
  if(mode==='terrain-hill')return {...cfg,labDynamicBalance:true,gradedSurface:lowHill(),fighters:[{...cfg.fighters[0],origin:[0,0,1.7],yawRad:0}]};
+ if(mode==='motion-review'){
+  const review=createAuthoredCombatConfig(7,authoredLocations.ring,2);
+  return {...review,combatEnabled:false,expandedStrikes:false,escapeCombat:false,perceptionCombat:false,labContactFracture:false,labDynamicBalance:false,
+   fighters:review.fighters.map((f,i)=>({...f,origin:[i===0?-1.2:1.2,0,1.05],yawRad:0}))};
+ }
  if(mode.startsWith('location-')){
   const location=selectedLocation();if(!location)throw Error('Неизвестная авторская 3D арена');
   return createAuthoredCombatConfig(7,location,authoredPatients(location));
@@ -132,7 +148,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}clock.reset();keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values())scene.remove(m);debrisMeshes.clear();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses:authoredLocations.ring.patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -140,10 +156,12 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
 const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
-addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();clock.reset();last=null;if(currentFrame)resetFrameHistory();});
+addEventListener('keydown',e=>{if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
-const input=()=>scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight'),jump:!!has('Space')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
-document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.target.textContent=paused?'Продолжить':'Пауза';};
+const input=()=>scenario.value==='motion-review'?reviewInput(currentFrame.state.tick).input:scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||selectedLocation()?{commands:[]}:({commands:[{fighterId:0,forward:has('KeyW','ArrowUp')-has('KeyS','ArrowDown'),turn:has('KeyD','ArrowRight')-has('KeyA','ArrowLeft'),sprint:!!has('ShiftLeft','ShiftRight'),jump:!!has('Space')},...(scenario.value==='fall'?[{fighterId:1,forward:0,turn:0,sprint:false}]:[])]});
+document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);keys.clear();last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};
+ rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
+ stepButton.onclick=()=>{if(stats.dataset.state==='running'&&paused)playback.requestStep();};
  function suspendRound(message){
   if(frameRequest)cancelAnimationFrame(frameRequest);
   frameRequest=0;last=null;keys.clear();
@@ -172,7 +190,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
   if(warning)floorStatus.textContent=warning;
  };
  scenario.onchange=()=>{void restoreScenario();};
- patientCount.onchange=()=>{if(selectedLocation())void restoreScenario();};
+ patientCount.onchange=()=>{if(selectedLocation()&&scenario.value!=='motion-review')void restoreScenario();};
  document.getElementById('next-round').onclick=async()=>{
   // A premature click must not invalidate an in-flight load or clear.
   if(stats.dataset.state!=='running'){floorStatus.textContent='Дождитесь загрузки арены.';return;}
@@ -196,7 +214,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;keys.clear();e.targe
 addEventListener('resize',()=>{cameraControl.resize(innerWidth/innerHeight);renderer.setSize(innerWidth,innerHeight);});
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4(),priorRotation=new THREE.Quaternion();
 function frameRotation(f,out){return out.setFromRotationMatrix(basis.makeBasis(v(f.x),v(f.y),v(f.z)));}
-function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;clock.advance(dt,t=>{previousFrame=currentFrame;advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();},paused||document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=paused?1:clock.alpha;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
+function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;
  s.rigSegments.forEach((parts,i)=>{
   const j=prior.fighterIds.indexOf(s.fighterIds[i]),oldParts=j>=0?prior.rigSegments[j]:null;
@@ -258,7 +276,12 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  stats.dataset.drawnRoutes=String(routeLines.filter(l=>l?.visible).length);
  stats.dataset.drawnVision=String(visionFields.filter(f=>f?.visible).length);
  stats.dataset.routes=String(s.routes.filter(r=>r.length).length);stats.dataset.visible=s.perception.map(p=>p.visibleIds.length).join('/');stats.dataset.active=String(s.lifeStates.filter(v=>v==='active').length);stats.dataset.targets=s.tactics.map(t=>t.targetId===null?'-':t.targetId).join('/');stats.dataset.tactics=s.tactics.map(t=>t.mode).join('/');stats.dataset.escapes=String(s.escapes.filter(e=>e.plan).length);
- stats.dataset.traits=s.patientTraits.map(t=>t.temperament+':'+Math.round(t.criticalChance*100)+'%').join('/');stats.dataset.strike=s.strikes.map(v=>v.phase==='idle'?'idle':(v.prone?'prone:':'')+v.kind+':'+v.phase).join('/');stats.dataset.hits=String(s.damageStats.hits);stats.dataset.fight=s.fight.ended?'ended':'running';stats.dataset.winner=s.fight.winnerId===null?'':String(s.fight.winnerId);
+ stats.dataset.hunts=(s.hunts??[]).map(h=>h.phase).join('/');
+  stats.dataset.playback=String(playback.rate);stats.dataset.reviewPhase=scenario.value==='motion-review'?reviewInput(s.tick).phase:'';
+  stats.dataset.motionPeak=motionPeak?motionPeak.max.toFixed(4):'';
+  const motionStatus=document.getElementById('motion-status');motionStatus.hidden=scenario.value!=='motion-review';
+  if(!motionStatus.hidden)motionStatus.textContent='Фаза: '+stats.dataset.reviewPhase+' | Δ/тик: '+((motionLast?.max??0)*100).toFixed(2)+' см | пик: '+((motionPeak?.max??0)*100).toFixed(2)+' см'+(motionPeak?.segment?' (№'+motionPeak.fighterId+' '+motionPeak.segment+', тик '+motionPeak.tick+')':'');
+  stats.dataset.traits=s.patientTraits.map(t=>t.temperament+':'+Math.round(t.criticalChance*100)+'%').join('/');stats.dataset.strike=s.strikes.map(v=>v.phase==='idle'?'idle':(v.prone?'prone:':'')+v.kind+':'+v.phase).join('/');stats.dataset.hits=String(s.damageStats.hits);stats.dataset.fight=s.fight.ended?'ended':'running';stats.dataset.winner=s.fight.winnerId===null?'':String(s.fight.winnerId);
  stats.dataset.settledSingles=String(falling.filter(d=>d.branchId===undefined&&d.settled).length);stats.dataset.visibleCones=String([...moundMeshes.values()].filter(m=>m.visible).length);stats.dataset.ragdollBodies=String(debris.bodySnapshot().reduce((n,b)=>n+b.dynamicBodies,0));stats.dataset.ragdollJoints=String(debris.bodySnapshot().reduce((n,b)=>n+b.joints,0));
  stats.dataset.detachedBranches=String(debris.branchSnapshot().length);stats.dataset.branchSegments=String(debris.branchSnapshot().reduce((n,b)=>n+b.parts.length,0));
  stats.dataset.bodyCones=String(debris.moundSnapshot().filter(m=>m.source==='body').length);stats.dataset.settled=String(s.bodyTerrainStates.filter(Boolean).length);stats.dataset.incapacitated=String(s.lifeStates.filter(v=>v==='incapacitated').length);stats.dataset.fallReasons=s.health.map(h=>h.cause??'-').join('/');stats.dataset.lyingBodies=String(debris.bodySnapshot().filter(b=>{const p=b.parts.find(p=>p.id==='pelvis'),c=b.parts.find(p=>p.id==='chest');if(!p||!c)return b.settled;const v=c.a.map((x,i)=>(x+c.b[i]-p.a[i]-p.b[i])*.5);return Math.abs(v[1])<Math.hypot(...v)*.45;}).length);stats.dataset.bodySegments=String(debris.bodySnapshot().reduce((n,b)=>n+b.parts.length,0));stats.dataset.balance=s.balanceStates[0];stats.dataset.steps=String(s.stepCounts[0]);const support=s.supports[0],anchors=s.crawlAnchors[0],traction=s.residualTraction[0];stats.dataset.traction=String(traction?.scale??0);stats.dataset.tractionContacts=String(traction?.contacts.length??0);stats.dataset.planted=String(anchors.filter(a=>a.valid).length);drawSupport(support);stats.dataset.supportCount=String(support.contacts.length);

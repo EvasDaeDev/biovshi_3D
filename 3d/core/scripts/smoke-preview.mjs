@@ -35,6 +35,16 @@ try{
  await page.waitForFunction(()=>document.getElementById('stats')?.textContent.includes('PAUSED'));
  await page.locator('#reset').click();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===0);
+ await page.locator('#scenario').selectOption('motion-review');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.patients==='2'&&d.reviewPhase==='idle'&&Number(d.tick)===0;});
+ await page.locator('#playback-rate').selectOption('0.25');
+ await page.locator('#frame-step').click();
+ await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===1);
+ await page.locator('#frame-step').click();
+ await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)===2);
+ assert.equal(await page.locator('#stats').getAttribute('data-hits'),'0');
+ assert.equal(await page.locator('#stats').getAttribute('data-playback'),'0.25');
+ await page.locator('#playback-rate').selectOption('1');
  await page.locator('#pause').click();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.tick)>2);
  await page.locator('#scenario').selectOption('duel');
