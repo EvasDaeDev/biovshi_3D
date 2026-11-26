@@ -210,3 +210,7 @@ ebba0cd прошёл CI 45811257465. Ring 22 hits/34 attempts, p95 2.059ms; walk
 ### P4-M — human pace and sprint cycle (26.11.2026)
 
 b772cea CI 45825659732 failed outdated pitch bound; updated normal/urgent regression. Healthy walk target1.8 m/s max2.2, sprint target6.25 range5.5–7, separate running swing overlap + bounded landing, braking/turn control. New CI and measured performance/visual acceptance pending.
+
+### P4-M — исправление sprint regression (26.11.2026)
+
+b772cea CI 45825659732: 259/260 (pitch bound), f87f0ef CI 45826695875: 260/261 (sprint 2.89 m/s вместо 6.25). Gaze test исправлен в f87f0ef; новый fix устраняет повторное отключение sprint на reach-limited tick, планирует landing по drive speed и квантованному stance/swing. Тесты дополнены измерениями 5.5/6.25/7 m/s и sustained block. Новый CI ожидается; исходный 2D и legacy без изменений.

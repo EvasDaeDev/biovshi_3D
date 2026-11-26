@@ -31,11 +31,12 @@ test('healthy run reaches requested speed range with alternating takeoffs and ov
  assert.ok(patientDriveSpeed(-1,true,1)<0&&patientDriveSpeed(-1,true,1)>=-2.2);
  const run=speed=>{
   const g=new PatientGait([0,0,0],0,true,motion);
-  let root=[0,0,0],old=g.footStates,start=0,last=-1,steps=0,air=0;
+  let root=[0,0,0],old=g.footStates,start=0,last=-1,steps=0,air=0,stalls=0;
   for(let i=0;i<360;i++){
    const d=g.travel(dt,speed,mobility,0,root,0,i*dt,()=>0);
    root=[0,0,root[2]-d];g.advance(root,0,d/dt,dt,()=>0,mobility,ids,undefined,false,0,speed);
    const f=g.footStates;
+   if(i>=60&&d<1e-8)stalls++;
    if(f.every(v=>v.moving))air++;
    if(speed<=4.3)assert.ok(f.filter(v=>v.moving).length<=1);
    for(let j=0;j<2;j++){
@@ -45,11 +46,31 @@ test('healthy run reaches requested speed range with alternating takeoffs and ov
    if(i%12===0)for(const p of g.pose(0,root,0,i*dt))assert.ok(Math.abs(dist(p.a,p.b)-LAB_SEGMENTS.find(v=>v.id===p.id).nominalLength)<1e-7,p.id);
    if(i===59)start=root[2];old=f;
   }
-  return {pace:(start-root[2])/5,steps,air};
+  return {pace:(start-root[2])/5,steps,air,stalls};
  };
  const walk=run(1.8/.81),fast=run(HORROR_MOVEMENT.sprintSpeed/.81);
  assert.ok(fast.pace*.81>=5.5&&fast.pace*.81<=7.0,JSON.stringify({walk,fast}));
  assert.ok(fast.air>30&&walk.air===0);
  assert.ok(fast.steps>walk.steps);
+ // The full requested range must be real travel, not configured speed.
+ for(const requested of [5.5,6.25,7]){
+  const result=requested===6.25?fast:run(requested/.81);
+  assert.ok(Math.abs(result.pace*.81-requested)<.05,JSON.stringify({requested,result}));
+  assert.equal(result.stalls,0,JSON.stringify({requested,result}));
+ }
  assert.ok(horrorRunStep(7.7).swing>horrorRunStep(7.7).interval);
+});
+
+test('running cycle survives a brief constrained tick but exits on sustained blocking',()=>{
+ const g=new PatientGait([0,0,0],0,true,motion),speed=6.25/.81;
+ let root=[0,0,0];
+ for(let i=0;i<180;i++){
+  const d=g.travel(dt,speed,mobility,0,root,0,i*dt,()=>0);
+  root=[0,0,root[2]-d];g.advance(root,0,d/dt,dt,()=>0,mobility,ids,undefined,false,0,speed);
+ }
+ assert.equal(g.running,true);
+ g.advance(root,0,0,dt,()=>0,mobility,ids,undefined,false,0,speed);
+ assert.equal(g.running,true);
+ for(let i=0;i<18;i++)g.advance(root,0,0,dt,()=>0,mobility,ids,undefined,false,0,speed);
+ assert.equal(g.running,false);
 });

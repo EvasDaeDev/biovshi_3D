@@ -1,3 +1,4 @@
+import {FIXED_DT} from '../fixed-clock.js';
 /** Native 3D movement profile. Source: src/config.js movement/idle,
  * src/robot/locomotion.js and src/robot/scenes.js in the local v1 reference.
  * No runtime import from the 2D game.
@@ -62,7 +63,12 @@ export function patientDriveSpeed(forward:number,sprint:boolean,multiplier:numbe
 export function horrorRunStep(speed:number,tempo=1){
  const v=Math.min(HORROR_MOVEMENT.maxRunSpeed,Math.max(0,speed));
  // Keep the stance distance within the same anatomical envelope as walking.
- const interval=Math.min(.22*tempo,Math.max(.185,1.62/Math.max(1,v)));
- const swing=interval+Math.max(.075,interval*.43);
+ // Quantize both clocks together. Stance lasts 2*interval-swing;
+ // cap its travel below the available .47 front + .55 rear reach.
+ // Otherwise tick rounding alone can introduce a recurrent root stall.
+ const intervalTicks=Math.max(10,Math.round(Math.min(.22*tempo,Math.max(.185,1.62/Math.max(1,v)))/FIXED_DT));
+ const stanceTicks=Math.max(1,Math.floor(.98/(Math.max(1,v)*FIXED_DT)));
+ const swingTicks=Math.max(intervalTicks+5,2*intervalTicks-stanceTicks);
+ const interval=intervalTicks*FIXED_DT,swing=swingTicks*FIXED_DT;
  return {interval,swing,lead:v*swing+.47,lift:.25+.04*Math.min(1,v/8.7)};
 }

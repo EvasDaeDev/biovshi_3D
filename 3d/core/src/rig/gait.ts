@@ -27,7 +27,7 @@ const dist=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 interface Foot { plant:Vec3; start:Vec3; target:Vec3; phase:number; moving:boolean; duration:number; lift:number; running?:boolean }
 export interface RigPose { readonly id:string; readonly a:Vec3; readonly b:Vec3; readonly radius:number }
 export class PatientGait {
-  private sprintCycle=false;private sprintBob=0;
+  private sprintCycle=false;private sprintBob=0;private sprintSlow=0;
   get running():boolean{return this.sprintCycle;}
   get runningAirborne():boolean{return this.sprintCycle&&this.feet.every(f=>f.moving&&f.phase>.10&&f.phase<.90);}
   private moveAmount=0; private next=0;private stepWait=0;private steps=0;private runAmount=0;private signedSpeed=0;
@@ -133,7 +133,7 @@ export class PatientGait {
     this.mobility=mobility;this.active=active;this.ground=ground;
     const support=mobility.support;
     if(forcedProne!==undefined){
-      this.sprintCycle=false;this.sprintBob=0;
+      this.sprintCycle=false;this.sprintBob=0;this.sprintSlow=0;
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const amount=clamp(forcedProne);
       if(this.knockdownMotion&&amount<this.proneAmount)this.knockdownRising=true;
@@ -162,7 +162,10 @@ export class PatientGait {
     // A moving patient enters the separate run cycle only after actual
     // acceleration, and leaves it on braking, sharp turns or lost support.
     const wasRunning=this.sprintCycle;
-    this.sprintCycle=this.organic&&mobility.mode==='biped'&&this.proneAmount===0&&!holdFeet&&this.hopSample.phase==='idle'&&plannedSpeed>(wasRunning?4.3:5.1)&&speed>(wasRunning?2.8:3.2)&&Math.abs(turnRate)<1.6;
+    // A single reach-limited tick is not braking intent. Sustained lack
+    // of progress, e.g. against a wall, still cancels the running cycle.
+    this.sprintSlow=wasRunning&&speed<2.8?this.sprintSlow+dt:0;
+    this.sprintCycle=this.organic&&mobility.mode==='biped'&&this.proneAmount===0&&!holdFeet&&this.hopSample.phase==='idle'&&plannedSpeed>(wasRunning?4.3:5.1)&&(wasRunning?this.sprintSlow<.20:speed>3.2)&&Math.abs(turnRate)<1.6;
     if(this.sprintCycle&&!wasRunning)this.stepWait=Math.min(this.stepWait,.10);
     const plan=this.organic?horrorBipedStep(plannedSpeed,this.motionProfile.strideTempo):bipedStep(speed);
     this.signedSpeed=speed;
@@ -197,14 +200,19 @@ export class PatientGait {
       // Running feet may adjust their airborne landing point on braking
       // or collision; a planted foot is never relocated by this path.
       if(f.running){
-        const left=(1-f.phase)*f.duration,pace=Math.max(0,Math.min(speed,plannedSpeed,HORROR_MOVEMENT.maxRunSpeed));
+        // Current root already includes this tick's travel. Predict only
+        // the remaining travel AFTER the upcoming swing phase update.
+        const left=Math.max(0,(1-f.phase)*f.duration-dt);
+        const predicted=this.sprintCycle&&this.sprintSlow<.10?plannedSpeed:speed;
+        const pace=Math.max(0,Math.min(predicted,plannedSpeed,HORROR_MOVEMENT.maxRunSpeed));
         const lead=pace*left+.47*Math.min(1,pace/5),side=i===0?-1:1;
         const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;
         const goal:Vec3=[x,ground(x,z)+FOOT_RADIUS,z],error=dist(f.target,goal);
         // Retarget gradually, especially when a sprint meets a wall.
-        if(!this.sprintCycle||error>.23)f.target=mix(f.target,goal,Math.min(1,.24/Math.max(1e-8,error)));
+        f.target=mix(f.target,goal,Math.min(1,.24/Math.max(1e-8,error)));
       }
       f.phase=Math.min(1,f.phase+dt/f.duration);
+      if(f.running&&f.phase>1-1e-9)f.phase=1;
       const t=f.phase*f.phase*(3-2*f.phase),p=mix(f.start,f.target,t);
       f.plant=[p[0],Math.max(ground(p[0],p[2])+FOOT_RADIUS,p[1]+(this.organic?Math.sin(Math.PI*f.phase)**2:Math.sin(Math.PI*f.phase))*f.lift),p[2]];
       if(f.phase===1){f.moving=false;f.running=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
