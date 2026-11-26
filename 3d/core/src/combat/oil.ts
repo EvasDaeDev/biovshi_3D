@@ -2,8 +2,8 @@ import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import { LAB_SEGMENTS } from '../rig/anatomy.js';
 import { FIXED_DT } from '../fixed-clock.js';
 /** Source: v1 config, render/effects.js, game/loop.js.
- * V1 bleeding: leaks at surviving stumps, terminal countdown only after
- * loss of all working limbs. No invented global oil-volume health meter. */
+ * Leaks at surviving stumps and seeded 10–15 s loss of consciousness.
+ * Chest destruction uses the same timer without requiring an open stump. */
 export const OIL=Object.freeze({minInterval:.5,maxInterval:.7,limit:2000,drySeconds:18,failureMin:10,failureMax:15});
 export interface OilMark {readonly id:number;readonly fighterId:number;readonly point:Vec3;readonly tick:number}
 export interface OilSnapshot {readonly wounds:readonly string[];readonly failureTick:number|null;readonly remainingTicks:number|null}
@@ -22,10 +22,10 @@ export class OilState{
   const parent=parentById.get(root);
   if(parent&&active.includes(parent))this.wounds.set(root,{id:root,parent,nextTick:tick+span(OIL.minInterval,OIL.maxInterval,random())});
  }
- advance(tick:number,active:readonly string[],pose:()=>readonly PhysicsSegmentPose[],random:()=>number,emit:(id:string,origin:Vec3)=>void):boolean{
+ advance(tick:number,active:readonly string[],pose:()=>readonly PhysicsSegmentPose[],random:()=>number,emit:(id:string,origin:Vec3)=>void,chestDestroyed=false):boolean{
   this.lastTick=tick;
-  if(!this.wounds.size){this.deadline=null;return false;}
-  if(hasWorkingLimb(active))this.deadline=null;
+  const failing=chestDestroyed||(this.wounds.size>0&&!hasWorkingLimb(active));
+  if(!failing)this.deadline=null;
   else if(this.deadline===null)this.deadline=tick+span(OIL.failureMin,OIL.failureMax,random());
   if(this.deadline!==null&&tick>=this.deadline)return true;
   let parts:readonly PhysicsSegmentPose[]|undefined;

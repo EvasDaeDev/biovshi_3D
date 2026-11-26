@@ -19,6 +19,7 @@ export class DamageState {
   for(const id of ids)if(definitions.has(id))this.parts.set(id,{hp:maxHp(id),maxHp:maxHp(id),attached:true,lastHit:-Infinity});
   this.lost=LAB_SEGMENTS.length-this.parts.size;
  }
+ get chestDestroyed():boolean{return this.parts.get('chest')?.hp===0;}
  get maxEndurance():number{return DAMAGE.traumaThreshold*(1-DAMAGE.lostCapacityFraction*this.lost/LAB_SEGMENTS.length);}
  get endurance():number{return this.cause?0:Math.max(0,this.maxEndurance-this.trauma);}
  apply(id:string,amount:number,tick:number):DamageResult|null{

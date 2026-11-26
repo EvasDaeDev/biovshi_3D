@@ -247,13 +247,14 @@ export class LabSimulationCore implements SimulationCore {
   private updateOil():void{
     for(const a of this.actors){
       if(a.fixed)continue;
+      const chestDestroyed=a.health.chestDestroyed;
       const failed=a.oil.advance(this.tick,a.segments,()=>this.actorPose(a),()=>this.oilRandom(),(segmentId,origin)=>{
         const point:[number,number,number]=[origin[0],this.ground(a,origin[0],origin[2]),origin[2]];
         this.oilMarks.push({id:this.nextMark++,fighterId:a.id,point,tick:this.tick});
         if(this.oilMarks.length>OIL.limit)this.oilMarks.shift();
         this.events.push({tick:this.tick,type:'oil-drop',fighterId:a.id,segmentId,point:[...point]});
-      });
-      if(failed)this.incapacitate(a.id,'oil-loss');
+      },chestDestroyed);
+      if(failed)this.incapacitate(a.id,chestDestroyed?'torso-failure':'oil-loss');
     }
   }
   private random(): number {

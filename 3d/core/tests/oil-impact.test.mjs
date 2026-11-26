@@ -28,3 +28,26 @@ test('impact strength and duration reflect v1 timing; damage recoils away from a
  for(let i=0;i<32;i++)c.step(FIXED_DT,input);
  const s=c.getSnapshot();assert.ok(s.roots[2]>.02);assert.equal(s.impacts[0].active,false);assert.equal(s.health[0].trauma,1.5);
 });
+
+test('destroyed chest starts the delayed knockout with intact limbs and no open wounds',()=>{
+ const c=new LabSimulationCore(),cfg=createLabConfig(7),fighter=cfg.fighters[0];
+ c.initialize({...cfg,fighters:[fighter]});
+ try{
+  c.applyDamage({fighterId:fighter.id,segmentId:'abdomen',amount:4});
+  run(c,1);
+  assert.equal(c.getSnapshot().oil[0].failureTick,null);
+  c.applyDamage({fighterId:fighter.id,segmentId:'chest',amount:4});
+  run(c,1);
+  const s=c.getSnapshot(),deadline=s.oil[0].failureTick;
+  assert.ok(Number.isInteger(deadline)&&deadline-s.tick>=600&&deadline-s.tick<=900);
+  assert.deepEqual(s.oil[0].wounds,[]);
+  assert.equal(s.health[0].segments.find(p=>p.id==='chest').attached,true);
+  assert.equal(s.mobilityModes[0],'biped');
+  run(c,deadline-s.tick-1);
+  assert.equal(c.getSnapshot().lifeStates[0],'active');
+  assert.equal(c.getSnapshot().oil[0].failureTick,deadline);
+  run(c,1);
+  assert.equal(c.getSnapshot().health[0].cause,'torso-failure');
+  assert.equal(c.drainEvents().filter(e=>e.type==='fighter-incapacitated'&&e.cause==='torso-failure').length,1);
+ }finally{c.dispose();}
+});
