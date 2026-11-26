@@ -10,6 +10,14 @@ const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a));
 const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
 const distance=(a:PointXZ,b:PointXZ)=>Math.hypot(a.x-b.x,a.z-b.z);
 export const VISION=Object.freeze({fov:rad(100),range:metres(300),nearby:metres(75),touch:metres(32),limit:rad(60),scanSpeed:rad(20),trackSpeed:rad(40),memoryTicks:ticks(2.4),arrival:metres(35)});
+// Authored patient: neutral to either neck limit in one second.
+export const PATIENT_HEAD=Object.freeze({limit:rad(80),trackSpeed:rad(80),scanSpeed:rad(80)});
+/** Choose a backward approach/exit when it preserves sight better than a
+ * forward turn. The route itself is unchanged and remains collision checked. */
+export function gazeAwareRoute(heading:number,targetBearing:number):{heading:number;backward:boolean}{
+ const error=Math.abs(wrap(heading-targetBearing));
+ return error>rad(100)?{heading:wrap(heading+Math.PI),backward:true}:{heading,backward:false};
+}
 export interface VisionBody extends PointXZ {readonly id:number;readonly yaw:number;readonly parts:readonly PhysicsSegmentPose[]}
 export type SightClear=(from:Vec3,to:Vec3)=>boolean;
 const clearAll:SightClear=()=>true;
@@ -34,19 +42,20 @@ export interface VisionMemory {readonly id:number;readonly point:PointXZ;readonl
 export interface PerceptionSnapshot {readonly gazeYaw:number;readonly look:number;readonly visibleIds:readonly number[];readonly memory:VisionMemory|null;readonly patrol:PointXZ|null}
 export class PatientPerception{
  private look=0;private direction=1;private memory:VisionMemory|null=null;private goal:PointXZ|null=null;private goalUntil=0;private visible:number[]=[];private rng:number;
- constructor(seed:number,id:number){this.rng=(seed^Math.imul(id+1,0x7feb352d)^0x846ca68b)>>>0;this.direction=id%2?1:-1;}
+ constructor(seed:number,id:number,private readonly authored=false){this.rng=(seed^Math.imul(id+1,0x7feb352d)^0x846ca68b)>>>0;this.direction=id%2?1:-1;}
  private random():number{this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;return this.rng/4294967296;}
  gaze(bodyYaw:number):number{return bodyYaw+this.look;}
  setVisible(ids:readonly number[]):void{this.visible=[...ids];}
  /** v1 updateHead: bounded local tracking or reflected scan. */
  advanceLook(bodyYaw:number,origin:PointXZ,target:PointXZ|null):void{
+  const motion=this.authored?PATIENT_HEAD:VISION;
   if(target){
-   const desired=clamp(wrap(Math.atan2(target.x-origin.x,-(target.z-origin.z))-bodyYaw),-VISION.limit,VISION.limit);
-   this.look=clamp(this.look+clamp(desired-this.look,-VISION.trackSpeed*FIXED_DT,VISION.trackSpeed*FIXED_DT),-VISION.limit,VISION.limit);
+   const desired=clamp(wrap(Math.atan2(target.x-origin.x,-(target.z-origin.z))-bodyYaw),-motion.limit,motion.limit);
+   this.look=clamp(this.look+clamp(desired-this.look,-motion.trackSpeed*FIXED_DT,motion.trackSpeed*FIXED_DT),-motion.limit,motion.limit);
   }else{
-   this.look+=this.direction*VISION.scanSpeed*FIXED_DT;
-   if(this.look>VISION.limit){this.look=2*VISION.limit-this.look;this.direction=-1;}
-   if(this.look<-VISION.limit){this.look=-2*VISION.limit-this.look;this.direction=1;}
+   this.look+=this.direction*motion.scanSpeed*FIXED_DT;
+   if(this.look>motion.limit){this.look=2*motion.limit-this.look;this.direction=-1;}
+   if(this.look<-motion.limit){this.look=-2*motion.limit-this.look;this.direction=1;}
   }
  }
  remember(id:number,point:PointXZ,tick:number):void{this.memory={id,point:{x:point.x,z:point.z},until:tick+VISION.memoryTicks};this.goal=null;}

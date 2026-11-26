@@ -182,3 +182,7 @@ fc38ecc: CI 45787417000, 239/239 tests и P3/P4 audit пройдены, smoke ti
 ### P4-M — M7 тактические эпизоды (26.11.2026)
 
 0ff5ae1 прошёл CI 45793647211. Новый RaidState: наблюдение, обход, быстрый подход, 1–2 атаки, отход от угроз и переоценка. Параметры индивидуальны при фиксированном seed, автоматическая смена seed удалена. HUD фаз, четыре теста, новый CI и аудит ожидаются. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).
+
+### P4-M — взгляд ±80° и полный шаг (26.11.2026)
+
+3883a76 прошёл CI 45795461471: ring 19 hits/28 attempts, open after60s, p95 1.254ms; walk peak .1833 m/tick. Authored head ±80°, 80°/s, tracking after body update, gaze-aware withdrawal. Разделены actual/drive speed, исправлены landing lead/cadence и опорный IK с forward knee pole. Три регрессии, новый CI/CPU/визуальная приёмка ожидаются. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).
