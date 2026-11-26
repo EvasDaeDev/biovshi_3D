@@ -178,3 +178,7 @@ fc38ecc: CI 45787417000, 239/239 tests и P3/P4 audit пройдены, smoke ti
 ### P4-M — атака на ходу (26.11.2026)
 
 Разделены authored upright combat overlay и locomotion: сохранение forward/turn во всех фазах arm/head, разрешение kick в момент посадки шага без требования остановки, bounded travel/actual support anchor. Три регрессии; новый CI и сравнительная приёмка ожидаются. Prone/airborne и legacy без изменений. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).
+
+### P4-M — M7 тактические эпизоды (26.11.2026)
+
+0ff5ae1 прошёл CI 45793647211. Новый RaidState: наблюдение, обход, быстрый подход, 1–2 атаки, отход от угроз и переоценка. Параметры индивидуальны при фиксированном seed, автоматическая смена seed удалена. HUD фаз, четыре теста, новый CI и аудит ожидаются. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).

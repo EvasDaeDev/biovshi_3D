@@ -86,11 +86,9 @@ function resetControl(s){
  controlPatient.disabled=scenario.value==='motion-review';
 }
 controlPatient.onchange=()=>{keys.clear();controlPatient.blur();if(controlPatient.value!==''&&cameraControl.mode==='head')document.getElementById('camera-patient').value=controlPatient.value;};
-const seedInput=document.getElementById('round-seed');
+// Seed is a replay/diagnostic input, not a tactical control.
 const requestedSeed=query.get('seed');
-if(requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff)seedInput.value=requestedSeed;
-function roundSeed(){const n=Number(seedInput.value);return Number.isInteger(n)&&n>=0&&n<=0xffffffff?n:7;}
-document.getElementById('new-seed').onclick=()=>{seedInput.value=String((roundSeed()+1)>>>0);void restoreScenario();};
+function roundSeed(){return requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):7;}
 const requestedPatients=Number(new URLSearchParams(location.search).get('patients'));
 if(requestedPatients===2)patientCount.value='2';
 function authoredPatients(loc){return patientCount.value==='full'?loc.capacity:Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
@@ -222,7 +220,6 @@ document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(p
    try{await saveFloorHistory(floorSession,arena,saved);}
    catch(error){warning='Следующий раунд запущен, но запись пола не удалась: '+error.message;}
    if(operation!==floorOperation||arena!==floorArenaId())return;
-   if(scenario.value==='location-ring')seedInput.value=String((roundSeed()+1)>>>0);
    reset(saved);
    if(warning)floorStatus.textContent=warning;
    else floorStatus.textContent+=' Сохранено в IndexedDB ('+floorSession+').';
@@ -299,6 +296,9 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  stats.dataset.controlledX=controlled>=0?String(s.roots[4*controlled]):'';
  stats.dataset.controlledZ=controlled>=0?String(s.roots[4*controlled+2]):'';
  stats.dataset.hunts=(s.hunts??[]).map(h=>h.phase).join('/');
+ stats.dataset.raids=(s.raids??[]).map(h=>h.phase).join('/');
+ const raidStatus=document.getElementById('raid-status');raidStatus.hidden=scenario.value!=='location-ring';
+ if(!raidStatus.hidden){const labels={search:'поиск',observe:'наблюдение',flank:'обход',rush:'рывок',attack:'атака',withdraw:'отход',reassess:'оценка'};raidStatus.textContent=(s.raids??[]).map((r,i)=>'№'+s.fighterIds[i]+' '+(s.lifeStates[i]!=='active'?'выбыл':controlPatient.value===String(s.fighterIds[i])?'ручное':labels[r.phase]??r.phase)+(r.targetId===null?'':' → №'+r.targetId)).join(' | ');}
   stats.dataset.playback=String(playback.rate);stats.dataset.reviewPhase=scenario.value==='motion-review'?reviewInput(s.tick).phase:'';
   stats.dataset.motionPeak=motionPeak?motionPeak.max.toFixed(4):'';
   const motionStatus=document.getElementById('motion-status');motionStatus.hidden=scenario.value!=='motion-review';

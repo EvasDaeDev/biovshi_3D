@@ -24,12 +24,12 @@ export class CombatTactics {
    this.retreatUntil=tick+ticks(.75);this.retreatCooldown=tick+ticks(4);
   }
  }
- choose(tick:number,opponents:readonly Opponent[],lockedId?:number,activeIds?:readonly number[]):number|null{
+ choose(tick:number,opponents:readonly Opponent[],lockedId?:number,activeIds?:readonly number[],reconsider=false):number|null{
   if(this.threat&&(tick>=this.threat.expires||!(activeIds??opponents.map(o=>o.id)).includes(this.threat.id)))this.threat=null;
   const current=opponents.find(o=>o.id===this.target),preferred=nearest(opponents);
   const locked=opponents.find(o=>o.id===lockedId);
   const threat=this.threat&&tick>=this.threat.ready?opponents.find(o=>o.id===this.threat!.id&&o.distance<3):undefined;
-  const next=locked??threat??(current&&tick<this.until&&current.distance<4?current:preferred);
+  const next=locked??threat??(!reconsider&&current&&tick<this.until&&current.distance<4?current:preferred);
   if(next&&next.id!==this.target){this.target=next.id;this.until=tick+ticks(1.3+this.random()*.7);}
   if(threat&&next?.id===threat.id)this.threat=null;
   if(!next){this.target=null;this.until=0;this.mode='search';}
