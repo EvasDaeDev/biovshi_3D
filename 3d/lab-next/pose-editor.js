@@ -1,4 +1,5 @@
 import {createSegmentVisual} from './segment-visual.js';
+import {POSE_DRAFT_KEY,readPoseDraft} from './pose-draft.js';
 import {anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
 import {solveTwoBone} from '../core/dist/rig/two-bone.js';
 import {TransformControls} from './vendor/TransformControls.js';
@@ -9,7 +10,7 @@ import {buildEditedPose,POSE_SLOTS,readPoseDocument} from '../core/dist/rig/pose
 const element=id=>document.getElementById(id);
 const poseSelect=element('pose'),segmentSelect=element('segment'),status=element('status');
 const enabled=element('enabled'),lengthInput=element('length'),radius=element('radius');
-const workspace=element('viewport'),storageKey='eccepry:pose-editor:v1';
+const workspace=element('viewport');
 const labels={pelvis:'Таз',abdomen:'Живот',chest:'Грудная клетка',neck:'Шея',head:'Голова',
  upperLeg:'бедро',lowerLeg:'голень',foot:'стопа',upperArm:'плечо',lowerArm:'предплечье',hand:'кисть'};
 for(const [id,name] of Object.entries(POSE_SLOTS))poseSelect.add(new Option(name,id));
@@ -20,8 +21,7 @@ for(const {id} of LAB_SEGMENTS){
 segmentSelect.value='L.upperArm';
 let data={schemaVersion:1,stature:1.65,slots:{}};
 try{
- const saved=localStorage.getItem(storageKey);
- if(saved)data=readPoseDocument(JSON.parse(saved));
+ data=readPoseDraft(localStorage)??data;
  status.textContent='Правки сохраняются в этом браузере.';
 }catch(error){status.textContent='Исходная поза загружена. Черновик недоступен.';}
 async function loadDefaults(){
@@ -178,7 +178,7 @@ function refresh(){
  renderPose();
 }
 function save(message){
- try{localStorage.setItem(storageKey,JSON.stringify(data));status.textContent=message;}
+ try{localStorage.setItem(POSE_DRAFT_KEY,JSON.stringify(data));status.textContent=message;}
  catch(error){status.textContent='Черновик недоступен. Экспортируйте JSON, чтобы сохранить правки.';}
 }
 function edit(patch){
@@ -189,7 +189,7 @@ function editParts(update){
  try{
   const parts=update(current());
   data=readPoseDocument({...data,slots:{...data.slots,[slot]:parts}});
-  save('Черновик сохранён.');
+  save('Черновик сохранён. Правки применятся при новом раунде или перезапуске стенда.');
  }catch(error){status.textContent=error.message;}
  refresh();
 }

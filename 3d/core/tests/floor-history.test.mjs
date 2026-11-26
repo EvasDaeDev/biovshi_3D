@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
+import {RemainsCooling} from '../../lab-next/remains-cooling.js';
 import {LabSimulationCore,createLabConfig,FIXED_DT,createFloorHistory,readFloorHistory,FLOOR_VERSION} from '../dist/index.js';
 
 const bare={source:'segment',x:0,z:0,radius:.5,height:.2};
@@ -38,10 +39,35 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
   assert.equal(c.incapacitate(0),true);
   for(const e of c.drainEvents())w.accept(e);
   assert.throws(()=>w.exportSettledFloor('ward'),/while physics bodies are falling/);
-  for(let i=0;i<1500;i++){
+  const cooling=new RemainsCooling(),settledParts=new Map();
+  let bodySettled=null;
+  for(let tick=1;tick<=1500;tick++){
    w.step(FIXED_DT);
-   if(w.bodySnapshot().every(b=>b.settled)&&w.snapshot().every(d=>d.settled))break;
+   const settled=w.bodySnapshot()[0].settled,parts=w.snapshot();
+   cooling.record({fighterIds:[0],bodyTerrainStates:[settled],tick},parts);
+   if(settled)bodySettled??=tick;
+   else assert.equal(cooling.body(0,tick),1);
+   for(const part of parts){
+    if(part.settled&&!settledParts.has(part.id))settledParts.set(part.id,tick);
+    if(!part.settled)assert.equal(cooling.part(part.id,tick),1);
+   }
+   if(settled&&parts.every(d=>d.settled))break;
   }
+  const fades=(sample,start)=>{
+   assert.equal(sample(start-1),1);
+   assert.equal(sample(start),1);
+   assert.ok(sample(start+1)<1);
+   assert.ok(Math.abs(sample(start+60)-.70)<1e-10);
+   assert.ok(sample(start+119)>.40);
+   assert.equal(sample(start+120),.40);
+   assert.equal(sample(start+240),.40);
+  };
+  assert.ok(bodySettled>0);
+  fades(tick=>cooling.body(0,tick),bodySettled);
+  assert.equal(settledParts.size,4);
+  for(const [id,tick] of settledParts)fades(t=>cooling.part(id,t),tick);
+  cooling.reset();
+  assert.equal(cooling.body(0,bodySettled+120),1);
   const body=w.bodySnapshot()[0];
   const pools=w.bodyPoolSnapshot();assert.equal(pools.length,1);assert.ok(pools[0].radius>0);
   assert.ok(body.settled,JSON.stringify(body.motion));
@@ -62,6 +88,7 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
    assert.equal(next.bodySnapshot().length,0,'saved corpses are not reactivated ragdolls');
    assert.equal(next.branchSnapshot().length,0,'saved branches are plain rendered remains');
    assert.equal(next.snapshot().length,expectedVisualCount);
+   assert.ok(next.snapshot().every(d=>cooling.part(d.id,0)===.40));
    assert.equal(next.moundSnapshot().length,saved.mounds.length);
    assert.deepEqual(next.moundSnapshot(),saved.mounds);
    assert.deepEqual(next.archivedOilSnapshot(),saved.oilMarks);
