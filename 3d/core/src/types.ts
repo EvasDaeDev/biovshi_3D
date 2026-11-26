@@ -97,6 +97,7 @@ export interface WorldSnapshot {
   readonly strikes?: readonly StrikeSnapshot[];
   readonly fight?: Readonly<{ended:boolean;winnerId:number|null}>;
   readonly health?: readonly HealthSnapshot[];
+  readonly distress?: readonly import('./combat/distress.js').DistressSnapshot[];
   readonly lifeStates?: readonly ('active'|'incapacitated')[];
   readonly balanceStates?: readonly BalancePhase[];
   readonly stepCounts?: readonly number[];
@@ -149,6 +150,10 @@ export interface SimulationEvent {
   readonly bodyMotion?: readonly SegmentMotion[];
   /** One severed connected branch, root first; geometry captured before removal. */
   readonly detachedParts?: readonly PhysicsSegmentPose[];
+  readonly flightId?: number;
+  readonly flightParts?: readonly PhysicsSegmentPose[];
+  readonly flightVelocity?: Vec3;
+  readonly accurate?: boolean;
   readonly detachedPose?: {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number};
 }
 

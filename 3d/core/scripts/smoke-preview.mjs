@@ -83,9 +83,9 @@ try{
  await page.locator('#vision-debug').uncheck();
  await page.locator('#route-debug').uncheck();
  await page.locator('#scenario').selectOption('damage');
- await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='3.6';});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='4';});
  await page.locator('#damage-crit').click();
- await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.health==='1.6'&&d.segmentGeometry==='box'&&d.hitTint==='0:R.upperArm';});
+ await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.health==='2'&&d.segmentGeometry==='box'&&d.hitTint==='0:R.upperArm';});
  const firstCard=page.locator('#patient-hud [data-patient-id="0"]');
  assert.equal(await firstCard.locator('[data-segment="R.upperArm"]').getAttribute('data-state'),'damaged');
  assert.equal(await firstCard.locator('[data-segment="L.upperArm"]').getAttribute('data-state'),'healthy');
@@ -93,7 +93,7 @@ try{
  const hitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
  await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,hitTick);
  await page.locator('#damage-hit').click();
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='0.6');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='1');
  const secondHitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
  await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,secondHitTick);
  await page.locator('#damage-hit').click();
@@ -104,11 +104,11 @@ try{
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.oil)>0,{},{timeout:30000});
  await page.locator('#damage-segment').selectOption('L.hand');
  await page.locator('#damage-crit').click();
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='1.6');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='2');
  const singleHitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
  await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,singleHitTick);
  await page.locator('#damage-hit').click();
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='0.6');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='1');
  const secondSingleTick=Number(await page.locator('#stats').getAttribute('data-tick'));
  await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,secondSingleTick);
  await page.locator('#damage-hit').click();

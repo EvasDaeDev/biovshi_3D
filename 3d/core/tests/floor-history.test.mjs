@@ -32,8 +32,8 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
  const config=createLabConfig(7),c=new LabSimulationCore(),w=new DebrisWorld(RAPIER);
  c.initialize({seed:7,fighters:[{...config.fighters[0],origin:[0,0,0]}]});
  try{
-  assert.equal(c.applyDamage({fighterId:0,segmentId:'L.hand',amount:3.6}),true);
-  assert.equal(c.applyDamage({fighterId:0,segmentId:'R.upperLeg',amount:3.6}),true);
+  assert.equal(c.applyDamage({fighterId:0,segmentId:'L.hand',amount:4}),true);
+  assert.equal(c.applyDamage({fighterId:0,segmentId:'R.upperLeg',amount:4}),true);
   for(const e of c.drainEvents())w.accept(e);
   assert.equal(c.incapacitate(0),true);
   for(const e of c.drainEvents())w.accept(e);

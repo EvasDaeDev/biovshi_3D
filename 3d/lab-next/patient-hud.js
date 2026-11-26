@@ -15,10 +15,10 @@ export function segmentPresentation(part){
  if(!ratio)return {ratio,state:'destroyed',fill:'#69736f',detail:part?.attached?'разрушен (на месте)':'отсутствует'};
  return {ratio,state:ratio>=1?'healthy':'damaged',fill:'hsl('+Math.round(120*ratio)+' 76% 49%)',detail:number(part.hp)+' / '+number(part.maxHp)+' HP'};
 }
-export function patientPresentation(health,oil,life,fight,id){
+export function patientPresentation(health,oil,life,fight,id,distress){
  const current=health?.endurance??0,max=health?.maxEndurance??0,base=health?.baseEndurance??24,wounds=oil?.wounds?.length??0;
  const alive=life==='active',finished=!!fight?.ended;
- const state=!alive?'Выбыл':finished?(fight.winnerId===id?'Победитель':'Бой завершён'):'В бою';
+ const state=!alive?'Выбыл':finished?(fight.winnerId===id?'Победитель':'Бой завершён'):distress?.mode==='prey'?'Жертва':distress?.mode==='hysteria'?'Истерика':distress?.mode==='last-stand'?'Последний бой':'В бою';
  const bleeding=!alive?'Нет':finished?(wounds?'Остановлено':'Нет'):oil?.remainingTicks!=null?'Отказ через '+Math.ceil(oil.remainingTicks/60)+' с':wounds?'Истекание · '+wounds+' ран':'Нет истекания';
  return {state,bleeding,wounds,current,max,base,capacity:clamp(max/base),remaining:clamp(current/base),lost:health?.lostSegments??0,critical:alive&&!finished&&oil?.remainingTicks!=null,label:number(current)+' / '+number(max)};
 }
@@ -52,7 +52,7 @@ export class PatientHud{
   for(const [id,c] of this.cards)if(!ids.includes(id)){c.card.remove();this.cards.delete(id);}
   ids.forEach((id,i)=>{
    const c=this.cards.get(id)??this.card(id),health=snapshot.health?.[i],oil=snapshot.oil?.[i],life=snapshot.lifeStates?.[i];
-   const p=patientPresentation(health,oil,life,snapshot.fight,id);
+   const p=patientPresentation(health,oil,life,snapshot.fight,id,snapshot.distress?.[i]);
    const parts=new Map((health?.segments??[]).map(v=>[v.id,v]));
    for(const [key,node] of c.segments){
     const part=parts.get(key),v=segmentPresentation(part);

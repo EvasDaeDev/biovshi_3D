@@ -12,7 +12,7 @@ test('v1 result is immutable: wounded last survivor does not bleed out during co
  c.initialize({seed:7,fighters,combatEnabled:true});
  const idle={commands:fighters.map(f=>({fighterId:f.id,forward:0,turn:0,sprint:false}))};
  try{
-  for(const segmentId of ['L.upperArm','R.upperArm','L.upperLeg','R.upperLeg'])assert.ok(c.applyDamage({fighterId:0,segmentId,amount:3.6}));
+  for(const segmentId of ['L.upperArm','R.upperArm','L.upperLeg','R.upperLeg'])assert.ok(c.applyDamage({fighterId:0,segmentId,amount:4}));
   for(const e of c.drainEvents())w.accept(e);
   advanceCombatStep(c,w,FIXED_DT,idle);
   const deadline=c.getSnapshot().oil[0].failureTick;assert.ok(deadline>0);

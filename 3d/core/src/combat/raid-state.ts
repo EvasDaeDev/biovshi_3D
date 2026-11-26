@@ -6,7 +6,7 @@ export type RaidPhase='search'|'observe'|'flank'|'rush'|'attack'|'withdraw'|'rea
 export interface RaidProfile {readonly patience:number;readonly risk:number;readonly safeDistance:number;readonly drive:number;readonly initiative:number;readonly side:1|-1}
 export interface RaidOpponent extends PointXZ {readonly id:number;readonly yaw:number;readonly threatening:boolean;readonly grounded:boolean;readonly recovering?:boolean}
 export interface RaidSnapshot {readonly phase:RaidPhase;readonly targetId:number|null;readonly goal:PointXZ|null;readonly attempts:number;readonly hits:number;readonly rush:number;readonly profile:RaidProfile}
-export interface RaidInput {readonly tick:number;readonly here:PointXZ;readonly target:RaidOpponent|null;readonly visible:readonly RaidOpponent[];readonly strike:StrikePhase;readonly interrupted:boolean;readonly ready:boolean;readonly clear:(goal:PointXZ)=>boolean}
+export interface RaidInput {readonly tick:number;readonly here:PointXZ;readonly target:RaidOpponent|null;readonly visible:readonly RaidOpponent[];readonly strike:StrikePhase;readonly interrupted:boolean;readonly ready:boolean;readonly clear:(goal:PointXZ)=>boolean;readonly defiant?:boolean;readonly hysterical?:boolean}
 export interface RaidIntent {readonly phase:RaidPhase;readonly goal:PointXZ|null;readonly pace:number;readonly sprint:boolean;readonly attack:boolean}
 const ticks=(s:number)=>Math.ceil(s/FIXED_DT-1e-9);
 const dist=(a:PointXZ,b:PointXZ)=>Math.hypot(a.x-b.x,a.z-b.z);
@@ -109,6 +109,24 @@ export class RaidState{
  private intent(goal:PointXZ|null,pace:number,sprint:boolean,attack:boolean):RaidIntent{return {phase:this.phase,goal,pace,sprint,attack};}
  advance(i:RaidInput):RaidIntent{
   const {tick,here,target,visible,strike,interrupted,ready,clear}=i;
+  // Low-endurance last stand has a bounded offensive series, never a
+  // fresh retreat cycle. Hysteria commits all eight attempts if reachable,
+  // even against telegraphs. Physical interruption still belongs to IK.
+  if(i.defiant){
+   if(!target){if(strike==='idle')this.reset(tick);return this.intent(null,0,false,false);}
+   const d=dist(here,target);
+   if(this.targetId!==target.id){this.clearSeries();this.targetId=target.id;this.enter('attack',tick,10.8);}
+   if(strike!=='idle')return this.intent(target,d>.72?.65:0,false,false);
+   if(this.phase==='reassess'){
+    if(tick<this.deadline)return this.intent(null,0,false,false);
+    this.clearSeries();this.enter('attack',tick,10.8);
+   }
+   if(this.attempts>=8||(!i.hysterical&&this.attempts>0&&!continueSeries(this.profile,this.attempts,this.rush,this.landed,{...target,threatening:false},1,this.bias))){
+    this.enter('reassess',tick,i.hysterical?.12:.30);return this.intent(null,0,false,false);
+   }
+   if(this.phase!=='attack')this.enter('attack',tick,10.8);
+   return this.intent(target,d>.60?1:0,d>1.6,true);
+  }
   if(target&&target.id===this.targetId)this.remembered={x:target.x,z:target.z};
   const active=strike!=='idle',danger=visible.filter(o=>!o.grounded&&dist(here,o)<1.45&&(o.threatening||dist(here,o)<.95));
   const close=visible.filter(o=>dist(here,o)<1.35);

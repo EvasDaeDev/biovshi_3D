@@ -4,7 +4,7 @@ import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
 import {LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
 const f=createLabConfig(7).fighters[0],make=()=>{const c=new LabSimulationCore();c.initialize({seed:7,fighters:[f]});return c;};
-const cut=(c,id)=>{assert.ok(c.applyDamage({fighterId:0,segmentId:id,amount:3.6}));return c.drainEvents().find(e=>e.type==='segment-detached');};
+const cut=(c,id)=>{assert.ok(c.applyDamage({fighterId:0,segmentId:id,amount:4}));return c.drainEvents().find(e=>e.type==='segment-detached');};
 const distance=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
 test('one cut captures an intact leg in original world pose, root first',()=>{
  const c=make(),before=c.getSnapshot().rigSegments[0],e=cut(c,'L.upperLeg');

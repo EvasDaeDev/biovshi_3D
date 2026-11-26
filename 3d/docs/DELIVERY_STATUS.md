@@ -254,3 +254,7 @@ ffd394f CI45848083352: tsc OK, 243/255 TAP, 12 test files failed to initialize (
 ### P4-M — здоровье +20%, выносливость, истекание, правый HUD (26.11.2026)
 
 f456b38 CI45851387475 success. Native HP3.6/7.2/4.8, actual v1 trauma represented by remaining endurance, capacity reduced by missing anatomy, zero→trauma knockout. Existing v1 oil-loss countdown exposed and frozen after round. Right overlay for every patient (17 colored segments, endurance, wounds/countdown); tests and browser smoke updated for fractional HP. New CI/visual/perf pending.
+
+### P4-M — целые HP, конечное бегство, истерика и бросок (26.11.2026)
+
+c769fa3 CI45854911615 success; ring p95 1.950ms. HP4/8/5; capacity loss fraction .4 preserves oil deadline. Prey4–7s once, 10% hysteria at low endurance, offensive max8, last-stand. Healthy biped may sacrifice one arm to throw at visible prey; predicted ballistic flight, 80% accurate aim, actual swept contact damage5, normal health/oil/debris cost and Rapier handoff. Tests/audit/HUD/docs updated; new CI and measured hit rate pending; separate tearing animation not yet implemented.

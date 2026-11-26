@@ -4,11 +4,11 @@ import {BODY_MAP,segmentPresentation,patientPresentation} from '../../lab-next/p
 import {LAB_SEGMENTS} from '../dist/rig/anatomy.js';
 test('HUD covers exactly the native anatomy and uses green-yellow-red-grey health',()=>{
  assert.deepEqual(BODY_MAP.map(v=>v[0]).sort(),LAB_SEGMENTS.map(v=>v.id).sort());
- const part=(hp,attached=true)=>({hp,maxHp:3.6,attached});
- assert.equal(segmentPresentation(part(3.6)).fill,'hsl(120 76% 49%)');
- assert.equal(segmentPresentation(part(1.8)).fill,'hsl(60 76% 49%)');
- assert.equal(segmentPresentation(part(.3)).fill,'hsl(10 76% 49%)');
- for(const p of [part(0),part(3.6,false),undefined])assert.equal(segmentPresentation(p).fill,'#69736f');
+ const part=(hp,attached=true)=>({hp,maxHp:4,attached});
+ assert.equal(segmentPresentation(part(4)).fill,'hsl(120 76% 49%)');
+ assert.equal(segmentPresentation(part(2)).fill,'hsl(60 76% 49%)');
+ assert.equal(segmentPresentation(part(1)).fill,'hsl(30 76% 49%)');
+ for(const p of [part(0),part(4,false),undefined])assert.equal(segmentPresentation(p).fill,'#69736f');
  assert.equal(segmentPresentation(part(0)).detail,'разрушен (на месте)');
 });
 test('HUD uses actual endurance capacity and fixed-clock bleed timer, never post-round countdown',()=>{

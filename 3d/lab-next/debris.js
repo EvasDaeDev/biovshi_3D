@@ -17,7 +17,7 @@ export class DebrisWorld {
   this.world?.free();
   const R=this.R;
   this.world=new R.World({x:0,y:-9.81,z:0});this.world.timestep=1/60;
-  this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.nextId=0;
+  this.items=[];this.settledSingles=[];this.branches=[];this.flights=new Map();this.mounds=[];this.nextId=0;
   this.grades=grades;this.baseHeight=(x,z)=>gradeHeight(x,z,this.grades);
   this.incapacitated=new IncapacitatedBodies(R,this.world,this.baseHeight);
   this.archiveFloor=archive;
@@ -74,15 +74,23 @@ export class DebrisWorld {
    this.world.createCollider(R.ColliderDesc.cone(mound.height/2,mound.radius).setFriction(1.1).setCollisionGroups(0x00010006),body);
   }
  }
- accept(event){
+ accept(event,reuseId){
+  if(event.type==='limb-flight'||event.type==='limb-flight-ended'){
+   const f=this.flights.get(event.flightId);if(!f)return;
+   if(event.type==='limb-flight'){f.parts=event.flightParts;return;}
+   this.flights.delete(event.flightId);
+   this.accept({type:'segment-detached',fighterId:f.fighterId,tick:event.tick,detachedParts:event.flightParts,flightVelocity:event.flightVelocity},f.id);return;
+  }
   if(event.type==='fighter-incapacitated'){this.incapacitated.accept(event);return;}
   if(event.type!=='segment-detached')return;
   const poses=event.detachedParts??(event.detachedPose?[event.detachedPose]:[]);
   if(!poses.length)return;
+  if(event.flightId!==undefined){this.flights.set(event.flightId,{id:this.nextId++,fighterId:event.fighterId,parts:poses,settled:false});return;}
   if(poses.length>1){
    const branch=createCompound(this.R,this.world,poses,{groups:0x00020005,linearDamping:.6,angularDamping:1.25,friction:.8});
-   const id=this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
-   branch.rb.setLinvel({x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
+   const id=reuseId??this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
+   const velocity=event.flightVelocity;
+   branch.rb.setLinvel(velocity?{x:velocity[0]*.3,y:Math.max(0,velocity[1]*.2),z:velocity[2]*.3}:{x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
    branch.rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
    this.branches.push({...branch,id,fighterId:event.fighterId,age:0,still:0,settled:null});return;
   }
@@ -142,7 +150,7 @@ export class DebrisWorld {
   * geometry and hidden cone colliders are serialized independently. */
  exportSettledFloor(arenaId,oilMarks=[]){
   const bodies=this.bodySnapshot();
-  if(this.items.length||this.branches.some(b=>!b.settled)||bodies.some(b=>!b.settled))
+  if(this.flights.size||this.items.length||this.branches.some(b=>!b.settled)||bodies.some(b=>!b.settled))
    throw new Error('Cannot archive an arena while physics bodies are falling');
   const remains=bodies.flatMap(b=>b.parts.map(p=>{
    const frame=boneFrame(p.a,p.b);
@@ -153,12 +161,12 @@ export class DebrisWorld {
   return createFloorHistory(arenaId,this.moundSnapshot(),[...this.snapshot(),...remains],
    [...this.archivedOilSnapshot(),...oilMarks,...this.bodyPoolSnapshot()]);
  }
- branchSnapshot(){return this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))}));}
+ branchSnapshot(){return [...this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))})),...[...this.flights.values()].map(b=>({...b,parts:b.parts.map(p=>({...p,a:[...p.a],b:[...p.b]}))}))];}
  snapshot(){
   const singles=this.items.map(d=>({id:d.id,length:d.length,radius:d.radius,segmentId:d.segmentId,fighterId:d.fighterId,settled:false,position:{...d.rb.translation()},rotation:{...d.rb.rotation()}}));
   const branches=this.branchSnapshot().flatMap(b=>b.parts.map(p=>{const f=boneFrame(p.a,p.b);return {id:'branch:'+b.id+':'+p.id,branchId:b.id,segmentId:p.id,settled:b.settled,length:f.length,radius:p.radius,fighterId:b.fighterId,position:{x:f.center[0],y:f.center[1],z:f.center[2]},rotation:capsuleOrientation(f.y)};}));
   const fresh=singles.concat(this.settledSingles.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}})),branches);
   return (this.archiveFloor?.visuals.map(d=>({...d,position:{...d.position},rotation:{...d.rotation}}))??[]).concat(fresh);
  }
- dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.mounds=[];this.incapacitated=null;this.archiveFloor=null;this.grades=[];this.baseHeight=()=>0;}
+ dispose(){this.world?.free();this.world=null;this.items=[];this.settledSingles=[];this.branches=[];this.flights.clear();this.mounds=[];this.incapacitated=null;this.archiveFloor=null;this.grades=[];this.baseHeight=()=>0;}
 }

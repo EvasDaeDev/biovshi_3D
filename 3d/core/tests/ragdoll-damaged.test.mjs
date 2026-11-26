@@ -8,7 +8,7 @@ test('damaged ragdoll does not recreate removed anatomy and leaves detached sing
  const f={...createLabConfig(7).fighters[0],origin:[0,0,0],segmentIds:createLabConfig(7).fighters[0].segmentIds.filter(id=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(id))};
  c.initialize({seed:7,fighters:[f]});
  try{
-  c.applyDamage({fighterId:0,segmentId:'L.hand',amount:3.6});
+  c.applyDamage({fighterId:0,segmentId:'L.hand',amount:4});
   for(const e of c.drainEvents())w.accept(e);
   c.incapacitate(0);for(const e of c.drainEvents())w.accept(e);
   const initial=w.bodySnapshot()[0];assert.equal(initial.parts.length,13);assert.equal(initial.dynamicBodies,11);assert.equal(initial.joints,10);

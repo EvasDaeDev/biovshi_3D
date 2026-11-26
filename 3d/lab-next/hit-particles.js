@@ -24,7 +24,7 @@ export class HitParticles{
  }
  reset(){this.slots.length=0;this.serial=0;this.mesh.count=0;}
  record(events,previous,current){
-  const contacts=events.filter(e=>e.type==='strike-contact'&&e.point);
+  const contacts=events.filter(e=>(e.type==='strike-contact'||e.type==='limb-hit')&&e.point);
   const cuts=events.filter(e=>e.type==='segment-detached'&&e.segmentId);
   // Exactly one burst for the severed branch root, even if caused by a
   // critical hit. Also handle explicit detach events without damage.
