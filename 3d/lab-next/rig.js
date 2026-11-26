@@ -3,6 +3,7 @@ import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
 import {advanceCombatStep} from './combat-step.js';
 import {SegmentTints} from './segment-tints.js';
 import {HitParticles} from './hit-particles.js';
+import {PatientHud} from './patient-hud.js';
 import {manualInput,capturesTextInput} from './manual-control.js';
 import {Playback} from './playback.js';
 import {reviewInput,measureMotion} from './motion-review.js';
@@ -41,6 +42,7 @@ const visionGeometry=new THREE.CircleGeometry(VISION.range,32,-Math.PI/2-VISION.
 visionGeometry.rotateX(Math.PI/2);
 const visionMaterial=new THREE.MeshBasicMaterial({color:0xffca62,transparent:true,opacity:.12,side:THREE.DoubleSide,depthWrite:false});
 const meshes=new Map(),sphere=new THREE.SphereGeometry(1,12,8),segmentBox=new THREE.BoxGeometry(1,1,1),materials=[new THREE.MeshStandardMaterial({color:0xa6efba}),new THREE.MeshStandardMaterial({color:0xa58c83})];
+const patientHud=new PatientHud(document.getElementById('patient-hud'));
 const hitParticles=new HitParticles(THREE,scene),segmentTints=new SegmentTints(),red=new THREE.Color(1,0,0);
 function paintSegment(m,fighterId,tint){
  const base=materials[fighterId===0?0:1];m.material.color.copy(base.color);m.material.emissive.setRGB(0,0,0);
@@ -245,7 +247,7 @@ function segmentFrame(p,parts,yaw,head){
  if(p.id.endsWith('.hand')){const arm=parts.find(q=>q.id===p.id.replace('.hand','.lowerArm'));if(arm){const f=anatomicalBoneFrame(arm,parts,yaw);return {...f,center:p.a,length:0};}}
  return anatomicalBoneFrame(p,parts,yaw);
 }
-function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
+function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;patientHud.draw(s);if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;
  const tinted=[];
  s.rigSegments.forEach((parts,i)=>{
@@ -287,7 +289,7 @@ function frame(now){frameRequest=0;try{const dt=last===null?0:(now-last)/1000;la
  const floorOil=[...debris.archivedOilSnapshot(),...s.oilMarks,...pools].slice(-2000);
   oilMarks.draw(floorOil,s.tick);stats.dataset.oil=String(floorOil.length);
   stats.dataset.floorVisuals=String(debris.archiveFloor?.visuals.length??0);
-  stats.dataset.floorMounds=String(debris.archiveFloor?.mounds.length??0);stats.dataset.wounds=String(s.oil[0].wounds.length);stats.dataset.impact=String(s.impacts[0].active);const health=s.health[0],selected=health.segments.find(p=>p.id===damageSegment.value);damageHP.textContent=selected?selected.hp+'/'+selected.maxHp+(selected.attached?'':' — отделён'):'';stats.dataset.health=String(selected?.hp??0);stats.dataset.trauma=String(health.trauma);stats.dataset.cause=health.cause??'';
+  stats.dataset.floorMounds=String(debris.archiveFloor?.mounds.length??0);stats.dataset.wounds=String(s.oil[0].wounds.length);stats.dataset.impact=String(s.impacts[0].active);const health=s.health[0],selected=health.segments.find(p=>p.id===damageSegment.value);damageHP.textContent=selected?selected.hp+'/'+selected.maxHp+(selected.attached?'':' — отделён'):'';stats.dataset.health=String(selected?.hp??0);stats.dataset.trauma=String(health.trauma);stats.dataset.endurance=String(health.endurance);stats.dataset.maxEndurance=String(health.maxEndurance);stats.dataset.cause=health.cause??'';
  for(let i=0;i<visionArrows.length;i++)visionArrows[i].visible=false;
  for(const field of visionFields)if(field)field.visible=false;
  if(visionDebug.checked&&selectedLocation())s.rigSegments.forEach((parts,i)=>{

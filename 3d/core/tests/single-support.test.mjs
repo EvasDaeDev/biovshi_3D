@@ -32,7 +32,7 @@ test('one-leg balance leans upper body toward surviving foot without moving its 
 });
 test('actual leg loss changes upper-body balance; supporting foot remains fixed on idle ground',()=>{
  const c=make(),a=run(c,60),foot=get(a,'L.foot').a;
- assert.ok(c.applyDamage({fighterId:0,segmentId:'R.upperLeg',amount:3}));
+ assert.ok(c.applyDamage({fighterId:0,segmentId:'R.upperLeg',amount:3.6}));
  const s=run(c,120),hip=center(get(s,'pelvis')),head=center(get(s,'head'));
  assert.equal(s.mobilityModes[0],'single-support');assert.ok(head[0]<hip[0]-.10);
  assert.ok(d(get(s,'L.foot').a,foot)<.025);

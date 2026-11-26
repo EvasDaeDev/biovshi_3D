@@ -34,5 +34,5 @@ test('two autonomous fighters produce deterministic real hits, no lab collision 
 test('no damage from proximity without attack; winner after terminal handoff',()=>{
  const c=make(),idle={commands:[0,1].map(fighterId=>({fighterId,forward:0,turn:0,sprint:false}))};
  for(let i=0;i<90;i++)c.step(FIXED_DT,idle);assert.equal(c.getSnapshot().damageStats.hits,0);
- c.applyDamage({fighterId:1,segmentId:'head',amount:6,attackerId:0});c.step(FIXED_DT,idle);assert.deepEqual(c.getSnapshot().fight,{ended:true,winnerId:0});
+ c.applyDamage({fighterId:1,segmentId:'head',amount:7.2,attackerId:0});c.step(FIXED_DT,idle);assert.deepEqual(c.getSnapshot().fight,{ended:true,winnerId:0});
 });

@@ -309,7 +309,7 @@ export class LabSimulationCore implements SimulationCore {
       const limbs=health?['L.','R.'].reduce((count,side)=>count+
         Number(a.segments.includes(side+'upperArm')&&a.segments.includes(side+'lowerArm'))+
         Number(a.segments.includes(side+'upperLeg')&&a.segments.includes(side+'lowerLeg')),0):4;
-      const prey=health!==null&&(limbs<=1||health.segments.reduce((sum,p)=>sum+(p.attached?p.hp:0),0)<=
+      const prey=health!==null&&(limbs<=1||health.endurance<=.25*health.maxEndurance||health.segments.reduce((sum,p)=>sum+(p.attached?p.hp:0),0)<=
         .25*health.segments.reduce((sum,p)=>sum+p.maxHp,0));
       if(this.tacticalCombat&&!command&&(prey||!hasAttackSource(a.segments,this.expandedStrikes))){
         if(horror)a.hunt.reset(this.tick,'flee');

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LabSimulationCore,createLabConfig,FIXED_DT,OIL,ImpactState} from '../dist/index.js';
+import {LabSimulationCore,createLabConfig,FIXED_DT,OIL,ImpactState,DAMAGE} from '../dist/index.js';
 const f=createLabConfig(7).fighters[0],idle={commands:[]};
 const make=()=>{const c=new LabSimulationCore();c.initialize({seed:7,fighters:[f]});return c;};
-const cut=(c,id)=>assert.ok(c.applyDamage({fighterId:0,segmentId:id,amount:3}));
+const cut=(c,id)=>assert.ok(c.applyDamage({fighterId:0,segmentId:id,amount:DAMAGE.segmentHP}));
 const run=(c,n)=>{for(let i=0;i<n;i++)c.step(FIXED_DT,idle);};
 test('oil emission is deterministic, follows attached stump and removes obsolete wounds',()=>{
  const a=make(),b=make();for(const c of [a,b]){cut(c,'L.foot');run(c,43);assert.equal(c.getSnapshot().oilMarks.length,1);assert.deepEqual(c.getSnapshot().oil[0].wounds,['L.foot']);cut(c,'L.upperLeg');run(c,85);}
@@ -15,7 +15,8 @@ test('oil emission is deterministic, follows attached stump and removes obsolete
 test('no working limbs starts v1 oil-loss deadline, but pre-damaged diagnostic does not fail',()=>{
  const c=make();for(const id of ['L.upperLeg','R.upperLeg','L.upperArm','R.upperArm'])cut(c,id);
  run(c,1);const deadline=c.getSnapshot().oil[0].failureTick;assert.ok(deadline>=601&&deadline<=901);
- run(c,deadline-2);assert.equal(c.getSnapshot().lifeStates[0],'active');run(c,1);
+ assert.equal(c.getSnapshot().oil[0].remainingTicks,deadline-1);
+ run(c,deadline-2);assert.equal(c.getSnapshot().oil[0].remainingTicks,1);assert.equal(c.getSnapshot().lifeStates[0],'active');run(c,1);
  assert.equal(c.getSnapshot().health[0].cause,'oil-loss');assert.ok(c.drainEvents().some(e=>e.type==='fighter-incapacitated'&&e.cause==='oil-loss'));
  const d=new LabSimulationCore();d.initialize({seed:7,fighters:[{...f,segmentIds:f.segmentIds.filter(s=>!s.includes('.'))}]});run(d,1000);assert.equal(d.getSnapshot().lifeStates[0],'active');assert.equal(d.getSnapshot().oilMarks.length,0);
 });

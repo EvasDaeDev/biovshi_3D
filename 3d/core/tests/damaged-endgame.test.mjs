@@ -53,7 +53,7 @@ test('real severing and oil loss resolve a damaged duel without a fabricated com
  try{
   const events=[];
   for(const segmentId of ['L.upperLeg','R.upperLeg','L.upperArm','R.upperArm'])
-   assert.equal(c.applyDamage({fighterId:fighterIds[0],segmentId,amount:3}),true);
+   assert.equal(c.applyDamage({fighterId:fighterIds[0],segmentId,amount:3.6}),true);
   events.push(...c.drainEvents());
   assert.equal(hasWorkingLimb(c.getSnapshot().segmentIds[0]),false);
   assert.equal(c.getSnapshot().mobilityModes[0],'head-crawl','head survives while locomotion limbs were severed');

@@ -250,3 +250,7 @@ ffd394f CI45848083352: tsc OK, 243/255 TAP, 12 test files failed to initialize (
 ### P4-M — grounded pursuit preference regression (26.11.2026)
 
 25dbc43 CI45850339587: 281/282, ESM cycle fixed; remaining side approach assertion failed. Head route bonus .24→.16 (max extra .10 vs torso), actual strike head bonus .72 unchanged. Old test preserved, close head/side/rear/absent/fallback regression added; numerical fixture verified. New CI pending.
+
+### P4-M — здоровье +20%, выносливость, истекание, правый HUD (26.11.2026)
+
+f456b38 CI45851387475 success. Native HP3.6/7.2/4.8, actual v1 trauma represented by remaining endurance, capacity reduced by missing anatomy, zero→trauma knockout. Existing v1 oil-loss countdown exposed and frozen after round. Right overlay for every patient (17 colored segments, endurance, wounds/countdown); tests and browser smoke updated for fractional HP. New CI/visual/perf pending.
