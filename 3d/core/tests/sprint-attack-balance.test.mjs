@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PatientGait} from '../dist/rig/gait.js';
-import {HORROR_MOVEMENT,horrorBipedStep} from '../dist/rig/movement-timing.js';
+import {HORROR_MOVEMENT,horrorBipedStep,horrorRunStep,patientDriveSpeed} from '../dist/rig/movement-timing.js';
 import {coordinatedStrikeBody} from '../dist/combat/coordinated-strike.js';
 import {punchPose} from '../dist/combat/strike.js';
 import {compileAuthoredMotion} from '../dist/rig/authored-motion.js';
@@ -25,16 +25,19 @@ test('forward punch and backward kick counter-lean move real girdles, not reach 
   assert.ok(dist(get(pose,'R.foot').a,get(base,'R.foot').a)<.025);
  }
 });
-test('authored sprint increases measured displacement with alternating planted steps',()=>{
- assert.ok(Math.abs(HORROR_MOVEMENT.sprintSpeed/2.3-1.5)<1e-9);
+test('healthy run reaches requested speed range with alternating takeoffs and overlapping flight',()=>{
+ assert.equal(patientDriveSpeed(1,true,.8),5.5);assert.equal(patientDriveSpeed(1,true,1),6.25);assert.equal(patientDriveSpeed(1,true,1.2),7);
+ assert.equal(patientDriveSpeed(1,false,1.4),2.2);assert.equal(patientDriveSpeed(0,false,1),0);
+ assert.ok(patientDriveSpeed(-1,true,1)<0&&patientDriveSpeed(-1,true,1)>=-2.2);
  const run=speed=>{
   const g=new PatientGait([0,0,0],0,true,motion);
-  let root=[0,0,0],old=g.footStates,start=0,last=-1,steps=0,peak=0;
+  let root=[0,0,0],old=g.footStates,start=0,last=-1,steps=0,air=0;
   for(let i=0;i<360;i++){
    const d=g.travel(dt,speed,mobility,0,root,0,i*dt,()=>0);
    root=[0,0,root[2]-d];g.advance(root,0,d/dt,dt,()=>0,mobility,ids,undefined,false,0,speed);
    const f=g.footStates;
-   assert.ok(f.filter(v=>v.moving).length<=1);
+   if(f.every(v=>v.moving))air++;
+   if(speed<=4.3)assert.ok(f.filter(v=>v.moving).length<=1);
    for(let j=0;j<2;j++){
     if(!f[j].moving&&!old[j].moving)assert.ok(dist(f[j].point,old[j].point)<1e-9);
     if(f[j].moving&&!old[j].moving){assert.notEqual(j,last);last=j;steps++;}
@@ -42,10 +45,11 @@ test('authored sprint increases measured displacement with alternating planted s
    if(i%12===0)for(const p of g.pose(0,root,0,i*dt))assert.ok(Math.abs(dist(p.a,p.b)-LAB_SEGMENTS.find(v=>v.id===p.id).nominalLength)<1e-7,p.id);
    if(i===59)start=root[2];old=f;
   }
-  return {pace:(start-root[2])/5,steps};
+  return {pace:(start-root[2])/5,steps,air};
  };
- const old=run(2.3/.81),fast=run(HORROR_MOVEMENT.sprintSpeed/.81);
- assert.ok(fast.pace>old.pace*1.30&&fast.pace>HORROR_MOVEMENT.sprintSpeed/.81*.80,JSON.stringify({old,fast}));
- assert.ok(fast.steps>old.steps);
- assert.ok(horrorBipedStep(4.25).lead-4.25*horrorBipedStep(4.25).swing>.10);
+ const walk=run(1.8/.81),fast=run(HORROR_MOVEMENT.sprintSpeed/.81);
+ assert.ok(fast.pace*.81>=5.5&&fast.pace*.81<=7.0,JSON.stringify({walk,fast}));
+ assert.ok(fast.air>30&&walk.air===0);
+ assert.ok(fast.steps>walk.steps);
+ assert.ok(horrorRunStep(7.7).swing>horrorRunStep(7.7).interval);
 });

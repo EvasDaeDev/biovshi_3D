@@ -206,3 +206,7 @@ fc38ecc: CI 45787417000, 239/239 tests и P3/P4 audit пройдены, smoke ti
 ### P4-M — ситуационный взгляд, безопасная переоценка и sprint (26.11.2026)
 
 ebba0cd прошёл CI 45811257465. Ring 22 hits/34 attempts, p95 2.059ms; walk peak .0603m, leg recovery .6272m. Адаптивный tracking 120–360°/s, reassess без обязательного отхода, arm forward lean/kick backward counter-lean, kick knee pole, sprint target3.45 m/s и cadence. Новые/обновлённые регрессии; новый CI/скорость/CPU/пики и визуальная приёмка ожидаются.
+
+### P4-M — human pace and sprint cycle (26.11.2026)
+
+b772cea CI 45825659732 failed outdated pitch bound; updated normal/urgent regression. Healthy walk target1.8 m/s max2.2, sprint target6.25 range5.5–7, separate running swing overlap + bounded landing, braking/turn control. New CI and measured performance/visual acceptance pending.

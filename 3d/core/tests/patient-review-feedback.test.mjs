@@ -11,7 +11,7 @@ const dt=1/60,dist=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
 test('gaze defaults below horizon, smoothly aims at lower capsule and relaxes',()=>{
  const g=new GazePitch();assert.equal(g.pitch,REST_GAZE_PITCH);
  const eye=[0,1.5,0],target=[0,.5,-1];let prior=g.pitch;
- for(let i=0;i<120;i++){g.advance(dt,eye,target);assert.ok(Math.abs(g.pitch-prior)<=2.8*dt+1e-9);prior=g.pitch;}
+ for(let i=0;i<120;i++){g.advance(dt,eye,target);assert.ok(Math.abs(g.pitch-prior)<=4.2*dt+1e-9);prior=g.pitch;}
  assert.ok(Math.abs(g.pitch+Math.PI/4)<1e-6);
  const h=headFrame([{id:'head',a:eye,b:eye,radius:.15}],0,g.pitch);
  assert.ok(h.forward[1]<-.7);assert.ok(Math.abs(h.forward.reduce((n,v,i)=>n+v*h.up[i],0))<1e-8);
@@ -48,4 +48,10 @@ test('authored gait keeps alternating anchors and connected lengths through dece
   old=feet;
  }
  assert.ok(g.stepCount>=3);assert.ok(old.every(f=>!f.moving));
+});
+
+test('urgent pitch tracks faster than ordinary aim without an instant jump',()=>{
+ const eye=[0,1.5,0],target=[0,.2,-.5],normal=new GazePitch(),urgent=new GazePitch();
+ normal.advance(dt,eye,target);urgent.advance(dt,eye,target,true);
+ assert.ok(urgent.pitch<normal.pitch);assert.ok(Math.abs(urgent.pitch-REST_GAZE_PITCH)<=5.8*dt+1e-9);
 });

@@ -12,7 +12,7 @@ import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
 import { mobilityFor, type Mobility } from './mobility.js';
 import { pronePose, blendGroundPose } from './prone.js';
-import { MOVEMENT,bipedStep,HORROR_MOVEMENT,horrorBipedStep } from './movement-timing.js';
+import { MOVEMENT,bipedStep,HORROR_MOVEMENT,horrorBipedStep,horrorRunStep } from './movement-timing.js';
 import { HopCycle, type HopSample } from './hop-cycle.js';
 import { constrainRig } from './rig-constraints.js';
 import { balanceStandingPose } from './balance.js';
@@ -24,9 +24,12 @@ const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 const dist=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
-interface Foot { plant:Vec3; start:Vec3; target:Vec3; phase:number; moving:boolean; duration:number; lift:number }
+interface Foot { plant:Vec3; start:Vec3; target:Vec3; phase:number; moving:boolean; duration:number; lift:number; running?:boolean }
 export interface RigPose { readonly id:string; readonly a:Vec3; readonly b:Vec3; readonly radius:number }
 export class PatientGait {
+  private sprintCycle=false;private sprintBob=0;
+  get running():boolean{return this.sprintCycle;}
+  get runningAirborne():boolean{return this.sprintCycle&&this.feet.every(f=>f.moving&&f.phase>.10&&f.phase<.90);}
   private moveAmount=0; private next=0;private stepWait=0;private steps=0;private runAmount=0;private signedSpeed=0;
   get stepCount():number{return this.steps;}
   get footStates(){return this.feet.map(f=>({moving:f.moving,target:[...f.target] as Vec3,point:[...f.plant] as Vec3}));}
@@ -66,7 +69,7 @@ export class PatientGait {
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
   travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R'):number{
     if(mobility.mode==='biped'&&this.groundedStride){
-      const launch=jump&&!this.leapHeld;
+      const launch=jump&&!this.leapHeld&&!this.sprintCycle;
       this.leapHeld=jump;
       if(launch||this.hopSample.phase!=='idle'){
         this.hopSample=this.leap.advance(dt,launch?(Math.abs(speed)>.03?speed:.035):0);
@@ -90,7 +93,8 @@ export class PatientGait {
         const behind=((root[0]-plant[0])*Math.sin(yaw)-(root[2]-plant[2])*Math.cos(yaw))*direction;
         return (this.organic?HORROR_MOVEMENT.stanceReach:.48)-behind;
       }));
-      const requested=direction*Math.min((this.organic?Math.min(Math.abs(speed),HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,this.motionProfile.strideTempo)):Math.abs(speed))*dt,Math.max(0,reach));
+      const limit=this.organic&&this.sprintCycle&&!kickSupport&&speed>0?HORROR_MOVEMENT.maxRunSpeed:HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,this.motionProfile.strideTempo);
+      const requested=direction*Math.min((this.organic?Math.min(Math.abs(speed),limit):Math.abs(speed))*dt,Math.max(0,reach));
       return this.organic&&kickSupport?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,yaw,requested):requested;
     }
     if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
@@ -129,6 +133,7 @@ export class PatientGait {
     this.mobility=mobility;this.active=active;this.ground=ground;
     const support=mobility.support;
     if(forcedProne!==undefined){
+      this.sprintCycle=false;this.sprintBob=0;
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const amount=clamp(forcedProne);
       if(this.knockdownMotion&&amount<this.proneAmount)this.knockdownRising=true;
@@ -154,6 +159,11 @@ export class PatientGait {
     }
     // Keep the planned stride independent of a one-tick stance reach clamp.
     const plannedSpeed=this.organic?driveSpeed:speed;
+    // A moving patient enters the separate run cycle only after actual
+    // acceleration, and leaves it on braking, sharp turns or lost support.
+    const wasRunning=this.sprintCycle;
+    this.sprintCycle=this.organic&&mobility.mode==='biped'&&this.proneAmount===0&&!holdFeet&&this.hopSample.phase==='idle'&&plannedSpeed>(wasRunning?4.3:5.1)&&speed>(wasRunning?2.8:3.2)&&Math.abs(turnRate)<1.6;
+    if(this.sprintCycle&&!wasRunning)this.stepWait=Math.min(this.stepWait,.10);
     const plan=this.organic?horrorBipedStep(plannedSpeed,this.motionProfile.strideTempo):bipedStep(speed);
     this.signedSpeed=speed;
     this.runAmount+=(plan.run-this.runAmount)*(1-Math.exp(-5*dt));
@@ -182,18 +192,38 @@ export class PatientGait {
     }
     for(let i=0;i<2;i++){
       const f=this.feet[i]!;
-      if(!support[i]){f.moving=false;continue;}
+      if(!support[i]){f.moving=false;f.running=false;continue;}
       if(!f.moving){f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+FOOT_RADIUS,f.plant[2]];continue;}
+      // Running feet may adjust their airborne landing point on braking
+      // or collision; a planted foot is never relocated by this path.
+      if(f.running){
+        const left=(1-f.phase)*f.duration,pace=Math.max(0,Math.min(speed,plannedSpeed,HORROR_MOVEMENT.maxRunSpeed));
+        const lead=pace*left+.47*Math.min(1,pace/5),side=i===0?-1:1;
+        const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;
+        const goal:Vec3=[x,ground(x,z)+FOOT_RADIUS,z],error=dist(f.target,goal);
+        // Retarget gradually, especially when a sprint meets a wall.
+        if(!this.sprintCycle||error>.23)f.target=mix(f.target,goal,Math.min(1,.24/Math.max(1e-8,error)));
+      }
       f.phase=Math.min(1,f.phase+dt/f.duration);
       const t=f.phase*f.phase*(3-2*f.phase),p=mix(f.start,f.target,t);
       f.plant=[p[0],Math.max(ground(p[0],p[2])+FOOT_RADIUS,p[1]+(this.organic?Math.sin(Math.PI*f.phase)**2:Math.sin(Math.PI*f.phase))*f.lift),p[2]];
-      if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
+      if(f.phase===1){f.moving=false;f.running=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
     }
     const pivot=pivotPlan(this.organic&&this.proneAmount===0?turnRate:0,plannedSpeed);
     if(pivot.strength>0)this.stepWait=Math.min(this.stepWait,.12+.18*(1-pivot.strength));
     const ideal=(side:number,lead:number,angle=yaw):Vec3=>{const x=root[0]+Math.cos(angle)*side*.18+Math.sin(angle)*lead,z=root[2]+Math.sin(angle)*side*.18-Math.cos(angle)*lead;return [x,ground(x,z)+FOOT_RADIUS,z];};
     let weightSide:-1|0|1=0,preparing=false;
-    if(!holdFeet&&support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&(this.stepWait<=1e-8||this.organic&&this.stepWait<=.10)){
+    if(this.sprintCycle){
+      const run=horrorRunStep(Math.min(HORROR_MOVEMENT.maxRunSpeed,plannedSpeed),this.motionProfile.strideTempo);
+      const index=this.next,f=this.feet[index]!;
+      if(!f.moving&&this.stepWait<=1e-8){
+        const target=ideal(index===0?-1:1,run.lead);
+        f.start=f.plant;f.target=target;f.phase=0;f.moving=true;f.running=true;
+        f.duration=run.swing;f.lift=run.lift;
+        this.next=1-index;this.stepWait=run.interval;this.steps++;
+      }
+      this.motion.clearPreparation();
+    }else if(!holdFeet&&support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&(this.stepWait<=1e-8||this.organic&&this.stepWait<=.10)){
       const moving=Math.abs(plannedSpeed)>.055,lead=moving?plan.lead:0;
       const error=(i:number)=>{const f=this.feet[i]!,p=ideal(i===0?-1:1,0);return Math.hypot(f.plant[0]-p[0],f.plant[2]-p[2]);};
       let index=this.next;
@@ -209,7 +239,7 @@ export class PatientGait {
         loaded=this.motion.prepare(index===0?0:1,dt);
       }
       if(separation>threshold&&loaded&&this.stepWait<=1e-8){
-        f.start=f.plant;f.target=target;f.phase=0;f.moving=true;
+        f.start=f.plant;f.target=target;f.phase=0;f.moving=true;f.running=false;
         const swing=pivot.strength>0?Math.min(moving?plan.swing:.32,pivot.swing):moving?plan.swing:.32,lift=moving?plan.lift:.07;
         const timing=this.organic?organicSwing(index===0?0:1,swing,lift,this.motionProfile.asymmetry*.5):{duration:swing,lift};
         f.duration=timing.duration;f.lift=timing.lift;
@@ -220,10 +250,12 @@ export class PatientGait {
     // At a fast cadence the next support transfer starts late in the
     // preceding swing. Do not wait through a second full preparation
     // after touchdown, which would repeatedly stall the root.
-    if(!preparing&&this.organic&&Math.abs(plannedSpeed)>2.875&&!holdFeet&&support[0]&&support[1]&&this.feet.some(f=>f.moving&&f.phase>=.55)){
+    if(!preparing&&!this.sprintCycle&&this.organic&&Math.abs(plannedSpeed)>2.875&&!holdFeet&&support[0]&&support[1]&&this.feet.some(f=>f.moving&&f.phase>=.55)){
       this.motion.prepare(this.next===0?0:1,dt);preparing=true;
     }
     if(!preparing)this.motion.clearPreparation();
+    const air=this.sprintCycle&&this.feet.every(f=>f.moving)?Math.min(...this.feet.map(f=>Math.sin(Math.PI*f.phase)**2)):0;
+    this.sprintBob+=(.065*air-this.sprintBob)*(1-Math.exp(-18*dt));
     if(this.organic){
       const swing=this.feet.findIndex(f=>f.moving);
       if(swing!==-1)weightSide=swing===0?1:-1;
@@ -243,7 +275,7 @@ export class PatientGait {
     const lateral=(.018*sway+.009*sway2)*(1-moving*.42)*style.sway,roll=(.045*Math.sin(t*.88+id*.9)+.019*sway2)*(1-moving*.35)*style.sway;
     const forwardZ=(p:Vec3)=>-Math.sin(yaw)*(p[0]-root[0])+Math.cos(yaw)*(p[2]-root[2]);
     const gaitPhase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
-    const lean=(secondary?secondary.drive*(.045+this.runAmount*.055)+secondary.inertia*.025:Math.sign(this.signedSpeed)*moving*(.045+this.runAmount*.055))+Math.sin(t*.72+id)*.012,bob=moving*.012*(1-Math.abs(gaitPhase))+breathing*.006;
+    const lean=(secondary?secondary.drive*(.045+this.runAmount*.055)+secondary.inertia*.025:Math.sign(this.signedSpeed)*moving*(.045+this.runAmount*.055))+Math.sin(t*.72+id)*.012,bob=moving*.012*(1-Math.abs(gaitPhase))+breathing*.006+this.sprintBob;
     const preload=this.hopSample.crouch??0;
     const stanceDrop=preload+(reactive?.compression??0)+(this.groundedStride?moving*(.012+.018*this.runAmount+(this.organic?.028:0)):this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0);
     const base=this.authored?.stance;

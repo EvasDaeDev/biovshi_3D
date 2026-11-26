@@ -38,7 +38,7 @@ export function bipedStep(speed:number){
 }
 export const CRAWL_TIMING=Object.freeze({swing:.30,plant:.55,reach:.40});
 /** Authored full-scale horror profile; v1 calibration stays unchanged. */
-export const HORROR_MOVEMENT=Object.freeze({walkSpeed:1.20,sprintSpeed:3.45,crawlMultiplier:1.45,stanceReach:.55,maxStrideSpeed:4.3});
+export const HORROR_MOVEMENT=Object.freeze({walkSpeed:1.80,minWalkSpeed:.80,maxWalkSpeed:2.20,sprintSpeed:6.25,minSprintSpeed:5.50,maxSprintSpeed:7.00,crawlMultiplier:1.45,stanceReach:.55,maxStrideSpeed:4.3,maxRunSpeed:8.7});
 export const HORROR_CRAWL_TIMING=Object.freeze({swing:.27,plant:.49,reach:.48});
 export function horrorBipedStep(speed:number,tempo=1){
  const plan=bipedStep(speed),v=Math.min(HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,tempo),Math.abs(speed)),run=Math.max(0,Math.min(1,(v-1.2)/1.6));
@@ -47,4 +47,22 @@ export function horrorBipedStep(speed:number,tempo=1){
  const sprint=Math.max(0,Math.min(1,(v-2.8)/1.5));
  const interval=(.41-.11*run-.115*sprint)*tempo,swing=(.28-.055*run-.09*sprint)*tempo;
  return {...plan,interval,swing,run,lead:Math.sign(speed)*Math.min(.96+.10*sprint,v*(swing+interval*.5)+.065*sprint),lift:.082+.045*run+.025*sprint,sprint};
+}
+
+/** Nominal healthy world-space speed. Small input values still permit
+ * creeping, alignment and smooth stopping; damage is applied separately. */
+export function patientDriveSpeed(forward:number,sprint:boolean,multiplier:number):number{
+ const full=sprint&&forward>0?
+  Math.max(HORROR_MOVEMENT.minSprintSpeed,Math.min(HORROR_MOVEMENT.maxSprintSpeed,HORROR_MOVEMENT.sprintSpeed*multiplier)):
+  Math.min(HORROR_MOVEMENT.maxWalkSpeed,HORROR_MOVEMENT.walkSpeed*multiplier);
+ return Math.max(-1,Math.min(1,forward))*full;
+}
+/** Native-space running, not a shortened walking step. Two swing
+ * intervals overlap briefly, with world-space landing anchors. */
+export function horrorRunStep(speed:number,tempo=1){
+ const v=Math.min(HORROR_MOVEMENT.maxRunSpeed,Math.max(0,speed));
+ // Keep the stance distance within the same anatomical envelope as walking.
+ const interval=Math.min(.22*tempo,Math.max(.185,1.62/Math.max(1,v)));
+ const swing=interval+Math.max(.075,interval*.43);
+ return {interval,swing,lead:v*swing+.47,lift:.25+.04*Math.min(1,v/8.7)};
 }

@@ -27,7 +27,7 @@ import { OilState,OIL,type OilMark } from './combat/oil.js';
 import { DamageState,type IncapacitationCause } from './combat/damage.js';
 import { Knockdown,KNOCKDOWN } from './rig/knockdown.js';
 import { analyzeSupport } from './rig/support.js';
-import { MOVEMENT,HORROR_MOVEMENT } from './rig/movement-timing.js';
+import { MOVEMENT,HORROR_MOVEMENT,patientDriveSpeed } from './rig/movement-timing.js';
 import { mobilityFor } from './rig/mobility.js';
 import { expandLegacyTorso } from './rig/anatomy.js';
 import { terrainHeight, type Mound } from './collision/terrain.js';
@@ -497,7 +497,7 @@ export class LabSimulationCore implements SimulationCore {
         for(const kind of order){
           if(ringFootwork&&!command&&kind==='head'&&distance>(horror?.60:.49))continue;
           if(kind==='leg'&&(prone||!usableStrike(a.segments,'leg','L')))continue;
-          const needsPlant=kind==='leg'&&(a.gait.footStates.some(f=>f.moving)||!mobileStrikes&&Math.abs(a.speed)>.10);
+          const needsPlant=kind==='leg'&&(a.gait.running||a.gait.footStates.some(f=>f.moving)||!mobileStrikes&&Math.abs(a.speed)>.10);
           // In the authored profile a kick may start at any speed when
           // both feet have landed. Finish an ongoing step without braking.
           if(needsPlant&&mobileStrikes)continue;
@@ -634,7 +634,12 @@ export class LabSimulationCore implements SimulationCore {
       if (c || a.id === 0) {
         const turn=c?.turn??0,quick=!!this.authored?.stalk&&this.patientScale!==1&&mobility.mode==='biped'&&a.gait.posture==='upright'&&a.gait.hopPhase==='idle';
         a.yaw += (quick?horrorTurnRate(turn):turn*2.15)*dt*flinch*a.behavior.traits.turnMultiplier;
-        target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? movement.sprintSpeed : movement.walkSpeed);
+        target = organic&&mobility.mode==='biped'?patientDriveSpeed(c?.forward??0,!!c?.sprint&&mobility.canSprint,a.behavior.traits.movementMultiplier):(c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? movement.sprintSpeed : organic&&mobility.mode!=='biped'?1.20:movement.walkSpeed);
+        if(organic&&mobility.mode==='biped'&&c?.sprint){
+          // High speed and a sharp change of heading cannot share a
+          // planted foot. Slow into turns instead of skidding in place.
+          const turnLoad=Math.abs(turn);target*=1-.72*Math.min(1,turnLoad*turnLoad);
+        }
       } else {
         a.wanderTimer -= dt;
         if (a.wanderTimer <= 0) {
@@ -647,7 +652,7 @@ export class LabSimulationCore implements SimulationCore {
         a.yaw += clamp(wrap(a.wanderAngle-a.yaw),-1.1*dt,1.1*dt)*flinch*a.behavior.traits.turnMultiplier;
         target = a.wanderSpeed;
       }
-      target*=mobility.speedScale*flinch*a.behavior.traits.movementMultiplier*(organic&&mobility.mode==='arm-crawl'?HORROR_MOVEMENT.crawlMultiplier:1);
+      target*=mobility.speedScale*flinch*(organic&&mobility.mode==='biped'&&(c||a.id===0)?1:a.behavior.traits.movementMultiplier)*(organic&&mobility.mode==='arm-crawl'?HORROR_MOVEMENT.crawlMultiplier:1);
       const kick=a.strike.punch?.kind==='leg',kickSupport=organic&&kick?(a.strike.punch!.side==='L'?'R':'L'):undefined;
       a.speed = mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
@@ -672,7 +677,7 @@ export class LabSimulationCore implements SimulationCore {
     this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat,this.navigation instanceof PolygonNavigation||this.navigation.walls.length?(a,x,z)=>this.navigation.move(a,{x,z}):undefined);
     if(this.dynamicBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
-      if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||a.gait.hopHeight>.025)continue;
+      if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||(a.gait.hopHeight>.025||a.gait.runningAirborne))continue;
       const root=this.gaitPoint([a.x,a.y,a.z]);
        const full=a.gait.pose(a.id,root,a.yaw,this.tick*FIXED_DT,false,this.authored?.stalk?a.perception.gaze(a.yaw)-a.yaw:0,this.authored?.stalk?a.impact.reaction:undefined,a.gazePitch.pitch);
        const parts=full.filter(p=>a.segments.includes(p.id));
