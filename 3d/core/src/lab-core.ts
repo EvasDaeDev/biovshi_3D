@@ -9,6 +9,7 @@ import {strikeLocomotion} from './combat/strike-locomotion.js';
 import {attackScore,targetPriority,shouldBackstep,type FightOpportunity} from './combat/opportunity.js';
 import type {PunchChoice} from './combat/punch-choice.js';
 import {horrorTurnRate} from './animation/turn-motion.js';
+import {victoryPose,VICTORY_TICKS} from './animation/victory.js';
 import {headFrame,withCameraMount} from './rig/head-frame.js';
 import { PatientPerception,notices,gazeAwareRoute,type VisionBody } from './combat/perception.js';
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
@@ -57,7 +58,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
   speed: number; velocity:Vec3; distress:DistressState; throwing:ThrowDecision; crouchAmount:number;crouchUntil:number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
-  raid:RaidState;variety:FightVariety;gazePitch:GazePitch;gazeFocus:Vec3|null;lookTarget:PointXZ|null;lastKind?:StrikeKind;lastContact?:string;
+  raid:RaidState;variety:FightVariety;gazePitch:GazePitch;gazeFocus:Vec3|null;lookTarget:PointXZ|null;lastKind?:StrikeKind;lastContact?:string; pivotTarget:number|null;
   segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; behavior:PatientBehavior; tactics:CombatTactics; hunt:HuntState; escape:EscapeState; perception:PatientPerception; route:RouteState; disarmedGoal:PointXZ|null; disarmedUntil:number; disarmedThreatIds:string; lastHitTick:number; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
 
@@ -100,6 +101,7 @@ export class LabSimulationCore implements SimulationCore {
   private fracture = false;
   private dynamicBalance=false;
   private combat=false;private expandedStrikes=false;private tacticalCombat=false;private escapeCombat=false;private perceptionCombat=false;private fightEnded=false;private winnerId:number|null=null;
+  private victoryStart:number|null=null;
   private flights:LimbFlight[]=[];private nextFlight=0;
   private hitCount = 0;
   private detachedCount = 0;
@@ -125,7 +127,7 @@ export class LabSimulationCore implements SimulationCore {
         throw new RangeError('Invalid segment IDs');
       const motionProfile=patientMotionProfile(config.seed,f.id,authored?.stalk&&f.profile?(f.profile.temperament??'balanced'):undefined);
       return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,velocity:[0,0,0] as Vec3,distress:new DistressState(config.seed,f.id),throwing:new ThrowDecision(config.seed,f.id),crouchAmount:0,crouchUntil:0,wanderTimer:1+f.id*.3,
-        wanderAngle:f.yawRad,wanderSpeed:.35,raid:new RaidState(config.seed,f.id,f.profile?.temperament??(f.profile?'balanced':'baseline')),variety:new FightVariety(config.seed,f.id),gazePitch:new GazePitch(),gazeFocus:null,lookTarget:null,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad,scale!==1,authored,motionProfile),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(authored?.stalk&&f.profile?motionProfile.strikeTempo:1,!!authored?.stalk&&scale!==1),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),hunt:new HuntState(config.seed,f.id,motionProfile),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id,!!authored?.stalk),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
+        wanderAngle:f.yawRad,wanderSpeed:.35,raid:new RaidState(config.seed,f.id,f.profile?.temperament??(f.profile?'balanced':'baseline')),variety:new FightVariety(config.seed,f.id),gazePitch:new GazePitch(),gazeFocus:null,lookTarget:null,pivotTarget:null,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad,scale!==1,authored,motionProfile),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(authored?.stalk&&f.profile?motionProfile.strikeTempo:1,!!authored?.stalk&&scale!==1),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),hunt:new HuntState(config.seed,f.id,motionProfile),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id,!!authored?.stalk),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
     if(actors.some(a=>!navigation.clear(a,a,.50)))throw new RangeError('Fighter starts inside arena wall clearance');
@@ -140,7 +142,7 @@ export class LabSimulationCore implements SimulationCore {
     this.tick = 0;this.handoffPrevious=null;this.handoffTick=-1;
     this.rng = config.seed;
     this.oilRng=(config.seed^0x9e3779b9)>>>0;this.oilMarks=[];this.nextMark=0;
-    this.combat=config.combatEnabled===true;this.expandedStrikes=this.combat&&config.expandedStrikes===true;this.tacticalCombat=this.combat&&config.tacticalCombat===true;this.escapeCombat=this.tacticalCombat&&config.escapeCombat===true;this.perceptionCombat=this.tacticalCombat&&config.perceptionCombat===true;this.fightEnded=false;this.winnerId=null;
+    this.combat=config.combatEnabled===true;this.expandedStrikes=this.combat&&config.expandedStrikes===true;this.tacticalCombat=this.combat&&config.tacticalCombat===true;this.escapeCombat=this.tacticalCombat&&config.escapeCombat===true;this.perceptionCombat=this.tacticalCombat&&config.perceptionCombat===true;this.fightEnded=false;this.winnerId=null;this.victoryStart=null;
     this.fracture = !this.combat&&config.labContactFracture === true;
     this.dynamicBalance=config.labDynamicBalance===true;
     this.episodes.reset();this.events=[];this.flights=[];this.nextFlight=0;this.hitCount=0;this.detachedCount=0;
@@ -339,7 +341,7 @@ export class LabSimulationCore implements SimulationCore {
     }
     this.flights=keep;
   }
-  private planCombat(commands:Map<number,FighterCommand>):void{
+  private planCombat(commands:Map<number,FighterCommand>,pivots:Set<number>):void{
     // Shared pre-intent pose snapshot avoids an order-dependent view of newly started strikes.
     const telegraphs=this.authored?.stalk?new Map(this.actors.map(a=>[a.id,a.strike.snapshot(this.tick)])):null;
     const vision=this.perceptionCombat?new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,{id:a.id,x:a.x,z:a.z,yaw:a.yaw,parts:this.actorPose(a)} satisfies VisionBody])):null;
@@ -354,7 +356,8 @@ export class LabSimulationCore implements SimulationCore {
       const compatible=!a.strike.punch||!!a.strike.punch.prone===prone&&(!a.strike.punch.crouch&&!a.strike.punch.pounce||mobility.mode==='biped');
       a.strike.advance(this.tick,allowed&&compatible&&(!this.authored?.stalk||!a.strike.punch||this.actors.some(b=>b.id===a.strike.punch?.targetId&&!b.fixed)||a.strike.multiTarget&&this.actors.some(b=>b.id===a.strike.punch?.secondary?.targetId&&!b.fixed)),a.segments,!!this.authored?.stalk&&!a.fixed&&!a.knockdown.blocked&&a.gait.posture==='upright'&&a.gait.hopPhase==='idle');
       if(a.fixed){a.tactics.setMode('inactive');continue;}
-      const command=commands.get(a.id);
+      const command=commands.get(a.id),pivotTarget=a.pivotTarget;
+      a.pivotTarget=null;
       const mobileStrikes=!!this.authored?.stalk&&this.patientScale!==1;
       const horror=this.ringCombat&&!!this.authored?.stalk&&!command;
       const distress=a.distress.snapshot().mode,defiant=horror&&(distress==='hysteria'||distress==='last-stand');
@@ -495,6 +498,18 @@ export class LabSimulationCore implements SimulationCore {
       let retreat=!raiding&&this.tacticalCombat&&!command&&!a.strike.punch&&!mobility.prone&&mobility.mode==='biped'&&a.tactics.retreating(this.tick)&&unobstructed&&distance<1.6&&Math.abs(a.x)<5.1&&Math.abs(a.z)<5.1;
       a.tactics.setMode(retreat?'retreat':'pursuit');
       const ringFootwork=this.ringCombat&&!prone&&mobility.mode==='biped';
+      // A new bearing far outside the approach cone needs a planted turn.
+      // Keep braking until aligned even though tactics has already stored the new target.
+      const pivotLimit=pivotTarget===target.id?.30:previousTarget!==target.id?.75:Infinity;
+      if(ringFootwork&&seen&&!command&&!retreat&&Math.abs(heading)>pivotLimit){
+        a.pivotTarget=target.id;
+        if(allowed&&!a.strike.punch&&!a.impact.active&&a.gait.hopPhase==='idle'){
+          a.crouchUntil=0;
+          pivots.add(a.id);
+          commands.set(a.id,{fighterId:a.id,forward:0,turn:clamp(heading*2,-1,1),sprint:false});
+          continue;
+        }
+      }
       // As in v1, break a long quiet orbit with a direct approach.
       const urgent=ringFootwork&&this.tick-a.lastHitTick>420&&this.tick>420;
       if(!raiding&&horror&&ringFootwork&&seen&&unobstructed&&!a.strike.punch&&Math.abs(turn)<.8&&shouldBackstep(opportunity,a.strike.ready(this.tick)&&a.behavior.ready(this.tick),urgent)){
@@ -726,7 +741,8 @@ export class LabSimulationCore implements SimulationCore {
     const rootsBefore=this.actors.map(a=>[a.x,a.y,a.z] as const);
     const automatic=this.escapeCombat?new Set(this.actors.filter(a=>!commands.has(a.id)).map(a=>a.id)):null;
     const escapeStart=automatic?new Map(this.actors.map(a=>[a.id,[a.x,a.z] as const])):null;
-    if(this.combat)this.planCombat(commands);
+    const pivots=new Set<number>();
+    if(this.combat)this.planCombat(commands,pivots);
     const previous=this.combat&&!this.fightEnded?new Map(this.actors.filter(a=>!a.fixed).map(a=>[a.id,this.actorPose(a)])):null;
     // Reuse the existing pre-step strike geometry on authored rounds.
     // Non-combat authored diagnostics need a sample as well. No extra
@@ -785,7 +801,8 @@ export class LabSimulationCore implements SimulationCore {
       }
       target*=mobility.speedScale*flinch*(organic&&mobility.mode==='biped'&&(c||a.id===0)?1:a.behavior.traits.movementMultiplier)*(organic&&mobility.prone?(mobility.mode==='arm-crawl'?HORROR_MOVEMENT.crawlMultiplier:HORROR_MOVEMENT.residualCrawlMultiplier):1);
       const crouch=a.crouchAmount>.01,kick=a.strike.punch?.kind==='leg'&&!a.strike.punch?.pounce,kickSupport=organic&&kick?(a.strike.punch!.side==='L'?'R':'L'):undefined;
-      a.speed = crouch||mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
+      const planted=pivots.has(a.id)||this.ringCombat&&this.fightEnded&&a.id===this.winnerId;
+      a.speed = planted||crouch||mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
       const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),!crouch&&c?.jump,Math.abs(target)>.025,kickSupport,!!attack?.pounce)*this.patientScale;
       const oldX=a.x,oldZ=a.z;
@@ -843,6 +860,12 @@ export class LabSimulationCore implements SimulationCore {
     // v1 game/loop.js stops round damage and oil-loss deadlines after
     // the result, while presentation/physical settling can continue.
     if(!this.fightEnded){this.updateOil();if(this.combat)this.finishFight();}
+    if(this.ringCombat&&this.winnerId!==null&&this.victoryStart===null){
+      const winner=this.actors.find(a=>a.id===this.winnerId)!;
+      if(!mobilityFor(winner.segments).prone&&!winner.knockdown.blocked&&winner.gait.posture==='upright'&&winner.gait.hopPhase==='idle'&&!winner.impact.active){
+        this.victoryStart=this.tick;
+      }
+    }
   }
 
   getSnapshot(): WorldSnapshot {
@@ -853,7 +876,14 @@ export class LabSimulationCore implements SimulationCore {
       fighterIds[i]=a.id;
       roots.set([a.x,a.y,a.z,a.yaw],i*4);
     });
-    const rigSegments=this.actors.map(a=>this.copyPose(this.actorPose(a)));
+    const rigSegments=this.actors.map(a=>{
+      const pose=this.actorPose(a);
+      if(a.id!==this.winnerId||this.victoryStart===null)return this.copyPose(pose);
+      const elapsed=this.tick-this.victoryStart;
+      if(elapsed<=0||elapsed>=VICTORY_TICKS)return this.copyPose(pose);
+      const celebratory=victoryPose(this.worldPose(pose,1/this.patientScale),a.yaw,elapsed,this.gaitGround(a));
+      return this.copyPose(this.worldPose(celebratory));
+    });
     const supports=rigSegments.map((parts,i)=>analyzeSupport(parts,(x,z)=>this.ground(this.actors[i]!,x,z)));
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
