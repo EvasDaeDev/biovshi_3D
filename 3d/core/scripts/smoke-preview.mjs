@@ -31,6 +31,11 @@ try{
  await page.locator('#support-debug').check();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.supportCount)>0);
  await page.locator('#support-debug').uncheck();
+ await page.locator('#camera-mode').selectOption('head');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='head');
+ await page.locator('#camera-fov').selectOption('75');
+ await page.locator('#camera-mode').selectOption('close');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='close');
  await page.locator('#pause').click();
  await page.waitForFunction(()=>document.getElementById('stats')?.textContent.includes('PAUSED'));
  await page.locator('#reset').click();

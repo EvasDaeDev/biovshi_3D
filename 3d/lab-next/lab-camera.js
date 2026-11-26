@@ -3,6 +3,7 @@ export class LabCamera {
  constructor(T,camera,mode,patient,fov){
   this.camera=camera;this.modeInput=mode;this.patientInput=patient;this.fovInput=fov;this.circle=false;
   this.up=new T.Vector3();this.forward=new T.Vector3();this.right=new T.Vector3();this.back=new T.Vector3();
+  this.mount=new T.Vector3();this.previousMount=new T.Vector3();
   this.matrix=new T.Matrix4();this.q=new T.Quaternion();this.oldQ=new T.Quaternion();this.worldUp=new T.Vector3(0,1,0);
   this.modeInput.onchange=()=>this.sync();this.sync();this.staticView();
  }
@@ -27,7 +28,10 @@ export class LabCamera {
   c.lookAt(0,this.circle?.75:1,0);this.projection();
  }
  orientation(h,out){
-  this.up.set(...h.up);this.forward.set(...h.forward);this.right.crossVectors(this.forward,this.up).normalize();this.back.copy(this.forward).negate();
+  // A level horizon is independent of the neck's attack/impact roll.
+  this.forward.set(...h.forward).normalize();this.right.crossVectors(this.forward,this.worldUp);
+  if(this.right.lengthSq()<1e-8)this.right.crossVectors(this.forward,this.up.set(...h.up));
+  this.right.normalize();this.up.crossVectors(this.right,this.forward).normalize();this.back.copy(this.forward).negate();
   return out.setFromRotationMatrix(this.matrix.makeBasis(this.right,this.up,this.back));
  }
  update(s,prior,alpha,meshes,clearance){
@@ -40,7 +44,11 @@ export class LabCamera {
   this.orientation(h,this.q);
   if(compatible&&alpha<1){this.orientation(old,this.oldQ);this.q.slerp(this.oldQ,1-alpha);}
   this.up.copy(this.worldUp).applyQuaternion(this.q);
-  this.camera.position.copy(m.position).addScaledVector(this.up,h.radius+clearance);
+  // Interpolate the virtual mount only across continuous anatomy. On a
+  // head strike it follows the unstruck rig, not the lunge of the skull.
+  this.mount.set(...(h.cameraCenter??h.center));
+  if(compatible&&alpha<1)this.mount.lerp(this.previousMount.set(...(old.cameraCenter??old.center)),1-alpha);
+  this.camera.position.copy(this.mount).addScaledVector(this.up,h.radius+clearance);
   this.camera.quaternion.copy(this.q);this.camera.up.copy(this.up);this.projection();
  }
 }

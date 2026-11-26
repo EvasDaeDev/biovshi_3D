@@ -47,6 +47,18 @@ jobs:
           path: 3d/core/combat-audit-report.json
           if-no-files-found: warn
       - run: npm --prefix 3d/core run preview:stage
+      # Hosted runners start clean; reuse the exact installed Playwright browser revision.
+      - name: Resolve Playwright version
+        id: playwright
+        working-directory: 3d/core
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu24-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
+      # The install command is idempotent: cached binaries are reused.
+      # OS packages still need verification on each fresh runner.
       - run: npx --prefix 3d/core playwright install --with-deps chromium
       - run: npm --prefix 3d/core run preview:smoke
       - name: Upload tested Lab Next preview for manual debugging

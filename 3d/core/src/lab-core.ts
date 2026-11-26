@@ -6,7 +6,8 @@ import type { PointXZ } from './combat/escape.js';
 import {GazePitch} from './animation/gaze-pitch.js';
 import {attackScore,targetPriority,shouldBackstep,type FightOpportunity} from './combat/opportunity.js';
 import type {PunchChoice} from './combat/punch-choice.js';
-import {headFrame} from './rig/head-frame.js';
+import {horrorTurnRate} from './animation/turn-motion.js';
+import {headFrame,withCameraMount} from './rig/head-frame.js';
 import { PatientPerception,notices,type VisionBody } from './combat/perception.js';
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
 import { usableStrike } from './combat/strike.js';
@@ -137,10 +138,10 @@ export class LabSimulationCore implements SimulationCore {
     for(const a of this.actors)a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,0,this.gaitGround(a),mobilityFor(a.segments),a.segments);
   }
 
-  private actorPose(a:Actor,nominal=false):readonly RigPose[]{
+  private actorPose(a:Actor,nominal=false,withoutStrike=false):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const pose=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,a.impact.active,a.perception.gaze(a.yaw)-a.yaw,this.authored?.stalk?a.impact.reaction:undefined,a.gazePitch.pitch).filter(p=>a.segments.includes(p.id));
-    const visual=a.strike.visual(this.tick),strike=visual?.punch;
+    const visual=withoutStrike?null:a.strike.visual(this.tick),strike=visual?.punch;
     // A residual pose is compatible only with the same upright support
     // configuration. Missing source, flight and ground transitions win.
     const compatible=visual?.weight===1||a.gait.posture==='upright'&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare';
@@ -534,7 +535,8 @@ export class LabSimulationCore implements SimulationCore {
       if(a.fixed)continue;
       const c = commands.get(a.id);
       if(this.authored?.stalk){
-       const h=this.handoffPrevious?.get(a.id)?.find(p=>p.id==='head');
+       const stableHead=a.strike.visual(this.tick)?.punch.kind==='head'&&!a.knockdown.blocked;
+       const h=(stableHead?this.actorPose(a,false,true):this.handoffPrevious?.get(a.id))?.find(p=>p.id==='head');
        a.gazePitch.advance(dt,h?.a??[a.x,a.y+1.5,a.z],a.gazeFocus);
       }
       let target = 0;
@@ -551,8 +553,10 @@ export class LabSimulationCore implements SimulationCore {
         a.gait.advanceExpression(dt,a.impact.active);
         continue;
       }
+      const beforeYaw=a.yaw;
       if (c || a.id === 0) {
-        a.yaw += (c?.turn ?? 0) * 2.15 * dt*flinch*a.behavior.traits.turnMultiplier;
+        const turn=c?.turn??0,quick=!!this.authored?.stalk&&this.patientScale!==1&&mobility.mode==='biped'&&a.gait.posture==='upright'&&a.gait.hopPhase==='idle';
+        a.yaw += (quick?horrorTurnRate(turn):turn*2.15)*dt*flinch*a.behavior.traits.turnMultiplier;
         target = (c?.forward ?? 0) * (c?.sprint && mobility.canSprint ? MOVEMENT.sprintSpeed : MOVEMENT.walkSpeed);
       } else {
         a.wanderTimer -= dt;
@@ -576,7 +580,7 @@ export class LabSimulationCore implements SimulationCore {
       if(this.navigation instanceof PolygonNavigation||this.navigation.walls.length){const p=this.navigation.move({x:oldX,z:oldZ},a);a.x=p.x;a.z=p.z;}
       a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*Math.sin(a.yaw)-(a.z-oldZ)*Math.cos(a.yaw))/dt:a.speed;
-      a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,a.strike.punch?.kind==='leg');
+      a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,a.strike.punch?.kind==='leg',(a.yaw-beforeYaw)/dt);
       const mode=a.tactics.snapshot().mode;
       const intent=this.ringCombat&&!this.fightEnded?(a.strike.punch?'aggressive':mode==='search'||mode==='memory'?(Math.abs(a.speed)<.055?'freeze':'stalk'):mode==='pursuit'?(Math.abs(c?.forward??0)<.08?'freeze':c?.sprint?'aggressive':'stalk'):'stance'):'stance';
       a.gait.advanceExpression(dt,a.impact.active,intent);
@@ -637,7 +641,13 @@ export class LabSimulationCore implements SimulationCore {
       oil:this.actors.map(a=>a.oil.snapshot()),oilMarks:this.oilMarks.map(m=>({...m,point:[...m.point]})),impacts:this.actors.map(a=>a.impact.snapshot()),
       routes:this.actors.map(a=>a.route.snapshot()),
       perception:this.actors.map(a=>a.perception.snapshot(a.yaw)),
-      headFrames:this.actors.map((a,i)=>a.fixed?null:headFrame(rigSegments[i]!,a.perception.gaze(a.yaw),this.authored?.stalk?a.gazePitch.pitch:undefined)),
+      headFrames:this.actors.map((a,i)=>{
+        if(a.fixed)return null;
+        const frame=headFrame(rigSegments[i]!,a.perception.gaze(a.yaw),this.authored?.stalk?a.gazePitch.pitch:undefined);
+        const strike=a.strike.visual(this.tick)?.punch;
+        return this.authored?.stalk&&strike?.kind==='head'&&!a.knockdown.blocked&&!strike.prone
+          ?withCameraMount(frame,this.actorPose(a,false,true)):frame;
+      }),
       escapes:this.actors.map(a=>a.escape.snapshot()),
       tactics:this.actors.map(a=>a.tactics.snapshot()),
       hunts:this.actors.map(a=>a.hunt.snapshot()),

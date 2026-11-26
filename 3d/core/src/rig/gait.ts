@@ -1,3 +1,4 @@
+import {pivotPlan} from '../animation/turn-motion.js';
 import {KnockdownMotion} from '../animation/knockdown-motion.js';
 import {localImpact,type ImpactMotionSample} from '../animation/impact-motion.js';
 import type {AuthoredMotion} from './authored-motion.js';
@@ -117,7 +118,7 @@ export class PatientGait {
       return {plant:p,start:p,target:p,phase:0,moving:false,duration:.32,lift:.085};};
     this.feet=[foot(-1),foot(1)];this.expressive=authored?.stance;
   }
-  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false):void{
+  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false,turnRate=0):void{
     this.mobility=mobility;this.active=active;this.ground=ground;
     const support=mobility.support;
     if(forcedProne!==undefined){
@@ -179,18 +180,20 @@ export class PatientGait {
       f.plant=[p[0],Math.max(ground(p[0],p[2])+FOOT_RADIUS,p[1]+(this.organic?Math.sin(Math.PI*f.phase)**2:Math.sin(Math.PI*f.phase))*f.lift),p[2]];
       if(f.phase===1){f.moving=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
     }
-    const ideal=(side:number,lead:number):Vec3=>{const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;return [x,ground(x,z)+FOOT_RADIUS,z];};
+    const pivot=pivotPlan(this.organic&&this.proneAmount===0?turnRate:0,speed);
+    if(pivot.strength>0)this.stepWait=Math.min(this.stepWait,.12+.18*(1-pivot.strength));
+    const ideal=(side:number,lead:number,angle=yaw):Vec3=>{const x=root[0]+Math.cos(angle)*side*.18+Math.sin(angle)*lead,z=root[2]+Math.sin(angle)*side*.18-Math.cos(angle)*lead;return [x,ground(x,z)+FOOT_RADIUS,z];};
     let weightSide:-1|0|1=0,preparing=false;
     if(!holdFeet&&support[0]&&support[1]&&!this.feet.some(f=>f.moving)&&(this.stepWait<=1e-8||this.organic&&this.stepWait<=.10)){
       const moving=Math.abs(speed)>.055,lead=moving?plan.lead:0;
       const error=(i:number)=>{const f=this.feet[i]!,p=ideal(i===0?-1:1,0);return Math.hypot(f.plant[0]-p[0],f.plant[2]-p[2]);};
       let index=this.next;
-      if(!moving&&error(1-index)>error(index))index=1-index;
-      const f=this.feet[index]!,target=ideal(index===0?-1:1,lead);
+      if((!moving||pivot.strength>.5)&&error(1-index)>error(index))index=1-index;
+      const f=this.feet[index]!,target=ideal(index===0?-1:1,lead,yaw+pivot.lead);
       // At low speeds wait until there is a meaningful displacement; at
       // normal speed the alternating cadence gives a full stance interval.
       const separation=Math.hypot(f.plant[0]-target[0],f.plant[2]-target[2]);
-      const threshold=this.organic?(moving?.13:.13):(moving?.16:.13);
+      const threshold=this.organic?pivot.threshold:(moving?.16:.13);
       let loaded=true;
       if(this.organic&&this.proneAmount===0&&separation>threshold*.70){
         preparing=true;weightSide=index===0?1:-1;
@@ -198,10 +201,10 @@ export class PatientGait {
       }
       if(separation>threshold&&loaded&&this.stepWait<=1e-8){
         f.start=f.plant;f.target=target;f.phase=0;f.moving=true;
-        const swing=moving?plan.swing:.32,lift=moving?plan.lift:.07;
+        const swing=pivot.strength>0?Math.min(moving?plan.swing:.32,pivot.swing):moving?plan.swing:.32,lift=moving?plan.lift:.07;
         const timing=this.organic?organicSwing(index===0?0:1,swing,lift,this.motionProfile.asymmetry*.5):{duration:swing,lift};
         f.duration=timing.duration;f.lift=timing.lift;
-        this.next=1-index;this.stepWait=moving?plan.interval:.50;this.steps++;
+        this.next=1-index;this.stepWait=pivot.strength>0?Math.min(moving?plan.interval:.50,pivot.interval):moving?plan.interval:.50;this.steps++;
         preparing=false;
       }
     }

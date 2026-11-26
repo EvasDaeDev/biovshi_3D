@@ -1,5 +1,5 @@
 import type {PhysicsSegmentPose,Vec3} from '../types.js';
-export interface HeadFrame {readonly center:Vec3;readonly radius:number;readonly up:Vec3;readonly forward:Vec3}
+export interface HeadFrame {readonly center:Vec3;readonly radius:number;readonly up:Vec3;readonly forward:Vec3;readonly cameraCenter?:Vec3}
 const dot=(a:Vec3,b:Vec3)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const cross=(a:Vec3,b:Vec3):Vec3=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const norm=(a:Vec3,f:Vec3):Vec3=>{const n=Math.hypot(...a);return n>1e-8?[a[0]/n,a[1]/n,a[2]/n]:f;};
@@ -20,6 +20,13 @@ export function headFrame(parts:readonly PhysicsSegmentPose[],gazeYaw:number,pit
   return {center:[(h.a[0]+h.b[0])/2,(h.a[1]+h.b[1])/2,(h.a[2]+h.b[2])/2],radius:h.radius,up:crown,forward:aimed};
  }
  return {center:[(h.a[0]+h.b[0])/2,(h.a[1]+h.b[1])/2,(h.a[2]+h.b[2])/2],radius:h.radius,up,forward};
+}
+/** A virtual mount removes strike-only translation without altering the
+ * actual head center, physical rig or original gaze frame. */
+export function withCameraMount(frame:HeadFrame|null,unstruck:readonly PhysicsSegmentPose[]):HeadFrame|null{
+ if(!frame)return null;
+ const head=unstruck.find(p=>p.id==='head');if(!head)return frame;
+ return {...frame,cameraCenter:[(head.a[0]+head.b[0])*.5,(head.a[1]+head.b[1])*.5,(head.a[2]+head.b[2])*.5]};
 }
 export function headCameraPosition(h:HeadFrame):Vec3{
  const d=h.radius+HEAD_CAMERA_CLEARANCE;
