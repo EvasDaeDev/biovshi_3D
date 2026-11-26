@@ -32,6 +32,7 @@ export class ArmCarriage{
  private walking=0;private running=0;private guarding=0;private bearing=0;
  constructor(private readonly profile:MotionProfile){}
  get runLean():number{return .15*this.running;}
+ get guardAmount():number{return this.guarding*(1-this.running);}
  advanceMotion(dt:number,speed:number,drive:number,running:boolean,allowed:boolean):void{
   const walk=allowed?clamp(Math.abs(speed)/.60):0;
   // The fast gait has its own clock. Keep carriage through a momentary
@@ -44,18 +45,18 @@ export class ArmCarriage{
   this.guarding=follow(this.guarding,guard?1:0,dt,(guard?.18:.23)*this.profile.lag);
   this.bearing=follow(this.bearing,clamp(bearing,-rad(55),rad(55)),dt,.13*this.profile.lag);
  }
- offsets(side:-1|1,idleElbow:Vec3,idleHand:Vec3,swing:number):CarriageOffsets{
+ offsets(side:-1|1,idleElbow:Vec3,idleHand:Vec3,swing:number,idleRaise=0):CarriageOffsets{
   const asym=side*this.profile.asymmetry;
   const accent=clamp(swing,-1,1);
   const walkingUpper=direction(clamp(35+3*asym+2*accent,30,40),this.bearing,side);
   const walkingLower=direction(63+4*asym+3*accent,this.bearing,side);
-  // Hands around chest height: lowered upper arm and upward forearm.
-  const guardUpper=direction(57+5*asym+2*accent,this.bearing,side);
-  const guardLower=direction(130+6*asym+2*accent,this.bearing,side);
+  // Uneven high guard: elbows forward, forearms rising toward the face.
+  const guardUpper=direction(74+4*asym+2*accent,this.bearing-side*.14,side);
+  const guardLower=direction(155+4*asym+2*accent,this.bearing-side*.48,side);
   const runUpper=direction(clamp(35+3*asym+7*accent,25,45),0,side);
   const runLower=direction(62+4*asym+7*accent,0,side);
   const select=(idle:Vec3,walk:Vec3,guard:Vec3,run:Vec3,n:number):Vec3=>
-   length(blendDirection(blendDirection(blendDirection(idle,walk,this.walking),guard,this.guarding),run,this.running),n);
+   length(blendDirection(blendDirection(blendDirection(idle,walk,Math.max(this.walking,idleRaise)),guard,this.guarding),run,this.running),n);
   const elbow=select(idleElbow,walkingUpper,guardUpper,runUpper,.36);
   const forearm=select(sub(idleHand,idleElbow),walkingLower,guardLower,runLower,.32);
   return {elbow,hand:add(elbow,forearm)};

@@ -25,11 +25,11 @@ test('walk both directions raises arms 30–40 degrees, toward the observed targ
   assert.ok(Math.abs(dist(q.elbow,q.hand)-.32)<1e-9);
  }
 });
-test('combat guard bends elbows at chest level; sprint overrides guard smoothly and leans forward',()=>{
+test('combat guard raises the hands toward the head; sprint overrides guard smoothly and leans forward',()=>{
  const a=new ArmCarriage(BASE_MOTION_PROFILE);
  for(let i=0;i<180;i++){a.advanceMotion(dt,1.4,1.4,false,true);a.advanceAttention(dt,true,0);}
  const guard=a.offsets(-1,elbow,hand,0);
- assert.ok(Math.abs(guard.hand[1])<.09);assert.ok(guard.hand[2]<-.4);
+ assert.ok(guard.hand[1]>.14&&guard.hand[1]<.30);assert.ok(guard.hand[2]<-.35);
  let prev=guard;
  for(let i=0;i<180;i++){
   a.advanceMotion(dt,5,5,true,true);a.advanceAttention(dt,true,0);
@@ -59,7 +59,7 @@ test('live gait carries arms at steady walk, run and guard without changing bone
  const walk=sample(1.4,false),back=sample(-1.4,false),run=sample(5.7,false),guard=sample(0,true);
  for(const p of [walk,back])for(const a of p.arms)assert.ok(pitch(a.upper)>=29&&pitch(a.upper)<=41);
  for(const a of run.arms)assert.ok(pitch(a.upper)>=24&&pitch(a.upper)<=46);
- for(const a of guard.arms)assert.ok(Math.abs(a.hand[1])<.12);
+ for(const a of guard.arms)assert.ok(a.hand[1]>.12&&a.hand[1]<.32);
  assert.ok(run.lean<walk.lean-.06,JSON.stringify({walk,run}));
 });
 
