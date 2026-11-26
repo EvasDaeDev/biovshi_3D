@@ -1,5 +1,5 @@
 import {compensateHead} from '../animation/body-compensation.js';
-import {POUNCE} from '../combat/pounce.js';
+import {POUNCE} from './pounce-timing.js';
 import {ArmCarriage} from '../animation/arm-carriage.js';
 import {pivotPlan} from '../animation/turn-motion.js';
 import {kickTravelLimit} from '../combat/strike-locomotion.js';

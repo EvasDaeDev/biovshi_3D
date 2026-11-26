@@ -1,19 +1,12 @@
 import type {PhysicsSegmentPose,Vec3} from '../types.js';
 import type {AuthoredMotion} from '../rig/authored-motion.js';
 import {FIXED_DT} from '../fixed-clock.js';
-import {MOVEMENT} from '../rig/movement-timing.js';
+import {pounceOffset} from '../rig/pounce-timing.js';
+export {POUNCE,pounceOffset} from '../rig/pounce-timing.js';
 import {closestAim,type PunchChoice} from './punch-choice.js';
 import {punchPose,usableStrike,strikeOrigin,type Punch,type StrikeKind} from './strike.js';
 import {firstStrikeContact} from './swept-contact.js';
 import {strikeBearing,SIDE_STRIKE_LIMIT} from './strike-sector.js';
-export const POUNCE=Object.freeze({prepare:.18,flight:.42,settle:.20,distance:1.05});
-/** Same ballistic lift and eased horizontal displacement as HopCycle.
- * Static preview only; moving targets, terrain and collision can alter
- * the real trajectory. Runtime never grants damage from the preview. */
-export function pounceOffset(age:number,yaw:number):Vec3{
- const q=Math.max(0,Math.min(1,(age-POUNCE.prepare)/POUNCE.flight)),s=q*q*(3-2*q),t=q*POUNCE.flight;
- return [Math.sin(yaw)*POUNCE.distance*s,.5*MOVEMENT.gravity*t*(POUNCE.flight-t),-Math.cos(yaw)*POUNCE.distance*s];
-}
 const moved=(pose:readonly PhysicsSegmentPose[],d:Vec3):readonly PhysicsSegmentPose[]=>pose.map(p=>({...p,a:p.a.map((v,i)=>v+d[i]!) as unknown as Vec3,b:p.b.map((v,i)=>v+d[i]!) as unknown as Vec3}));
 export function choosePounce(pose:readonly PhysicsSegmentPose[],ids:readonly string[],victim:readonly PhysicsSegmentPose[],yaw:number,eligible:(id:string)=>boolean,kind:StrikeKind,ground:(x:number,z:number)=>number,motion:AuthoredMotion,score:(p:PunchChoice)=>number):PunchChoice|null{
  if(!usableStrike(ids,'leg','L'))return null;

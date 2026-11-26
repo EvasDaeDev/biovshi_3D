@@ -242,3 +242,7 @@ ace1758 CI 45842588209 success. Anatomical box frames, nearest visible segment p
 ### P4-M — faster thrust, head preference, max8, pounce (26.11.2026)
 
 2d3f7b9 CI45844615839 success. Authored thrust .15s, head priority actual preview, series up to8, sustained squat incl standing target, pounce arm/leg/head with actual flight swept contacts. Tests/docs updated, new CI/runtime success rate and performance pending.
+
+### P4-M — fix pounce import cycle (26.11.2026)
+
+ffd394f CI45848083352: tsc OK, 243/255 TAP, 12 test files failed to initialize (same ESM cycle). Extracted shared pounce-timing leaf; kept combat API and all values, added independent import-order regression. New CI pending.

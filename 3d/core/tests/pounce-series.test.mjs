@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {StrikeState,strikeAge,punchPose} from '../dist/combat/strike.js';
 import {attackScore} from '../dist/combat/opportunity.js';
 import {POUNCE,pounceOffset} from '../dist/combat/pounce.js';
@@ -40,5 +41,14 @@ test('pounce preview trajectory matches the actual hop and all three airborne so
   assert.equal(strikeLocomotion({fighterId:0,forward:1,turn:1,sprint:true},state.punch,'windup').jump,true);
   const pose=punchPose(air,state.punch,25,()=>0,motion);
   for(const p of pose)assert.ok(Math.abs(Math.hypot(...p.a.map((v,i)=>v-p.b[i]))-LAB_SEGMENTS.find(s=>s.id===p.id).nominalLength)<1e-7,p.id);
+ }
+});
+
+test('gait, pose editor and pounce can each be the first ESM import',()=>{
+ const paths=['../dist/rig/gait.js','../dist/rig/pose-editor.js','../dist/combat/pounce.js'];
+ for(const first of paths){
+  const order=[first,...paths.filter(p=>p!==first)].map(p=>new URL(p,import.meta.url).href);
+  const code=order.map(p=>'await import('+JSON.stringify(p)+');').join('\n');
+  assert.doesNotThrow(()=>execFileSync(process.execPath,['--input-type=module','-e',code],{stdio:'pipe'}),first);
  }
 });
