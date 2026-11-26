@@ -246,3 +246,7 @@ ace1758 CI 45842588209 success. Anatomical box frames, nearest visible segment p
 ### P4-M — fix pounce import cycle (26.11.2026)
 
 ffd394f CI45848083352: tsc OK, 243/255 TAP, 12 test files failed to initialize (same ESM cycle). Extracted shared pounce-timing leaf; kept combat API and all values, added independent import-order regression. New CI pending.
+
+### P4-M — grounded pursuit preference regression (26.11.2026)
+
+25dbc43 CI45850339587: 281/282, ESM cycle fixed; remaining side approach assertion failed. Head route bonus .24→.16 (max extra .10 vs torso), actual strike head bonus .72 unchanged. Old test preserved, close head/side/rear/absent/fallback regression added; numerical fixture verified. New CI pending.

@@ -10,8 +10,10 @@ export function groundedContactPoint(here:PointXZ,parts:readonly PhysicsSegmentP
   const t=n>1e-10?Math.max(0,Math.min(1,((here.x-p.a[0])*dx+(here.z-p.a[2])*dz)/n)):0;
   const point={x:p.a[0]+dx*t,z:p.a[2]+dz*t};
   const d=Math.hypot(here.x-point.x,here.z-point.z);
-  // Mild preference for core/arm contacts, not a mandatory rear flank.
-  const value=d-(p.id==='head'?.24:p.id==='chest'||p.id==='abdomen'?.06:0);
+  // Prefer the head only when the approach is comparably short. Its
+  // extra preference over the torso is .10 m; the strike scorer separately
+  // gives a much stronger bonus to a physically reachable head contact.
+  const value=d-(p.id==='head'?.16:p.id==='chest'||p.id==='abdomen'?.06:0);
   if(value<score){score=value;best=point;}
  }
  return best;

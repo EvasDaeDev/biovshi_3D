@@ -39,6 +39,20 @@ test('grounded target approach follows closest exposed body part instead of pelv
  const side=groundedContactPoint({x:.7,z:-.4},parts,{x:0,z:0});
  assert.deepEqual(front,{x:0,z:-.85});assert.ok(Math.abs(side.z+.4)<1e-9);
 });
+test('grounded pursuit prefers a nearby head without taking an unnecessary detour',()=>{
+ const abdomen={id:'abdomen',a:[0,.2,0],b:[0,.2,-.5],radius:.13};
+ const head={id:'head',a:[0,.2,-.85],b:[0,.2,-.85],radius:.19};
+ const parts=[abdomen,head],fallback={x:0,z:0};
+ // Head is about .060 m farther than the torso: favour it.
+ assert.deepEqual(groundedContactPoint({x:.7,z:-.55},parts,fallback),{x:0,z:-.85});
+ // Head is about .132 m farther: keep the nearest torso approach.
+ const side=groundedContactPoint({x:.7,z:-.4},parts,fallback);
+ assert.ok(Math.abs(side.z+.4)<1e-9);
+ // No forced head approach from behind, or after head removal.
+ assert.deepEqual(groundedContactPoint({x:0,z:.3},parts,fallback),fallback);
+ assert.ok(Math.abs(groundedContactPoint({x:.7,z:-.4},[abdomen],fallback).z+.4)<1e-9);
+ assert.deepEqual(groundedContactPoint({x:.7,z:-.4},[],fallback),fallback);
+});
 test('squat lowers pelvis, keeps feet and lengths, and can hit a low target during thrust',()=>{
  const low=crouchPunchBase(base,0,1,ground);
  assert.ok(get(base,'pelvis').a[1]-get(low,'pelvis').a[1]>.5);
