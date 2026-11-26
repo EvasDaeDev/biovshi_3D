@@ -44,5 +44,7 @@ test('walking onset is retained and temporary fall/rise keeps nominal anatomy',(
  const almost=g.pose(0,root,0,2.17);
  g.advance(root,0,0,dt,ground,mobility,ids,0);
  assert.equal(g.hasKnockdownMotion,false);assert.equal(g.posture,'upright');
- assert.ok(gap(almost,g.pose(0,root,0,2.17+dt))<.08);
+ const final=g.pose(0,root,0,2.17+dt);
+ assert.ok(gap(almost,final)<.08,JSON.stringify({gap:gap(almost,final)}));
+ assert.ok(Math.abs(g.footStates[0].point[2]-g.footStates[1].point[2])>.08,'recovery retains staggered standing feet');
 });

@@ -42,7 +42,8 @@ export class ArmCarriage{
   this.running=follow(this.running,run,dt,.21*this.profile.lag);
  }
  advanceAttention(dt:number,guard:boolean,bearing:number):void{
-  this.guarding=follow(this.guarding,guard?1:0,dt,(guard?.18:.23)*this.profile.lag);
+  // A high guard has a larger arc than the previous chest-level pose.
+  this.guarding=follow(this.guarding,guard?1:0,dt,.28*this.profile.lag);
   this.bearing=follow(this.bearing,clamp(bearing,-rad(55),rad(55)),dt,.13*this.profile.lag);
  }
  offsets(side:-1|1,idleElbow:Vec3,idleHand:Vec3,swing:number,idleRaise=0):CarriageOffsets{

@@ -10,7 +10,7 @@ const lengths=new Map(LAB_SEGMENTS.map(p=>[p.id,p.nominalLength]));
 /** Rebuild a connected skeleton from desired directions, not independently
  * interpolated endpoints. The full nominal rig is supplied before filtering
  * absent parts, so no missing limb can invalidate the transform chain. */
-export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths,scaleOffsets=1,curvedThorax=false,neckFollow=0,thoraxTarget?:{direction:Vec3;weight:number}):readonly RigPose[]{
+export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<string,number>=lengths,scaleOffsets=1,curvedThorax=false,neckFollow=0,thoraxTarget?:{direction:Vec3;weight:number},preserveTorso=false):readonly RigPose[]{
  const length=(id:string)=>customLengths.get(id)??lengths.get(id)!;
  const raw=new Map(pose.map(p=>[p.id,p])),out=new Map<string,RigPose>();
  const get=(id:string)=>raw.get(id)!;
@@ -18,10 +18,10 @@ export function constrainRig(pose:readonly RigPose[],customLengths:ReadonlyMap<s
  const girdle=(id:string,c:Vec3)=>{const p=get(id),axis=unit(sub(p.b,p.a),[1,0,0]),half=scale(axis,length(id)/2);
   put(id,sub(c,half),add(c,half));};
  const hip=center(get('pelvis')),oldChest=center(get('chest'));
- const spine=unit(sub(oldChest,hip),[0,1,0]);
+ const spine=unit(preserveTorso?sub(get('abdomen').b,get('abdomen').a):sub(oldChest,hip),[0,1,0]);
  // Fixed anatomical attachment offsets from the two girdle centres.
  const abdomenStart=add(hip,scale(spine,.10*scaleOffsets)),abdomenEnd=add(abdomenStart,scale(spine,length('abdomen')));
- const naturalThorax=curvedThorax?unit([spine[0]*1.22,spine[1],spine[2]*1.22],spine):spine;
+ const naturalThorax=preserveTorso?unit(sub(oldChest,get('abdomen').b),spine):curvedThorax?unit([spine[0]*1.22,spine[1],spine[2]*1.22],spine):spine;
  const thorax=thoraxTarget?unit(add(scale(naturalThorax,1-thoraxTarget.weight),scale(thoraxTarget.direction,thoraxTarget.weight)),spine):naturalThorax;
  const chest=add(abdomenEnd,scale(thorax,.14*scaleOffsets));
  girdle('pelvis',hip);put('abdomen',abdomenStart,abdomenEnd);girdle('chest',chest);

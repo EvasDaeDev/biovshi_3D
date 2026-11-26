@@ -22,7 +22,9 @@ const unit=a=>a.map(v=>v/Math.hypot(...a));
 const center=p=>p.a.map((v,i)=>(v+p.b[i])*.5);
 
 test('walking and running neck inherits both chest lean and shoulder roll while turning',()=>{
- const core=start(3,Math.PI/2);
+ // Keep the entire sprint/turn sample away from the arena rail and the
+ // stationary opponent; faster acceleration must not shorten the sample.
+ const core=start(0,Math.PI/2,[[-2,0,-.7],[0,0,-3.3]]);
  try{
   let measured=0,lean=0,roll=0;
   for(let i=0;i<102;i++){
@@ -38,7 +40,7 @@ test('walking and running neck inherits both chest lean and shoulder roll while 
    roll=Math.max(roll,Math.abs(across[1]));
    measured++;
   }
-  assert.ok(measured>20&&lean>.10&&roll>.035);
+  assert.ok(measured>20&&lean>.10&&roll>.035,JSON.stringify({measured,lean,roll}));
  }finally{core.dispose();}
 });
 

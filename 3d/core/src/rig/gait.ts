@@ -167,7 +167,9 @@ export class PatientGait {
       this.crawlEffort=0;this.signedSpeed=0;this.moveAmount=0;this.runAmount=0;this.stepWait=0;
       this.supportDrop=0;
       for(let i=0;i<2;i++){
-        const side=i===0?-1:1,x=root[0]+Math.cos(yaw)*side*.18,z=root[2]+Math.sin(yaw)*side*.18;
+        const side=i===0?-1:1;
+        const [wide,stagger]=this.organic&&this.knockdownRising?this.restingFoot(side):[side*.18,0];
+        const x=root[0]+Math.cos(yaw)*wide-Math.sin(yaw)*stagger,z=root[2]+Math.sin(yaw)*wide+Math.cos(yaw)*stagger;
         const f=this.feet[i]!,target:Vec3=[x,ground(x,z)+FOOT_RADIUS,z];
         const p=this.knockdownMotion&&!this.knockdownRising?this.knockdownMotion.foot(i,target,amount):target;
         f.plant=p;f.start=p;f.target=p;f.phase=0;f.moving=false;
@@ -313,7 +315,10 @@ export class PatientGait {
     const headHit:Vec3=reactive?localImpact(reactive.head,yaw):[0,0,0];
     const moving=this.moveAmount,sway=Math.sin(t*.88+id*1.4),sway2=Math.sin(t*1.37+id*.9),breathing=Math.sin(t*1.95+id*.6);
     const style=this.organic?this.motionProfile:BASE_MOTION_PROFILE;
-    const resting=this.organic&&this.mobility.mode==='biped'&&this.proneAmount===0&&this.hopSample.phase==='idle'&&!reactive?1-moving:0;
+    const rising=this.knockdownRising&&this.knockdownMotion!==null;
+    // Evaluate the same destination pose throughout recovery, including its
+    // new idle/guard geometry. The fall blend, not a one-tick switch, owns the transition.
+    const resting=this.organic&&this.mobility.mode==='biped'&&(this.proneAmount===0||rising)&&this.hopSample.phase==='idle'&&!reactive?1-moving:0;
     const guard=this.carriage.guardAmount*resting;
     const idle=resting*this.expression.weights[0]!*(1-this.carriage.guardAmount);
     const postureWeight=clamp(idle+guard),upperSway=1+idle;
@@ -344,7 +349,7 @@ export class PatientGait {
     const hipTwist=(this.groundedStride?.24:.11)*(secondary?secondary.pelvis:moving*gaitPhase)*style.twist+.6*tilt(baseHip);
     const chestTwist=-(this.groundedStride?.37:.16)*(secondary?secondary.chest:moving*gaitPhase)*style.twist+.65*tilt(baseChest);
     const authoredRoll=(p:RigPose|undefined)=>p?Math.atan2(p.b[1]-p.a[1],Math.hypot(p.b[0]-p.a[0],p.b[2]-p.a[2])):0;
-    const hipRoll=.025*sway+.035*moving*gaitPhase+.45*authoredRoll(poseHip),chestRoll=-roll*upperSway+.65*authoredRoll(baseChest);
+    const hipRoll=.025*sway+.035*moving*gaitPhase+.45*authoredRoll(poseHip),chestRoll=-roll*upperSway+.65*authoredRoll(baseChest)*(1-(this.organic?.65*moving:0))-(secondary?.pelvis??0)*.035*moving;
     const across=(center:Vec3,half:number,twist:number,tilt:number,side:number):Vec3=>add(center,[side*half*Math.cos(twist)*Math.cos(tilt),side*half*Math.sin(tilt),side*half*Math.sin(twist)*Math.cos(tilt)]);
     const pelvisCenter=add(hip,[0,-.055,0]),shoulderCenter=add(chestPose,[0,.05,0]);
     const hipAt=(side:number)=>across(pelvisCenter,.17,hipTwist,hipRoll,side);
@@ -379,7 +384,7 @@ export class PatientGait {
       put(key+'upperArm',shoulder,elbow);put(key+'lowerArm',elbow,hand);put(key+'hand',hand);
     }
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
-    if(this.proneAmount===0){
+    if(this.proneAmount===0||rising){
       const neckFollow=this.organic?clamp(moving/.35):0;
       const thoraxTarget=postureWeight>0?{direction:[s*Math.sin(Math.PI/18),Math.cos(Math.PI/18),-c*Math.sin(Math.PI/18)] as Vec3,weight:postureWeight}:undefined;
       let fixed=constrainRig(standing,undefined,1,this.organic,neckFollow,thoraxTarget);const lift=this.hopSample.lift;
@@ -405,11 +410,16 @@ export class PatientGait {
       if(lift>0)return steady(fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])})),lift);
       if(single)return steady(fixed);
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);
-      return steady(balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined));
+      const upright=steady(balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined));
+      if(rising&&this.proneAmount>0){
+        const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
+        return blendGroundPose(upright,grounded,this.proneAmount,this.active,this.ground,true,true);
+      }
+      return upright;
     }
     const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
     if(this.knockdownMotion){
-      const source=this.knockdownRising?balanceStandingPose(constrainRig(standing),this.active,['L.foot','R.foot'],this.ground):this.knockdownMotion.source(root);
+      const source=this.knockdownMotion.source(root);
       return blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true);
     }
     const prone=blendGroundPose(standing,grounded,this.proneAmount,this.active,this.ground);
