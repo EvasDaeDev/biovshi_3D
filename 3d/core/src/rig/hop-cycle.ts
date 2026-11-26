@@ -1,4 +1,4 @@
-import { MOVEMENT } from './movement-timing.js';
+import { JUMP_HEIGHT_SCALE,MOVEMENT } from './movement-timing.js';
 const smooth=(q:number)=>q*q*(3-2*q);
 export interface HopSample { readonly distance:number; readonly lift:number; readonly phase:'idle'|'prepare'|'flight'|'pause';readonly crouch?:number; readonly followsRoot:boolean }
 /** Fixed-step, continuous phase boundaries; finishes an already launched hop
@@ -31,8 +31,8 @@ export class HopCycle {
    // Match landing velocity at contact, then release with zero final
    // compression velocity. Only the body bends; feet remain on ground.
    if(phase==='flight')crouch=.14*(1-smooth(Math.min(1,t/.10)));
-   if(phase==='pause'){const q=Math.max(0,Math.min(1,(this.age-landing)/pause));crouch=.5*MOVEMENT.gravity*flight*pause*q*(1-q)**2;}
+   if(phase==='pause'){const q=Math.max(0,Math.min(1,(this.age-landing)/pause));crouch=.5*MOVEMENT.gravity*JUMP_HEIGHT_SCALE*flight*pause*q*(1-q)**2;}
   }
-  return {distance,crouch,lift:phase==='flight'?.5*MOVEMENT.gravity*t*(flight-t):0,phase,followsRoot};
+  return {distance,crouch,lift:phase==='flight'?.5*MOVEMENT.gravity*JUMP_HEIGHT_SCALE*t*(flight-t):0,phase,followsRoot};
  }
 }

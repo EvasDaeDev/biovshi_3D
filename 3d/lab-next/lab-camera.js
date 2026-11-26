@@ -3,11 +3,16 @@ export class LabCamera {
  constructor(T,camera,mode,patient,fov){
   this.camera=camera;this.modeInput=mode;this.patientInput=patient;this.fovInput=fov;this.circle=false;
   this.up=new T.Vector3();this.forward=new T.Vector3();this.right=new T.Vector3();this.back=new T.Vector3();
+  this.target=new T.Vector3();this.targetMatrix=new T.Matrix4();
   this.mount=new T.Vector3();this.previousMount=new T.Vector3();
   this.matrix=new T.Matrix4();this.q=new T.Quaternion();this.oldQ=new T.Quaternion();this.worldUp=new T.Vector3(0,1,0);
-  this.modeInput.onchange=()=>this.sync();this.sync();this.staticView();
+  this.modeInput.onchange=()=>{this.sync();this.staticView();};this.sync();this.staticView();
  }
- sync(){this.mode=this.modeInput.value;this.patientInput.disabled=this.mode!=='head';this.fovInput.disabled=this.mode!=='head';}
+ sync(){
+  this.mode=this.modeInput.value;
+  this.patientInput.disabled=!['head','fisheye','follow'].includes(this.mode);
+  this.fovInput.disabled=this.mode!=='head';
+ }
  setArena(circle){this.circle=circle;this.staticView();}
  reset(s){
   const old=this.patientInput.value;this.patientInput.replaceChildren();
@@ -18,8 +23,10 @@ export class LabCamera {
  resize(aspect){this.camera.aspect=aspect;this.projection(true);}
  projection(force=false){
   const c=this.camera,h=Number(this.fovInput.value)||90;
-  const v=this.mode==='head'?2*Math.atan(Math.tan(h*Math.PI/360)/c.aspect)*180/Math.PI:65;
-  const near=this.mode==='head'?.015:.05;
+  const head=this.mode==='head'||this.mode==='fisheye';
+  const tangent=this.mode==='fisheye'?Math.tan(72*Math.PI/180)/Math.hypot(c.aspect,1):Math.tan(h*Math.PI/360)/c.aspect;
+  const v=head?2*Math.atan(tangent)*180/Math.PI:65;
+  const near=head?.015:.05;
   if(force||c.fov!==v||c.near!==near){c.fov=v;c.near=near;c.updateProjectionMatrix();}
  }
  staticView(){
@@ -34,9 +41,20 @@ export class LabCamera {
   this.right.normalize();this.up.crossVectors(this.right,this.forward).normalize();this.back.copy(this.forward).negate();
   return out.setFromRotationMatrix(this.matrix.makeBasis(this.right,this.up,this.back));
  }
- update(s,prior,alpha,meshes,clearance){
-  this.sync();if(this.mode!=='head'){this.staticView();return;}
+ update(s,prior,alpha,meshes,clearance,dt=0){
+  this.sync();
   const id=Number(this.patientInput.value),i=s.fighterIds.indexOf(id),j=prior.fighterIds.indexOf(id);
+  if(this.mode==='follow'){
+   const chest=meshes.get(id+':chest'),head=meshes.get(id+':head');
+   const subject=chest?.visible?chest:head;
+   if(subject?.visible)this.target.copy(subject.position);
+   else if(i>=0)this.target.set(s.roots[i*4],s.roots[i*4+1]+.65,s.roots[i*4+2]);
+   else return;
+   this.q.setFromRotationMatrix(this.targetMatrix.lookAt(this.camera.position,this.target,this.worldUp));
+   this.camera.quaternion.slerp(this.q,1-Math.exp(-Math.min(dt,.1)/.18));
+   return;
+  }
+  if(this.mode!=='head'&&this.mode!=='fisheye'){this.staticView();return;}
   const h=i>=0?s.headFrames?.[i]:null,m=meshes.get(id+':head');
   if(!h||!m?.visible){this.modeInput.value='overview';this.sync();this.staticView();return;}
   const old=j>=0?prior.headFrames?.[j]:null,parts=s.rigSegments[i],oldParts=j>=0?prior.rigSegments[j]:null;

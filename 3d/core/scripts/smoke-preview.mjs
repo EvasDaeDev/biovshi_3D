@@ -22,6 +22,7 @@ try{
  const page=await browser.newPage({viewport:{width:1000,height:720}});
  const errors=[],external=[],modules=[];
  page.on('pageerror',e=>errors.push(String(e)));
+ page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error/.test(m.text()))errors.push(m.text());});
  await page.route('**/*',route=>{if(route.request().url().startsWith(base+'/')){if(route.request().resourceType()==='script')modules.push(route.request().url());return route.continue();}external.push(route.request().url());return route.abort();});
  await page.goto(base+'/3d/lab-next/rig.html',{waitUntil:'domcontentloaded'});
  try{
@@ -36,6 +37,13 @@ try{
  await page.locator('#camera-mode').selectOption('head');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='head');
  await page.locator('#camera-fov').selectOption('75');
+ await page.locator('#camera-mode').selectOption('follow');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='follow');
+ assert.equal(await page.locator('#camera-patient').isEnabled(),true);
+ await page.locator('#camera-mode').selectOption('fisheye');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='fisheye');
+ assert.equal(await page.locator('#camera-fov').isDisabled(),true);
+
  await page.locator('#camera-mode').selectOption('close');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='close');
  await page.locator('#pause').click();

@@ -80,3 +80,6 @@ export function patientSwingProgress(phase:number):{travel:number;lift:number}{
  const early=q+.07*s;
  return {travel:q*q*(3-2*q)+.12*s*s,lift:Math.sin(Math.PI*early)**2};
 }
+
+/** Increase lift while preserving the authored takeoff and landing times. */
+export const JUMP_HEIGHT_SCALE=1.25;
