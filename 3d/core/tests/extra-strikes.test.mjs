@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {LabSimulationCore,createLabConfig,FIXED_DT,punchPose,usableStrike,StrikeState,firstStrikeContact} from '../dist/index.js';
 import {LAB_SEGMENTS} from '../dist/rig/anatomy.js';
+import {firstStrikeContactDetail} from '../dist/combat/swept-contact.js';
 import {chooseExtra} from '../dist/combat/extra-choice.js';
 const base=createLabConfig(7),f={...base.fighters[0],origin:[0,0,0],yawRad:0},flat=()=>0;
 const c=new LabSimulationCore();c.initialize({seed:7,fighters:[f]});
@@ -44,4 +45,20 @@ test('expanded duel produces actual damage without lab contacts; arm-only mode r
  return events;};
  const a=run(false),b=run(true);assert.ok(a.filter(e=>e.type==='strike-contact').every(e=>e.strikeKind==='arm'));
  assert.ok(b.some(e=>e.type==='combat-windup'&&e.strikeKind!=='arm'));
+});
+
+test('the live sources are fist, forearm tip without a hand, foot and head',()=>{
+ const capsule=(id,a,b=a,radius=.052)=>({id,a,b,radius});
+ const target=x=>[capsule('chest',[x,1,0])];
+ const contact=(attack,at,kind)=>firstStrikeContactDetail(attack,attack,target(at),target(at),'L',kind)?.source??null;
+ const arm=capsule('L.lowerArm',[0,1,0],[.32,1,0]),fist=capsule('L.hand',[.32,1,0]);
+ const shin=capsule('L.lowerLeg',[0,1,0],[.50,1,0]),foot=capsule('L.foot',[.54,1,0]);
+ assert.equal(contact([arm,fist],0,'arm'),null);
+ assert.equal(contact([arm,fist],.38,'arm'),'L.hand');
+ assert.equal(contact([arm],0,'arm'),null);
+ assert.equal(contact([arm],.38,'arm'),'L.lowerArm');
+ assert.equal(contact([shin,foot],0,'leg'),null);
+ assert.equal(contact([shin,foot],.59,'leg'),'L.foot');
+ assert.equal(contact([shin],.50,'leg'),null);
+ assert.equal(contact([capsule('head',[.4,1,0])],.45,'head'),'head');
 });

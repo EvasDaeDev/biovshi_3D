@@ -1,4 +1,4 @@
-import type { StrikeKind } from './strike.js';
+import { strikeSource,type StrikeKind } from './strike.js';
 import type { PhysicsSegmentPose,Vec3 } from '../types.js';
 import { capsuleContact } from '../collision/capsule-contact.js';
 const delta=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
@@ -15,25 +15,31 @@ export function sweptContact(a0:PhysicsSegmentPose,a1:PhysicsSegmentPose,b0:Phys
  }
  return null;
 }
-export interface StrikeContactDetail {readonly id:string;readonly time:number;readonly point:Vec3}
+export interface StrikeContactDetail {readonly id:string;readonly source:string;readonly time:number;readonly point:Vec3}
 export function firstStrikeContactDetail(previous:readonly PhysicsSegmentPose[],current:readonly PhysicsSegmentPose[],victimPrevious:readonly PhysicsSegmentPose[],victimCurrent:readonly PhysicsSegmentPose[],side:'L'|'R',kind:StrikeKind='arm'):StrikeContactDetail|null{
- const prev=new Map(previous.map(p=>[p.id,p])),vp=new Map(victimPrevious.map(p=>[p.id,p]));
+ const distal=strikeSource(kind,side);
+ const currentPart=current.find(p=>p.id===distal)??(kind==='arm'?current.find(p=>p.id===side+'.lowerArm'):undefined);
+ if(!currentPart)return null;
+ const source=currentPart.id;
+ const previousPart=previous.find(p=>p.id===source);
+ if(!previousPart)return null;
+ // With a missing hand only the rounded end of the surviving forearm
+ // can hit. A capsule brushing someone near the elbow is not a punch.
+ const a0=source.endsWith('.lowerArm')?{...previousPart,a:previousPart.b}:previousPart;
+ const a=source.endsWith('.lowerArm')?{...currentPart,a:currentPart.b}:currentPart;
+ const vp=new Map(victimPrevious.map(p=>[p.id,p]));
  let best:StrikeContactDetail|null=null,time=Infinity;
- for(const a of current){
-  if(kind==='head'?a.id!=='head':kind==='leg'?a.id!==side+'.foot'&&a.id!==side+'.lowerLeg':a.id!==side+'.hand'&&a.id!==side+'.lowerArm')continue;
-  const a0=prev.get(a.id);if(!a0)continue;
-  for(const b of victimCurrent){
-   const b0=vp.get(b.id);if(!b0)continue;
-   const t=sweptContact(a0,a,b0,b);
-   if(t!==null&&t<time){
-    time=t;
-    const source=lerp(a0.b,a.b,t),start=lerp(b0.a,b.a,t),end=lerp(b0.b,b.b,t);
-    const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z,n=dx*dx+dy*dy+dz*dz;
-    const q=n>1e-10?Math.max(0,Math.min(1,((source.x-start.x)*dx+(source.y-start.y)*dy+(source.z-start.z)*dz)/n)):0;
-    const x=start.x+dx*q,y=start.y+dy*q,z=start.z+dz*q;
-    const vx=source.x-x,vy=source.y-y,vz=source.z-z,length=Math.hypot(vx,vy,vz),r=length>1e-8?b.radius/length:0;
-    best={id:b.id,time:t,point:[x+vx*r,y+vy*r,z+vz*r]};
-   }
+ for(const b of victimCurrent){
+  const b0=vp.get(b.id);if(!b0)continue;
+  const t=sweptContact(a0,a,b0,b);
+  if(t!==null&&t<time){
+   time=t;
+   const tip=lerp(a0.b,a.b,t),start=lerp(b0.a,b.a,t),end=lerp(b0.b,b.b,t);
+   const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z,n=dx*dx+dy*dy+dz*dz;
+   const q=n>1e-10?Math.max(0,Math.min(1,((tip.x-start.x)*dx+(tip.y-start.y)*dy+(tip.z-start.z)*dz)/n)):0;
+   const x=start.x+dx*q,y=start.y+dy*q,z=start.z+dz*q;
+   const vx=tip.x-x,vy=tip.y-y,vz=tip.z-z,length=Math.hypot(vx,vy,vz),r=length>1e-8?b.radius/length:0;
+   best={id:b.id,source:a.id,time:t,point:[x+vx*r,y+vy*r,z+vz*r]};
   }
  }
  return best;

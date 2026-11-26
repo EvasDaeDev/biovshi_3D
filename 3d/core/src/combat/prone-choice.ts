@@ -14,7 +14,7 @@ export function chooseProneStrike(pose:readonly PhysicsSegmentPose[],ids:readonl
    const p:Punch={side,kind,prone:true,targetId:0,aim,start:0,yaw,targetSegment:part.id};
    let before=punchPose(pose,p,19,ground),moved=false;
    for(const age of [23,27,31]){
-    const after=punchPose(pose,p,age,ground),source=strikeSource(kind,side);
+    const after=punchPose(pose,p,age,ground),source=strikeSource(kind,side,ids);
     const a=before.find(v=>v.id===source)!,b=after.find(v=>v.id===source)!;
     moved||=Math.hypot(a.b[0]-b.b[0],a.b[1]-b.b[1],a.b[2]-b.b[2])>.005;
     const contactId=firstStrikeContact(before,after,victim,victim,side,kind);

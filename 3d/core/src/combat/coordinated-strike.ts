@@ -22,7 +22,10 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
  const axis=reference?sub(reference.b,reference.a):[1,0,0];
  const authoredTurn=Math.abs(Math.atan2(axis[2]!,axis[0]!));
  const directional=kind==='head'?0:strikeBearing(pose,p.aim,p.yaw)*.18*amount;
- const singleTurn=side*amount*Math.min(.65,.32+authoredTurn*.35)-directional;
+ // A single punch leads with its striking shoulder. Keep the shared
+ // torso more neutral when two arms strike in different directions.
+ const amplitude=kind==='arm'&&!p.secondary?Math.min(.95,.62+authoredTurn*.40):Math.min(.65,.32+authoredTurn*.35);
+ const singleTurn=side*amount*amplitude-directional;
  const otherTurn=p.secondary? (p.secondary.side==='L'?-1:1)*amount*.32-strikeBearing(pose,p.secondary.aim,p.yaw)*.18*amount:singleTurn;
  const turn=p.secondary&&kind==='arm'?(singleTurn+otherTurn)*.5:singleTurn;
  const pivot=kind==='leg'?mid(hip):abdomen.a;

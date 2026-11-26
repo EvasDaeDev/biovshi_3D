@@ -1,7 +1,7 @@
 import type {AuthoredMotion} from '../rig/authored-motion.js';
 import type { PhysicsSegmentPose } from '../types.js';
 import { closestAim,type PunchChoice } from './punch-choice.js';
-import { punchPose,usableStrike,strikeOrigin,type Punch,type StrikeKind } from './strike.js';
+import { punchPose,usableStrike,strikeOrigin,strikeSource,type Punch } from './strike.js';
 import { firstStrikeContact } from './swept-contact.js';
 export interface ExtraChoice extends PunchChoice {kind:'leg'|'head'}
 /** Evaluate real attack geometry before committing to a kick or head strike.
@@ -20,7 +20,12 @@ export function chooseExtra(pose:readonly PhysicsSegmentPose[],ids:readonly stri
    if(!usableStrike(ids,kind,side))continue;
    const origin=pose.find(v=>v.id===strikeOrigin(kind,side))?.a;if(!origin)continue;
    const aim=closestAim(origin,part),distance=Math.hypot(aim[0]-origin[0],aim[1]-origin[1],aim[2]-origin[2]);
-   if(distance>(kind==='head'?.33+.19:.99+.13)+part.radius-.015+(motion?.12:0))continue;
+   const tip=pose.find(v=>v.id===strikeSource(kind,side));if(!tip)continue;
+   const ankle=kind==='leg'?pose.find(v=>v.id===side+'.lowerLeg')?.b:undefined;
+   const chain=kind==='head'?.33:.99+(ankle?Math.hypot(...ankle.map((v,i)=>v-tip.a[i]!)):0);
+   // The torso or pelvis can advance the real source before extension.
+   const bodyTravel=motion?.stalk?(kind==='head'?.27:.22):motion?.12:0;
+   if(distance>chain+tip.radius+part.radius+bodyTravel)continue;
    const p:Punch={side,kind,targetId:0,aim,start:0,yaw,targetSegment:id};
    let before=punchPose(pose,p,19,ground,motion);
    for(const age of [23,27,31]){

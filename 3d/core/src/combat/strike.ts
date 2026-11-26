@@ -30,7 +30,9 @@ export function usableStrike(ids:readonly string[],kind:StrikeKind,side:'L'|'R')
  if(kind==='head')return ['chest','neck','head'].every(id=>ids.includes(id));
  return ids.includes('pelvis')&&['L','R'].every(s=>['upperLeg','lowerLeg','foot'].every(part=>ids.includes(s+'.'+part)));
 }
-export function strikeSource(kind:StrikeKind,side:'L'|'R'):string{return kind==='head'?'head':side+(kind==='leg'?'.foot':'.lowerArm');}
+export function strikeSource(kind:StrikeKind,side:'L'|'R',ids?:readonly string[]):string{
+ return kind==='head'?'head':side+(kind==='leg'?'.foot':ids&&!ids.includes(side+'.hand')?'.lowerArm':'.hand');
+}
 export function strikeOrigin(kind:StrikeKind,side:'L'|'R'):string{return kind==='head'?'neck':side+(kind==='leg'?'.upperLeg':'.upperArm');}
 /** A grounded dual attack always leaves a leg available for support.
  * The primary must own the kick when present, so locomotion sees it. */
@@ -56,6 +58,7 @@ const sourcesUsable=(p:Punch,ids:readonly string[])=>strikeChannels(p).every(c=>
 export class StrikeState{
  private current:Punch|null=null;private last=-Infinity;private done=false;private sequence=0;
  private contacted=new Set<number>();
+ private anatomy:readonly string[]|undefined;
  private cancelled:{punch:Punch;tick:number}|null=null;
  constructor(private readonly tempo=1,private readonly fastThrust=false){}
  get cooldownTicks():number{return Math.ceil(C*this.tempo-1e-9);}
@@ -70,6 +73,7 @@ export class StrikeState{
  /** Cancel combat authority immediately; optionally retain an inert visual
   * sample. The sample has no target tracking or swept-contact authority. */
  advance(tick:number,allowed:boolean,ids:readonly string[],fade=false):void{
+  this.anatomy=ids;
   if(this.cancelled&&(tick>=this.cancelled.tick+CANCEL_TICKS||!sourcesUsable(this.cancelled.punch,ids)))this.cancelled=null;
   if(this.current&&(!allowed||!sourcesUsable(this.current,ids)||this.phase(tick)==='idle')){
    if(fade&&!this.current.prone&&this.phase(tick)!=='idle'&&sourcesUsable(this.current,ids))
@@ -100,9 +104,9 @@ export class StrikeState{
  canContact(id:number):boolean{return !!this.current&&!this.exhausted&&!this.contacted.has(id)&&(id===this.current.targetId||id===this.current.secondary?.targetId);}
  resolveTarget(id:number):boolean{if(!this.canContact(id))return false;this.contacted.add(id);this.done=true;return true;}
  resolve():void{if(this.current)for(const p of strikeChannels(this.current))this.contacted.add(p.targetId);this.done=true;}
- snapshot(tick:number):StrikeSnapshot{return {phase:this.phase(tick),kind:this.current?.kind??'arm',prone:this.current?.prone??false,source:this.current?strikeSource(this.current.kind??'arm',this.current.side):null,targetId:this.current?.targetId??null,resolved:this.current!==null&&this.done,...(this.current?.crouch?{crouch:true}:{}),...(this.current?.pounce?{pounce:true}:{}),...(this.current&&this.multiTarget?{hitIds:[...this.contacted],targetIds:strikeChannels(this.current).map(p=>p.targetId),secondarySource:strikeSource(this.current.secondary!.kind,this.current.secondary!.side)}:{})};}
+ snapshot(tick:number):StrikeSnapshot{return {phase:this.phase(tick),kind:this.current?.kind??'arm',prone:this.current?.prone??false,source:this.current?strikeSource(this.current.kind??'arm',this.current.side,this.anatomy):null,targetId:this.current?.targetId??null,resolved:this.current!==null&&this.done,...(this.current?.crouch?{crouch:true}:{}),...(this.current?.pounce?{pounce:true}:{}),...(this.current&&this.multiTarget?{hitIds:[...this.contacted],targetIds:strikeChannels(this.current).map(p=>p.targetId),secondarySource:strikeSource(this.current.secondary!.kind,this.current.secondary!.side,this.anatomy)}:{})};}
 }
-/** The actual rendered forearm and hand are the attacking geometry.
+/** Both arm bones drive the distal contact point through IK.
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
 export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion,weight=1,supportPlant?:Vec3,bodyAlreadyCoordinated=false,crouchManaged=false):readonly PhysicsSegmentPose[]{
  weight=Math.max(0,Math.min(1,weight));if(weight===0)return pose;

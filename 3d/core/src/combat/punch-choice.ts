@@ -24,7 +24,8 @@ export function choosePunch(pose:readonly PhysicsSegmentPose[],ids:readonly stri
    if(!usableArm(ids,side))continue;
    const shoulder=aimPose.find(p=>p.id===side+'.upperArm')!.a,aim=closestAim(shoulder,part);
    const distance=Math.hypot(shoulder[0]-aim[0],shoulder[1]-aim[1],shoulder[2]-aim[2]);
-   if(distance>.68+part.radius+.083-.015+(motion?.stalk?.size ? .26 : motion ? .16 : 0))continue;
+   const tip=aimPose.find(p=>p.id===side+'.hand')??aimPose.find(p=>p.id===side+'.lowerArm')!;
+   if(distance>.68+part.radius+tip.radius+(motion?.stalk?.size ? .38 : motion ? .16 : 0))continue;
    const punch:Punch={side,targetId:0,aim,start:0,yaw,...(crouch?{crouch:true}:{})};
    let before=punchPose(pose,punch,19,ground,motion),contactId:string|null=null;
    for(const age of [23,27,31]){

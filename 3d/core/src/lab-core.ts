@@ -524,7 +524,8 @@ export class LabSimulationCore implements SimulationCore {
        const back={x:a.x-Math.sin(a.yaw)*.30,z:a.z+Math.cos(a.yaw)*.30};
        if(this.navigation.reachable(a,back)){retreat=true;a.tactics.setMode('retreat');}
       }
-      const standoff=ringFootwork?(urgent?.50:.62):CLOSE_STANDOFF;
+      const hasDistalAttack=usableStrike(a.segments,'arm','L')||usableStrike(a.segments,'arm','R')||this.expandedStrikes&&usableStrike(a.segments,'leg','L');
+      const standoff=ringFootwork?(horror&&hasDistalAttack&&!opportunity.grounded?.91:urgent?.50:.62):CLOSE_STANDOFF;
       const stalk=ringFootwork&&!horror&&!command&&!retreat&&!urgent&&distance>1.25;
       const phase=(this.tick+29*a.id)%142;
       let burst=stalk&&phase>=104,pace=stalk?(phase<28?0:burst?.8:.48):1;
@@ -587,17 +588,16 @@ export class LabSimulationCore implements SimulationCore {
           h=route.heading;forward=Math.max(0,Math.cos(h))*raid.pace*(route.backward?-.85:1);
         }
         if(raid.phase==='rush'||raid.phase==='attack'){
-          if(distance<.57)forward=0;
-          else if(distance<1.05)forward*=clamp((distance-.57)/.48,0,1);
+          forward*=clamp((distance-standoff)/.52,0,1);
         }
         a.tactics.setMode(retreat?'retreat':raid.phase==='flank'?'relocate':raid.phase==='observe'||raid.phase==='reassess'?'search':'pursuit');
-        commands.set(a.id,{fighterId:a.id,forward,turn:clamp(h*2,-1,1),sprint:forward>0&&raid.sprint});
+        commands.set(a.id,{fighterId:a.id,forward,turn:clamp(h*2,-1,1),sprint:forward>0&&raid.sprint&&(retreat||distance>standoff+.46)});
       }
       if(defiant)a.tactics.setMode('pursuit');
       const lowVictim=this.expandedStrikes&&!prone&&target.gait.posture!=='upright';
       const groundedPair=this.expandedStrikes&&(prone||target.gait.posture!=='upright');
       const pounceReady=mobileStrikes&&!prone&&!lowVictim&&mobility.mode==='biped'&&a.gait.hopPhase==='idle'&&!a.gait.running&&a.crouchAmount<.01&&!a.gait.footStates.some(f=>f.moving)&&Math.abs(a.speed)<.35&&distance>.82&&distance<1.8&&Math.abs(turn)<.25&&(!command||!!command.jump)&&this.navigation.clear(a,{x:a.x+Math.sin(a.yaw)*POUNCE.distance*this.patientScale,z:a.z-Math.cos(a.yaw)*POUNCE.distance*this.patientScale},.35);
-      const previewRange=groundedPair?2.65:pounceReady?1.8:this.expandedStrikes?(mobileStrikes?1.18:1.05):.82;
+      const previewRange=groundedPair?2.65:pounceReady?1.8:this.expandedStrikes?(mobileStrikes?1.40:1.05):.82;
       let checkedStrikeGeometry=false,preparingLowKick=false;
       // Read committed intent as well as last tick's telegraph: when both
       // autonomous opponents find a lane on this tick, only one starts.
@@ -627,7 +627,7 @@ export class LabSimulationCore implements SimulationCore {
         let selected:{kind:StrikeKind;best:PunchChoice;needsPlant:boolean;score:number}|null=null;
         for(const kind of order){
           if(kind==='head'&&Math.abs(turn)>=.65)continue;
-          if(ringFootwork&&!command&&kind==='head'&&!pounceReady&&distance>(horror?.60:.49))continue;
+          if(ringFootwork&&!command&&!horror&&kind==='head'&&!pounceReady&&distance>.49)continue;
           if(a.crouchAmount>.01&&kind!=='arm')continue;
           if(kind==='leg'&&(prone||!usableStrike(a.segments,'leg','L')))continue;
           const needsPlant=kind==='leg'&&(a.gait.running||a.gait.footStates.some(f=>f.moving)||!mobileStrikes&&Math.abs(a.speed)>.10);
@@ -664,7 +664,7 @@ export class LabSimulationCore implements SimulationCore {
           if(best&&startAttack(kind,best)){
             a.manualKickUntil=0;
             a.behavior.started(this.tick,a.strike.cooldownTicks);
-            this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side),strikeKind:kind,proneStrike:prone,...(best.crouch?{crouchStrike:true}:{}),...(best.pounce?{pounceStrike:true}:{}),...(a.strike.punch?.secondary?{secondaryTargetId:a.strike.punch.secondary.targetId,secondarySourceSegment:strikeSource(a.strike.punch.secondary.kind,a.strike.punch.secondary.side)}:{})});break;
+            this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side,a.segments),strikeKind:kind,proneStrike:prone,...(best.crouch?{crouchStrike:true}:{}),...(best.pounce?{pounceStrike:true}:{}),...(a.strike.punch?.secondary?{secondaryTargetId:a.strike.punch.secondary.targetId,secondarySourceSegment:strikeSource(a.strike.punch.secondary.kind,a.strike.punch.secondary.side,a.segments)}:{})});break;
           }
         }
         if(selected){
@@ -674,7 +674,7 @@ export class LabSimulationCore implements SimulationCore {
             a.lastKind=kind;a.lastContact=best.contactId;a.variety.committed(kind,best);
             if(raiding)a.raid.committed(this.tick,target.id);
             a.behavior.started(this.tick,a.strike.cooldownTicks);
-            this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side),strikeKind:kind,proneStrike:prone,...(best.crouch?{crouchStrike:true}:{}),...(best.pounce?{pounceStrike:true}:{}),...(a.strike.punch?.secondary?{secondaryTargetId:a.strike.punch.secondary.targetId,secondarySourceSegment:strikeSource(a.strike.punch.secondary.kind,a.strike.punch.secondary.side)}:{})});
+            this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,targetId:target.id,segmentId:strikeSource(kind,best.side,a.segments),strikeKind:kind,proneStrike:prone,...(best.crouch?{crouchStrike:true}:{}),...(best.pounce?{pounceStrike:true}:{}),...(a.strike.punch?.secondary?{secondaryTargetId:a.strike.punch.secondary.targetId,secondarySourceSegment:strikeSource(a.strike.punch.secondary.kind,a.strike.punch.secondary.side,a.segments)}:{})});
           }
         }
       }
@@ -709,7 +709,12 @@ export class LabSimulationCore implements SimulationCore {
           // movement. An unseen target does not authorize auto pursuit.
           const desired=command??commands.get(a.id)??{fighterId:a.id,forward:0,turn:0,sprint:false};
           const locomotion=command||victim&&(!sensing||visibleIds.includes(victim.id))?desired:{...desired,forward:0,turn:0,sprint:false};
-          const drive=strikeLocomotion(locomotion,punch,a.strike.phase(this.tick));
+          const holdRange=horror&&victim?.gait.posture==='upright'&&!punch.pounce&&locomotion.forward>0;
+          // The preview at commitment already verified contact. Stand off
+          // while it is valid, allowing a short follow if the target leaves.
+          const followGap=punch.kind==='head'?.75:1.22;
+          const attackDrive=holdRange?{...locomotion,forward:windup&&gap>followGap?Math.min(.27,locomotion.forward):0,sprint:false}:locomotion;
+          const drive=strikeLocomotion(attackDrive,punch,a.strike.phase(this.tick));
           // A headbutt has a short contact window. Brake the run into it
           // while keeping the forward command for the strike and recovery.
           commands.set(a.id,punch.kind==='head'&&command&&gap<.9?{...drive,sprint:false}:drive);
@@ -733,7 +738,7 @@ export class LabSimulationCore implements SimulationCore {
       }).sort((l,r)=>l.contact.time-r.contact.time||l.b.id-r.b.id);
       for(const {b,contact,channel} of contacts){
         if(!a.strike.resolveTarget(b.id))continue;
-        this.events.push({tick:this.tick,type:'strike-contact',fighterId:b.id,attackerId:a.id,segmentId:contact.id,sourceSegment:strikeSource(channel.kind??'arm',channel.side),strikeKind:channel.kind??'arm',proneStrike:!!p.prone,...(p.crouch?{crouchStrike:true}:{}),...(p.pounce?{pounceStrike:true}:{}),...(this.authored?.stalk?{point:contact.point}:{})});
+        this.events.push({tick:this.tick,type:'strike-contact',fighterId:b.id,attackerId:a.id,segmentId:contact.id,sourceSegment:contact.source,strikeKind:channel.kind??'arm',proneStrike:!!p.prone,...(p.crouch?{crouchStrike:true}:{}),...(p.pounce?{pounceStrike:true}:{}),...(this.authored?.stalk?{point:contact.point}:{})});
         requests.push({fighterId:b.id,segmentId:contact.id,attackerId:a.id,amount:b.health.canDamage(contact.id,this.tick)?a.behavior.damage():1});
       }
     }
@@ -827,9 +832,10 @@ export class LabSimulationCore implements SimulationCore {
       target*=mobility.speedScale*flinch*(organic&&mobility.mode==='biped'&&(c||a.id===0)?1:a.behavior.traits.movementMultiplier)*(organic&&mobility.prone?(mobility.mode==='arm-crawl'?HORROR_MOVEMENT.crawlMultiplier:HORROR_MOVEMENT.residualCrawlMultiplier):1);
       const crouch=a.crouchAmount>.01,kick=a.strike.punch?.kind==='leg'&&!a.strike.punch?.pounce,kickSupport=organic&&kick?(a.strike.punch!.side==='L'?'R':'L'):undefined;
       const planted=pivots.has(a.id)||this.ringCombat&&this.fightEnded&&a.id===this.winnerId;
+      const strikeBraking=organic&&!!attack&&!c?.forward&&!input.commands.some(request=>request.fighterId===a.id);
       const headBraking=organic&&attack?.kind==='head'&&!c?.sprint&&a.speed>HORROR_MOVEMENT.maxWalkSpeed
         &&input.commands.some(request=>request.fighterId===a.id&&request.sprint);
-      a.speed = planted||crouch||mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,headBraking?9:organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
+      a.speed = planted||crouch||mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,strikeBraking?16:headBraking?9:organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
       const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),!crouch&&c?.jump,Math.abs(target)>.025,kickSupport,!!attack?.pounce)*this.patientScale;
       const oldX=a.x,oldZ=a.z;

@@ -39,3 +39,17 @@ test('low arm strike inclines torso farther than a high strike without moving th
  assert.ok(center(get(low,'chest'))[2]<center(get(high,'chest'))[2]-.05);
  assert.deepEqual(get(low,'L.foot'),get(base,'L.foot'));
 });
+
+test('a straight single punch advances its striking shoulder with a pronounced chest turn',()=>{
+ const chestAngle=pose=>{
+  const c=get(pose,'chest');
+  return Math.atan2(c.b[2]-c.a[2],c.b[0]-c.a[0]);
+ };
+ for(const [side,sign] of [['L',1],['R',-1]]){
+  const p={kind:'arm',side,targetId:1,start:0,yaw:0,aim:[0,1.50,-.87]};
+  const loaded=punchPose(base,p,19,()=>0,motion),extended=punchPose(base,p,31,()=>0,motion);
+  const turn=sign*(chestAngle(extended)-chestAngle(loaded));
+  assert.ok(turn>.70,JSON.stringify({side,turn}));
+  assert.ok(get(loaded,side+'.upperArm').a[2]-get(extended,side+'.upperArm').a[2]>.20);
+ }
+});
