@@ -9,6 +9,7 @@ test('the active catalog has one 9 m circular arena and protects its perimeter i
  assert.deepEqual(Object.keys(catalog),['ring']);
  const {ring}=catalog;
  assert.equal(ring.shape,'circle');
+ assert.equal(ring.capacity,8);
  assert.equal(ring.width,9);
  assert.equal(ring.depth,9);
  assert.equal(ring.floorRevision,'9m-v1');
@@ -16,6 +17,15 @@ test('the active catalog has one 9 m circular arena and protects its perimeter i
  assert.ok(ring.spawnSlots.every(([x,,z])=>Math.abs(Math.hypot(x,z)-2.95)<1e-12));
  const nav=new PolygonNavigation(ring);
  assert.equal(nav.clear({x:0,z:0},{x:4.8,z:0},.50),false);
+ for(let count=2;count<=8;count++){
+  const fighters=createAuthoredCombatConfig(1,ring,count).fighters;
+  assert.equal(fighters.length,count);
+  for(let i=0;i<count;i++){
+   const [x,,z]=fighters[i].origin,[nx,,nz]=fighters[(i+1)%count].origin;
+   assert.ok(nav.clear({x,z},{x,z},.50));
+   assert.ok(Math.abs(Math.hypot(x-nx,z-nz)-2*2.95*Math.sin(Math.PI/count))<1e-9);
+  }
+ }
  const config=createAuthoredCombatConfig(1,ring);
  const core=new LabSimulationCore();
  try{

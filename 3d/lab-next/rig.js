@@ -106,8 +106,8 @@ controlPatient.onchange=()=>{keys.clear();controlPatient.blur();if(controlPatien
 const requestedSeed=query.get('seed');
 function roundSeed(){return requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):7;}
 const requestedPatients=Number(new URLSearchParams(location.search).get('patients'));
-if(requestedPatients===2)patientCount.value='2';
-function authoredPatients(loc){return patientCount.value==='full'?loc.capacity:Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
+if(Number.isInteger(requestedPatients)&&requestedPatients>=2&&requestedPatients<=authoredLocations.ring.capacity)patientCount.value=String(requestedPatients);
+function authoredPatients(loc){return Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
 const damageControls=document.getElementById('damage-controls'),damageSegment=document.getElementById('damage-segment'),damageHP=document.getElementById('damage-hp');
 let pendingDamage=null;
 const queueDamage=amount=>{if(scenario.value==='damage'&&!paused)pendingDamage={fighterId:0,segmentId:damageSegment.value,amount};};

@@ -36,8 +36,11 @@ test('combat guard bends elbows at chest level; sprint overrides guard smoothly 
   const p=a.offsets(-1,elbow,hand,0);
   assert.ok(dist(p.hand,prev.hand)<.16);prev=p;
  }
- assert.ok(pitch(prev.elbow)>=-45&&pitch(prev.elbow)<=-30);assert.ok(prev.hand[2]>.25);
+ assert.ok(pitch(prev.elbow)>=25&&pitch(prev.elbow)<=45);assert.ok(prev.hand[2]<-.43);
  assert.ok(a.runLean>.14);
+ const forward=a.offsets(-1,elbow,hand,1),back=a.offsets(-1,elbow,hand,-1);
+ assert.ok(forward.hand[2]<back.hand[2]-.06);
+ assert.ok(back.hand[2]<0);
 });
 test('live gait carries arms at steady walk, run and guard without changing bone lengths or feet',()=>{
  const motion=compileAuthoredMotion({schemaVersion:1,stature:1.65,slots:Object.fromEntries(['stance','stalk','aggressive','freeze'].map(k=>[k,referencePose(k)]))});
@@ -55,7 +58,7 @@ test('live gait carries arms at steady walk, run and guard without changing bone
  };
  const walk=sample(1.4,false),back=sample(-1.4,false),run=sample(5.7,false),guard=sample(0,true);
  for(const p of [walk,back])for(const a of p.arms)assert.ok(pitch(a.upper)>=29&&pitch(a.upper)<=41);
- for(const a of run.arms)assert.ok(pitch(a.upper)>=-46&&pitch(a.upper)<=-29);
+ for(const a of run.arms)assert.ok(pitch(a.upper)>=24&&pitch(a.upper)<=46);
  for(const a of guard.arms)assert.ok(Math.abs(a.hand[1])<.12);
  assert.ok(run.lean<walk.lean-.06,JSON.stringify({walk,run}));
 });
@@ -73,7 +76,7 @@ test('guard and run transitions remain bounded in both directions across profile
     if(previous)assert.ok(dist(p.hand,previous.hand)<.16,JSON.stringify({lag,asymmetry,side,bearing,swing,speed,running,guard,i,delta:dist(p.hand,previous.hand)}));
     previous=p;
    }
-   if(running)assert.ok(pitch(previous.elbow)>=-45.01&&pitch(previous.elbow)<=-29.99);
+   if(running)assert.ok(pitch(previous.elbow)>=24.99&&pitch(previous.elbow)<=45.01);
   }
  }
 });

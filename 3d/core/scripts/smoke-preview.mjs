@@ -87,7 +87,13 @@ try{
  await page.keyboard.down('KeyW');
  try{await page.waitForFunction(([x,z])=>{const d=document.getElementById('stats')?.dataset;return Math.hypot(Number(d.controlledX)-x,Number(d.controlledZ)-z)>.035;},controlStart,{timeout:30000});}finally{await page.keyboard.up('KeyW');}
  await page.locator('#control-patient').selectOption('');
- await page.locator('#patient-count').selectOption('full');
+ await page.locator('#patient-count').selectOption('8');
+ await page.waitForFunction(()=>{
+  const d=document.getElementById('stats')?.dataset;
+  return d?.state==='running'&&d.location==='ring'&&d.patients==='8'&&
+    document.querySelectorAll('#patient-hud .patient-card').length===8;
+ });
+ await page.locator('#patient-count').selectOption('3');
  await page.locator('#vision-debug').uncheck();
  await page.locator('#route-debug').uncheck();
  await page.locator('#scenario').selectOption('damage');
@@ -121,7 +127,18 @@ try{
  await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,secondSingleTick);
  await page.locator('#damage-hit').click();
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settledSingles==='1'&&d.visibleCones==='0';},{},{timeout:45000});
+ assert.equal(await firstCard.evaluate(el=>getComputedStyle(el,'::after').opacity),'0','ordinary bleeding does not tint the card');
+ await page.locator('#damage-segment').selectOption('chest');
+ await page.locator('#damage-crit').click();
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='2');
+ const chestHitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
+ await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,chestHitTick);
+ await page.locator('#damage-crit').click();
+ await page.waitForFunction(()=>document.querySelector('#patient-hud [data-patient-id="0"]')?.dataset.bleeding==='critical');
+ assert.equal(await firstCard.evaluate(el=>getComputedStyle(el,'::after').backgroundColor),'rgba(160, 0, 20, 0.3)');
  await page.locator('#scenario').selectOption('corpse');
+ await page.waitForFunction(()=>document.querySelector('#patient-hud [data-patient-id="1"]')?.dataset.life==='incapacitated');
+ assert.equal(await page.locator('#patient-hud [data-patient-id="1"]').evaluate(el=>getComputedStyle(el,'::after').backgroundColor),'rgba(0, 0, 0, 0.7)');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.ragdollBodies==='15'&&d.ragdollJoints==='14';},{},{timeout:30000});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.incapacitated==='1'&&d.bodySegments==='17'&&Number(d.tick)>60;},{},{timeout:30000});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.settled==='1'&&Number(d.bodyCones)>0&&Number(d.bodyCones)<=4&&d.ragdollBodies==='0'&&d.ragdollJoints==='0'&&d.visibleCones==='0';},{},{timeout:45000});

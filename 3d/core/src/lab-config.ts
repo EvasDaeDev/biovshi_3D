@@ -1,3 +1,4 @@
+import {ringSpawnSlots} from './arena/ring.js';
 import {PATIENT_SCALE} from './rig/patient-scale.js';
 import type { WorldConfig } from './types.js';
 import type { NativeLocation } from './arena/location-adapter.js';
@@ -29,7 +30,8 @@ export function createAuthoredCombatConfig(seed:number,location:NativeLocation,p
   participants>10||location.spawnSlots.length<participants)
   throw new RangeError('Unsupported authored arena occupancy');
  const base=createArenaCombatConfig(seed,true,true);
- const fighters=location.spawnSlots.slice(0,participants).map((origin,id)=>{
+ const slots=location.id==='ring'&&location.shape==='circle'?ringSpawnSlots(participants):location.spawnSlots.slice(0,participants);
+ const fighters=slots.map((origin,id)=>{
   const exemplar=base.fighters[id%base.fighters.length]!;
   return {...exemplar,id,origin,
    yawRad:Math.atan2(-origin[0],origin[2])};

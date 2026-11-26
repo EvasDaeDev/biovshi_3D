@@ -20,9 +20,7 @@ await cp(resolve(core,'node_modules/three/examples/jsm/controls/TransformControl
 await cp(resolve(core,'node_modules/three/LICENSE'),resolve(vendor,'three-LICENSE.txt'));
 // All browser module URLs belong to a single content-addressed release.
 // Keep stable HTML entry points; copy the complete import graph together.
-const palettePath='src/ui/telemetry-colours.js';
-const palette=await readFile(resolve(repo,palettePath));
-const hash=createHash('sha256').update(palettePath+'\0').update(palette).update('\0');
+const hash=createHash('sha256');
 async function hashTree(dir,prefix=''){
  for(const entry of (await readdir(dir,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
   const path=resolve(dir,entry.name),name=prefix+entry.name;
@@ -33,11 +31,6 @@ async function hashTree(dir,prefix=''){
 await hashTree(lab,'lab-next/');await hashTree(resolve(site,'3d/core/dist'),'core/dist/');
 const release=hash.digest('hex').slice(0,20),releaseDir=resolve(site,'releases',release,'3d');
 await mkdir(resolve(releaseDir,'core'),{recursive:true});
-for(const root of [site,dirname(releaseDir)]){
- const file=resolve(root,palettePath);
- await mkdir(dirname(file),{recursive:true});
- await writeFile(file,palette);
-}
 await cp(lab,resolve(releaseDir,'lab-next'),{recursive:true});
 await cp(resolve(site,'3d/core/dist'),resolve(releaseDir,'core/dist'),{recursive:true});
 const prefix='../../releases/'+release+'/3d/lab-next/';

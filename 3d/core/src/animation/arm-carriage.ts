@@ -9,7 +9,7 @@ const length=(v:Vec3,n:number):Vec3=>{const d=Math.hypot(...v);return d>1e-8?[v[
 /** Interpolate angular coordinates rather than normalizing a linear
  * blend of nearly opposed arm directions. Signed sagittal pitch passes
  * through the hanging-down pose, not over the head, when changing from
- * guard to a backward running arm. Lateral inclination remains continuous.
+ * guard to a sprint. Lateral inclination remains continuous.
  * Each result has unit length even at the middle of a 180-degree change. */
 function blendDirection(from:Vec3,to:Vec3,t:number):Vec3{
  const a=length(from,1),b=length(to,1);
@@ -52,8 +52,8 @@ export class ArmCarriage{
   // Hands around chest height: lowered upper arm and upward forearm.
   const guardUpper=direction(57+5*asym+2*accent,this.bearing,side);
   const guardLower=direction(130+6*asym+2*accent,this.bearing,side);
-  const runUpper=direction(clamp(-37+4*asym+3*accent,-45,-30),0,side);
-  const runLower=direction(-28+3*asym+2*accent,0,side);
+  const runUpper=direction(clamp(35+3*asym+7*accent,25,45),0,side);
+  const runLower=direction(62+4*asym+7*accent,0,side);
   const select=(idle:Vec3,walk:Vec3,guard:Vec3,run:Vec3,n:number):Vec3=>
    length(blendDirection(blendDirection(blendDirection(idle,walk,this.walking),guard,this.guarding),run,this.running),n);
   const elbow=select(idleElbow,walkingUpper,guardUpper,runUpper,.36);

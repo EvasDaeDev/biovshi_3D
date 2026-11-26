@@ -1,4 +1,3 @@
-import {TELEMETRY_COLOURS} from '../../src/ui/telemetry-colours.js';
 /** Compact anatomical status overlay. Read-only view of the same fixed
  * snapshot used by the arena; never simulates damage, bleeding or time. */
 export const BODY_MAP=Object.freeze([
@@ -13,9 +12,8 @@ const clamp=v=>Math.max(0,Math.min(1,v));
 const number=n=>Number(n.toFixed(1)).toLocaleString('ru-RU',{maximumFractionDigits:1});
 export function segmentPresentation(part){
  const ratio=part?.attached&&part.maxHp>0?clamp(part.hp/part.maxHp):0;
- if(!ratio)return {ratio,state:'destroyed',fill:TELEMETRY_COLOURS.off,opacity:.65,detail:part?.attached?'разрушен (на месте)':'отсутствует'};
- const tone=ratio>.66?'good':ratio>.33?'warn':'bad';
- return {ratio,state:tone==='good'?'healthy':'damaged',fill:TELEMETRY_COLOURS[tone]??'#b7ada1',opacity:1,detail:number(part.hp)+' / '+number(part.maxHp)+' HP'};
+ if(!ratio)return {ratio,state:'destroyed',fill:'#69736f',detail:part?.attached?'разрушен (на месте)':'отсутствует'};
+ return {ratio,state:ratio>=1?'healthy':'damaged',fill:'hsl('+Math.round(120*ratio)+' 76% 49%)',detail:number(part.hp)+' / '+number(part.maxHp)+' HP'};
 }
 export function patientPresentation(health,oil,life,fight,id,distress){
  const current=health?.endurance??0,max=health?.maxEndurance??0,base=health?.baseEndurance??24,wounds=oil?.wounds?.length??0;
@@ -58,7 +56,7 @@ export class PatientHud{
    const parts=new Map((health?.segments??[]).map(v=>[v.id,v]));
    for(const [key,node] of c.segments){
     const part=parts.get(key),v=segmentPresentation(part);
-    attr(node.rect,'fill',v.fill);attr(node.rect,'opacity',v.opacity);attr(node.rect,'data-state',v.state);attr(node.rect,'data-hp',part?.hp??0);
+    attr(node.rect,'fill',v.fill);attr(node.rect,'data-state',v.state);attr(node.rect,'data-hp',part?.hp??0);
     txt(node.title,node.label+': '+v.detail);
    }
    attr(c.card,'data-life',life??'unknown');attr(c.card,'data-bleeding',p.critical?'critical':p.wounds?'active':'none');
