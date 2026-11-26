@@ -34,6 +34,32 @@ export class PatientGait {
   get running():boolean{return this.sprintCycle;}
   get runningAirborne():boolean{return this.sprintCycle&&this.feet.every(f=>f.moving&&f.phase>.10&&f.phase<.90);}
   private moveAmount=0; private next=0;private stepWait=0;private steps=0;private runAmount=0;private signedSpeed=0;
+  private recoveryFoot:number|null=null;
+  private recoveryCooldown=0;
+  get recoveringSupport():boolean{return this.recoveryFoot!==null;}
+  /** Start from the current (possibly airborne) foot, with a reachable world-space landing. */
+  recoverSupport(root:Vec3,yaw:number,dx:number,dz:number,ground:(x:number,z:number)=>number,clear:(x:number,z:number)=>boolean):boolean{
+    const n=Math.hypot(dx,dz);
+    if(!this.organic||this.recoveringSupport||this.recoveryCooldown>0||this.mobility.prone||this.proneAmount!==0||this.hopSample.phase!=='idle'||n<1e-8)return false;
+    const right=dx*Math.cos(yaw)+dz*Math.sin(yaw);
+    const preferred=right<0?0:1;
+    const order=this.feet[1-preferred]!.moving&&!this.feet[preferred]!.moving?[1-preferred,preferred]:[preferred,1-preferred];
+    for(const i of order){
+      if(!this.mobility.support[i])continue;
+      const f=this.feet[i]!,side=i===0?-1:1;
+      for(const reach of [.34,.20]){
+        const x=root[0]+Math.cos(yaw)*side*.17+dx/n*reach;
+        const z=root[2]+Math.sin(yaw)*side*.17+dz/n*reach;
+        if(!clear(x,z)||Math.hypot(x-f.plant[0],z-f.plant[2])<.08||Math.abs(ground(x,z)-ground(f.plant[0],f.plant[2]))>.20)continue;
+        f.start=f.plant;
+        f.target=[x,ground(x,z)+FOOT_RADIUS,z];
+        f.phase=0;f.duration=this.mobility.mode==='single-support'?.23:.18;f.lift=.075;f.moving=true;f.running=false;
+        this.recoveryFoot=i;this.steps++;this.leapQueued=0;
+        return true;
+      }
+    }
+    return false;
+  }
   get stepCount():number{return this.steps;}
   get footStates(){return this.feet.map(f=>({moving:f.moving,target:[...f.target] as Vec3,point:[...f.plant] as Vec3}));}
   private expression:PoseTransition;
@@ -161,8 +187,11 @@ export class PatientGait {
   }
   advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false,turnRate=0,driveSpeed=speed):void{
     this.mobility=mobility;this.active=active;this.ground=ground;
+    this.recoveryCooldown=Math.max(0,this.recoveryCooldown-dt);
     const support=mobility.support;
+    if(this.recoveryFoot!==null&&!support[this.recoveryFoot])this.recoveryFoot=null;
     if(forcedProne!==undefined){
+      this.recoveryFoot=null;
       this.sprintCycle=false;this.sprintBob=0;this.sprintSlow=0;this.leapQueued=0;
       this.carriage.advanceMotion(dt,0,0,false,false);
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
@@ -217,7 +246,7 @@ export class PatientGait {
       }
       return;
     }
-    if(single){
+    if(single&&!this.recoveringSupport){
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const index=support[0]?0:1,side=index===0?-1:1,f=this.feet[index]!;
       this.feet[0].moving=false;this.feet[1].moving=false;
@@ -250,7 +279,7 @@ export class PatientGait {
       const progress=this.organic?patientSwingProgress(f.phase):{travel:f.phase*f.phase*(3-2*f.phase),lift:Math.sin(Math.PI*f.phase)};
       const p=mix(f.start,f.target,progress.travel);
       f.plant=[p[0],Math.max(ground(p[0],p[2])+FOOT_RADIUS,p[1]+progress.lift*f.lift),p[2]];
-      if(f.phase===1){f.moving=false;f.running=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
+      if(f.phase===1){if(this.recoveryFoot===i){this.recoveryFoot=null;this.recoveryCooldown=.12;this.stepWait=Math.max(this.stepWait,.14);}f.moving=false;f.running=false;f.plant=[f.target[0],ground(f.target[0],f.target[2])+FOOT_RADIUS,f.target[2]];}
     }
     const pivot=pivotPlan(this.organic&&this.proneAmount===0?turnRate:0,plannedSpeed);
     if(pivot.strength>0)this.stepWait=Math.min(this.stepWait,.12+.18*(1-pivot.strength));

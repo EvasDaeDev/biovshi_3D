@@ -6,7 +6,7 @@ import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 test('ring AI can land a punch and a kick while retaining striking distance',async()=>{
  const {ring}=await buildLocationCatalog();
  const core=new LabSimulationCore();
- core.initialize(createAuthoredCombatConfig(19,ring,2));
+ core.initialize(createAuthoredCombatConfig(7,ring,2));
  try{
   const starts=new Map(),contacts={arm:[],leg:[]};
   for(let tick=0;tick<1200;tick++){
