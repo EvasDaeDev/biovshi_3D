@@ -26,8 +26,14 @@ test('authored travel profile increases pace and reach; one leg stops hopping at
  assert.ok(HORROR_MOVEMENT.walkSpeed>.9&&HORROR_MOVEMENT.sprintSpeed>1.9);
  assert.ok(HORROR_CRAWL_TIMING.reach>CRAWL_TIMING.reach&&HORROR_CRAWL_TIMING.swing<CRAWL_TIMING.swing);
  assert.ok(horrorBipedStep(1.5).lead>bipedStep(.9).lead);
- const f=createLabConfig(7).fighters[0],ids=f.segmentIds.filter(s=>!/^R\\.(upperLeg|lowerLeg|foot)$/.test(s));
+ const f=createLabConfig(7).fighters[0],removed=new Set(['R.upperLeg','R.lowerLeg','R.foot']);
+ const ids=f.segmentIds.filter(s=>!removed.has(s));
+ assert.equal(f.segmentIds.length-ids.length,3);
  const core=new LabSimulationCore();core.initialize({seed:7,patientScale:.81,patientPoses:{schemaVersion:1,stature:1.65,slots:{stance:referencePose('stance'),stalk:referencePose('stalk')}},fighters:[{...f,segmentIds:ids}]});
+ const initial=core.getSnapshot();
+ assert.equal(initial.mobilityModes[0],'single-support');
+ assert.ok(initial.rigSegments[0].some(p=>p.id==='L.foot'));
+ assert.ok(initial.rigSegments[0].every(p=>!removed.has(p.id)));
  const step=forward=>{core.step(dt,{commands:[{fighterId:f.id,forward,turn:0,sprint:false}]});return core.getSnapshot();};
  let flight=false;for(let i=0;i<90;i++){const s=step(1);flight=flight||s.hopPhases[0]==='flight';}
  // Keep advancing even after a flight was observed.
