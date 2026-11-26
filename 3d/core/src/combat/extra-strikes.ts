@@ -7,7 +7,7 @@ const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const scale=(a:Vec3,n:number):Vec3=>[a[0]*n,a[1]*n,a[2]*n];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>add(a,scale(sub(b,a),t));
 const unit=(a:Vec3,fallback:Vec3):Vec3=>{const n=Math.hypot(...a);return n>1e-8?scale(a,1/n):fallback;};
-export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase:StrikePhase,t:number,ground:(x:number,z:number)=>number,supportLoad=1,coordinated=false,weight=1):readonly PhysicsSegmentPose[]{
+export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase:StrikePhase,t:number,ground:(x:number,z:number)=>number,supportLoad=1,coordinated=false,weight=1,supportPlant?:Vec3):readonly PhysicsSegmentPose[]{
  if(p.kind==='head'){
   const neck=pose.find(v=>v.id==='neck'),head=pose.find(v=>v.id==='head');
   if(!neck||!head)return pose;
@@ -32,7 +32,7 @@ export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase
   const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,t,low,'leg',p.yaw,p.side):phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
   // Same mass-driven support solver as the one-legged gait. It includes
   // the swinging leg in COM and maintains the opposite world foot anchor.
-  return balanceSingleSupport(pose,pose.map(v=>v.id),support,plant.a,ground,weight===1?rawTarget:mix(base,rawTarget,weight),supportLoad);
+  return balanceSingleSupport(pose,pose.map(v=>v.id),support,supportPlant??plant.a,ground,weight===1?rawTarget:mix(base,rawTarget,weight),supportLoad);
  }
  return pose;
 }

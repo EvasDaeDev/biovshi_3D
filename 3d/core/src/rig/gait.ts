@@ -1,4 +1,5 @@
 import {pivotPlan} from '../animation/turn-motion.js';
+import {kickTravelLimit} from '../combat/strike-locomotion.js';
 import {KnockdownMotion} from '../animation/knockdown-motion.js';
 import {localImpact,type ImpactMotionSample} from '../animation/impact-motion.js';
 import type {AuthoredMotion} from './authored-motion.js';
@@ -62,7 +63,7 @@ export class PatientGait {
   private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
-  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true):number{
+  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R'):number{
     if(mobility.mode==='biped'&&this.groundedStride){
       const launch=jump&&!this.leapHeld;
       this.leapHeld=jump;
@@ -88,7 +89,8 @@ export class PatientGait {
         const behind=((root[0]-plant[0])*Math.sin(yaw)-(root[2]-plant[2])*Math.cos(yaw))*direction;
         return (this.organic?HORROR_MOVEMENT.stanceReach:.48)-behind;
       }));
-      return direction*Math.min(Math.abs(speed)*dt,Math.max(0,reach));
+      const requested=direction*Math.min(Math.abs(speed)*dt,Math.max(0,reach));
+      return this.organic&&kickSupport?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,yaw,requested):requested;
     }
     if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
     const traction=residualTraction(this.pose(id,root,yaw,t),mobility,this.crawlPhase,ground);

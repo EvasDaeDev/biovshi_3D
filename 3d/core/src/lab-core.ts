@@ -5,6 +5,7 @@ import { PolygonNavigation } from './arena/polygon-navigation.js';
 import type { PointXZ } from './combat/escape.js';
 import {GazePitch} from './animation/gaze-pitch.js';
 import {FightVariety} from './combat/fight-variety.js';
+import {strikeLocomotion} from './combat/strike-locomotion.js';
 import {attackScore,targetPriority,shouldBackstep,type FightOpportunity} from './combat/opportunity.js';
 import type {PunchChoice} from './combat/punch-choice.js';
 import {horrorTurnRate} from './animation/turn-motion.js';
@@ -146,7 +147,9 @@ export class LabSimulationCore implements SimulationCore {
     // A residual pose is compatible only with the same upright support
     // configuration. Missing source, flight and ground transitions win.
     const compatible=visual?.weight===1||a.gait.posture==='upright'&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare';
-    const posed=strike&&visual&&compatible&&!a.knockdown.blocked&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,aim:this.gaitPoint(strike.aim)},visual.tick,this.gaitGround(a),this.authored,visual.weight):pose;
+    const mobile=!!this.authored?.stalk&&this.patientScale!==1&&a.gait.posture==='upright'&&!strike?.prone;
+    const support=mobile&&strike?.kind==='leg'?a.gait.footStates[strike.side==='L'?1:0]?.point:undefined;
+    const posed=strike&&visual&&compatible&&!a.knockdown.blocked&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,yaw:mobile&&strike.kind!=='leg'?a.yaw:strike.yaw,aim:this.gaitPoint(strike.aim)},visual.tick,this.gaitGround(a),this.authored,visual.weight,support):pose;
     if(nominal)return posed;
     const world=this.worldPose(posed);
     return this.gradeContact?.(world,a.baseY)??world;
@@ -272,6 +275,7 @@ export class LabSimulationCore implements SimulationCore {
       a.strike.advance(this.tick,allowed&&compatible&&(!this.authored?.stalk||!a.strike.punch||this.actors.some(b=>b.id===a.strike.punch?.targetId&&!b.fixed)),a.segments,!!this.authored?.stalk&&!a.fixed&&!a.knockdown.blocked&&a.gait.posture==='upright'&&a.gait.hopPhase==='idle');
       if(a.fixed){a.tactics.setMode('inactive');continue;}
       const command=commands.get(a.id);
+      const mobileStrikes=!!this.authored?.stalk&&this.patientScale!==1;
       const horror=this.ringCombat&&!!this.authored?.stalk&&!command;
       if(!horror)a.hunt.reset(this.tick);
       if(this.fightEnded){a.tactics.setMode('inactive');a.hunt.reset(this.tick);a.perception.clear();a.route.clear();a.disarmedGoal=null;commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});continue;}
@@ -447,9 +451,10 @@ export class LabSimulationCore implements SimulationCore {
         for(const kind of order){
           if(ringFootwork&&!command&&kind==='head'&&distance>(horror?.60:.49))continue;
           if(kind==='leg'&&(prone||!usableStrike(a.segments,'leg','L')))continue;
-          const needsPlant=kind==='leg'&&(a.gait.footStates.some(f=>f.moving)||Math.abs(a.speed)>.10);
-          // Against a low victim, preview while approaching. If the real kick
-          // is reachable, brake and let the current step finish before windup.
+          const needsPlant=kind==='leg'&&(a.gait.footStates.some(f=>f.moving)||!mobileStrikes&&Math.abs(a.speed)>.10);
+          // In the authored profile a kick may start at any speed when
+          // both feet have landed. Finish an ongoing step without braking.
+          if(needsPlant&&mobileStrikes)continue;
           if(needsPlant&&!horror&&!(this.authored?.stalk&&command?.attackKind==='leg')&&(!lowVictim||command))continue;
           const score=horror&&!prone?(c:PunchChoice)=>attackScore(kind,c,opportunity)+a.variety.adjustment(kind,c):undefined;
           const best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground,score):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim,score);
@@ -496,7 +501,13 @@ export class LabSimulationCore implements SimulationCore {
         }
         if(this.authored?.stalk)a.gazeFocus=a.strike.punch?.aim??punch.aim;
         const gap=victim?Math.hypot(victim.x-a.x,victim.z-a.z):0;
-        commands.set(a.id,{fighterId:a.id,forward:!punch.prone&&windup&&!command&&(!sensing||visibleIds.includes(punch.targetId))&&gap>(this.ringCombat?.75:.60)&&(punch.kind??'arm')==='arm'?.55:0,turn:0,sprint:false});
+        if(mobileStrikes&&!punch.prone){
+          // Preserve player intent or the already evaluated autonomous
+          // movement. An unseen target does not authorize auto pursuit.
+          const desired=command??commands.get(a.id)??{fighterId:a.id,forward:0,turn:0,sprint:false};
+          const locomotion=command||victim&&(!sensing||visibleIds.includes(victim.id))?desired:{...desired,forward:0,turn:0,sprint:false};
+          commands.set(a.id,strikeLocomotion(locomotion,punch,a.strike.phase(this.tick)));
+        }else commands.set(a.id,{fighterId:a.id,forward:!punch.prone&&windup&&!command&&(!sensing||visibleIds.includes(punch.targetId))&&gap>(this.ringCombat?.75:.60)&&(punch.kind??'arm')==='arm'?.55:0,turn:0,sprint:false});
       }
     }
   }
@@ -583,9 +594,10 @@ export class LabSimulationCore implements SimulationCore {
         target = a.wanderSpeed;
       }
       target*=mobility.speedScale*flinch*a.behavior.traits.movementMultiplier*(organic&&mobility.mode==='arm-crawl'?HORROR_MOVEMENT.crawlMultiplier:1);
-      a.speed = mobility.mode==='unsupported'||a.strike.punch?.kind==='leg'||a.strike.punch?.prone?0:damp(a.speed,target,3);
+      const kick=a.strike.punch?.kind==='leg',kickSupport=organic&&kick?(a.strike.punch!.side==='L'?'R':'L'):undefined;
+      a.speed = mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
-      const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),c?.jump,Math.abs(target)>.025)*this.patientScale;
+      const travel=a.strike.punch?.prone?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),c?.jump,Math.abs(target)>.025,kickSupport)*this.patientScale;
       const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+Math.sin(a.yaw)*travel+recoil[0],-5.65,5.65);
       a.z = clamp(a.z-Math.cos(a.yaw)*travel+recoil[2],-5.65,5.65);

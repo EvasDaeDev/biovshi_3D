@@ -174,3 +174,7 @@ effa039: CI 45733878575, 238/239 тестов, deploy пропущен. Испр
 ### P4-M — исправление браузерного ввода (26.11.2026)
 
 fc38ecc: CI 45787417000, 239/239 tests и P3/P4 audit пройдены, smoke timeout hill, deploy пропущен. Исправлен захват клавиш флажками, добавлен unit test и явный focus checkbox regression с диагностикой timeout. Новый CI ожидается. Зафиксированы ring finish 57.567 s, p95 4.503 ms; walk/leg thrust и CPU regression требуют отдельной коррекции.
+
+### P4-M — атака на ходу (26.11.2026)
+
+Разделены authored upright combat overlay и locomotion: сохранение forward/turn во всех фазах arm/head, разрешение kick в момент посадки шага без требования остановки, bounded travel/actual support anchor. Три регрессии; новый CI и сравнительная приёмка ожидаются. Prone/airborne и legacy без изменений. [P4_MOTION_HORROR.md](P4_MOTION_HORROR.md).

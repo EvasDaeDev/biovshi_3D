@@ -69,7 +69,7 @@ export class StrikeState{
 }
 /** The actual rendered forearm and hand are the attacking geometry.
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
-export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion,weight=1):readonly PhysicsSegmentPose[]{
+export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion,weight=1,supportPlant?:Vec3):readonly PhysicsSegmentPose[]{
  weight=Math.max(0,Math.min(1,weight));if(weight===0)return pose;
  const age=tick-punch.start;if(age<0||age>=W+T+R||age===0)return pose;
  if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
@@ -81,7 +81,7 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
   const amount=age<W?-.32*smooth(age/W):age<W+T?-.32+1.32*smooth((age-W+1)/T):1-smooth((age-W-T)/R);
   pose=coordinated?coordinatedStrikeBody(pose,punch,amount*weight,motion):strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
  }
- if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,phase,progress,ground,coordinated?load*weight:1,coordinated,weight);
+ if(punch.kind&&punch.kind!=='arm')return extraStrikePose(pose,punch,phase,progress,ground,coordinated?load*weight:1,coordinated,weight,supportPlant);
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');
  if(!u||!l)return pose;
  const a=u.a,low=coordinated?lowTargetAmount(punch.aim,ground):0;
