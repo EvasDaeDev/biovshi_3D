@@ -30,13 +30,13 @@ export function createAuthoredCombatConfig(seed:number,location:NativeLocation,p
   participants>10||location.spawnSlots.length<participants)
   throw new RangeError('Unsupported authored arena occupancy');
  const base=createArenaCombatConfig(seed,true,true);
- const slots=location.id==='ring'&&location.shape==='circle'?ringSpawnSlots(participants):location.spawnSlots.slice(0,participants);
+ const ring=location.id==='ring'&&location.shape==='circle';
+ const slots=ring?ringSpawnSlots(participants):location.spawnSlots.slice(0,participants);
  const fighters=slots.map((origin,id)=>{
   const exemplar=base.fighters[id%base.fighters.length]!;
-  // Adjacent pairs face each other instead of a symmetric centre-facing start.
-  const partner=location.id==='ring'&&location.shape==='circle'?slots[id%2===0&&id+1<slots.length?id+1:id-1]!:undefined;
-  return {...exemplar,id,origin,
-   yawRad:partner?Math.atan2(partner[0]-origin[0],origin[2]-partner[2]):Math.atan2(-origin[0],origin[2])};
+  // On the ring, each patient starts facing outward along their radius.
+  const sign=ring?1:-1;
+  return {...exemplar,id,origin,yawRad:Math.atan2(sign*origin[0],-sign*origin[2])};
  });
  return {...base,location,walls:location.walls,fighters,
   ...(location.shape==='circle'?{patientScale:PATIENT_SCALE}:{}),

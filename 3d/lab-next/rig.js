@@ -115,9 +115,16 @@ function resetControl(s){
  controlPatient.disabled=scenario.value==='motion-review';
 }
 controlPatient.onchange=()=>{keys.clear();controlPatient.blur();if(controlPatient.value!==''&&['head','fisheye','follow'].includes(cameraControl.mode))document.getElementById('camera-patient').value=controlPatient.value;};
-// Seed is a replay/diagnostic input, not a tactical control.
+// An explicit seed pins a replay. Ordinary ring resets start a fresh match.
 const requestedSeed=query.get('seed');
-function roundSeed(){return requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):7;}
+const pinnedSeed=requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):null;
+let previousRingSeed=null;
+function roundSeed(){
+ if(pinnedSeed!==null)return pinnedSeed;
+ const seed=crypto.getRandomValues(new Uint32Array(1))[0];
+ previousRingSeed=seed===previousRingSeed?(seed+1)>>>0:seed;
+ return previousRingSeed;
+}
 const requestedPatients=Number(new URLSearchParams(location.search).get('patients'));
 if(Number.isInteger(requestedPatients)&&requestedPatients>=2&&requestedPatients<=authoredLocations.ring.capacity)patientCount.value=String(requestedPatients);
 function authoredPatients(loc){return Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
@@ -199,6 +206,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
+  stats.dataset.seed=String(config.seed);
   stats.dataset.authoredObjects=String(location?.objects.length??0);
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}

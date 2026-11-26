@@ -381,6 +381,12 @@ export class LabSimulationCore implements SimulationCore {
       // waypoint briefly; without armed threats use the existing patrol.
       const armed=hasAttackSource(a.segments,this.expandedStrikes);
       const prey=horror?distress==='prey':this.ringCombat&&this.weak(a);
+      if(raiding&&!prey&&!defiant&&armed&&allowed&&!a.impact.active&&!visible.length&&this.tick<a.raid.profile.openingTicks){
+        // Hold the outward spawn while the head begins searching.
+        a.tactics.setMode('search');
+        commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});
+        continue;
+      }
       if(horror&&!prey&&!defiant&&allowed&&this.throwAttack(a,visible,commands))continue;
       if(a.throwing.plan){a.throwing.plan=null;a.throwing.retry=this.tick+60;}
       if(horror&&defiant&&!armed){
@@ -474,7 +480,7 @@ export class LabSimulationCore implements SimulationCore {
           this.lookAt(a,remembered?.point??null);
           a.tactics.setMode(remembered?'memory':'search');
           const heading=this.routeHeading(a,goal);
-          commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading)),turn:clamp(heading*2,-1,1),sprint:false});
+          commands.set(a.id,{fighterId:a.id,forward:Math.max(0,Math.cos(heading))*(raiding?a.raid.profile.searchPace:1),turn:clamp(heading*2,-1,1),sprint:false});
         }else{a.tactics.setMode('search');if(!command)commands.set(a.id,{fighterId:a.id,forward:0,turn:0,sprint:false});}
         continue;
       }
@@ -593,7 +599,13 @@ export class LabSimulationCore implements SimulationCore {
       const pounceReady=mobileStrikes&&!prone&&!lowVictim&&mobility.mode==='biped'&&a.gait.hopPhase==='idle'&&!a.gait.running&&a.crouchAmount<.01&&!a.gait.footStates.some(f=>f.moving)&&Math.abs(a.speed)<.35&&distance>.82&&distance<1.8&&Math.abs(turn)<.25&&(!command||!!command.jump)&&this.navigation.clear(a,{x:a.x+Math.sin(a.yaw)*POUNCE.distance*this.patientScale,z:a.z-Math.cos(a.yaw)*POUNCE.distance*this.patientScale},.35);
       const previewRange=groundedPair?2.65:pounceReady?1.8:this.expandedStrikes?(mobileStrikes?1.18:1.05):.82;
       let checkedStrikeGeometry=false,preparingLowKick=false;
-      if(unobstructed&&seen&&allowed&&!retreat&&!deliberateHold&&!a.impact.active&&(command?.attack??!command)&&(!command?.jump||!mobileStrikes||pounceReady)&&Math.abs(turn)<=(mobileStrikes&&!prone?SIDE_STRIKE_LIMIT:.65)&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
+      // Read committed intent as well as last tick's telegraph: when both
+      // autonomous opponents find a lane on this tick, only one starts.
+      // This brief window still allows a delayed counter during the swing.
+      const incoming=target.strike.punch;
+      const timingGap=horror&&!defiant&&incoming&&this.tick-incoming.start<a.raid.profile.counterTicks
+        &&(incoming.targetId===a.id||incoming.secondary?.targetId===a.id);
+      if(!timingGap&&unobstructed&&seen&&allowed&&!retreat&&!deliberateHold&&!a.impact.active&&(command?.attack??!command)&&(!command?.jump||!mobileStrikes||pounceReady)&&Math.abs(turn)<=(mobileStrikes&&!prone?SIDE_STRIKE_LIMIT:.65)&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         checkedStrikeGeometry=true;
         const pose=this.worldPose(this.actorPose(a,false,true,true),1/this.patientScale),victim=this.worldPose(this.actorPose(target),1/this.patientScale),eligible=(id:string)=>target.health.canDamage(id,this.tick);
         const ground=this.gaitGround(a);
@@ -624,7 +636,7 @@ export class LabSimulationCore implements SimulationCore {
           const manualMovingKick=needsPlant&&mobileStrikes&&command?.attackKind==='leg';
           if(needsPlant&&mobileStrikes&&!manualMovingKick)continue;
           if(needsPlant&&!horror&&!(this.authored?.stalk&&command?.attackKind==='leg')&&(!lowVictim||command))continue;
-          const score=horror&&!prone?(c:PunchChoice)=>attackScore(kind,c,opportunity)+a.variety.adjustment(kind,c)+(c.crouch?(lowVictim?.65:.12):0)+(c.pounce?.35:0):undefined;
+          const score=horror&&!prone?(c:PunchChoice)=>attackScore(kind,c,opportunity)+a.variety.adjustment(kind,c)+(raiding?a.raid.strikePreference(kind):0)+(c.crouch?(lowVictim?.65:.12):0)+(c.pounce?.35:0):undefined;
           let best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground,score):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim,score);
           if(a.crouchAmount>.01)best=null;
           if(kind==='arm'&&mobileStrikes&&mobility.mode==='biped'&&distance<1.15&&a.gait.hopPhase==='idle'){

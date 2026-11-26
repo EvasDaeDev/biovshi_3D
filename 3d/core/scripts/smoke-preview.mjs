@@ -30,6 +30,12 @@ try{
  }catch(e){throw new Error('Lab startup failed: '+await page.locator('#stats').innerText()+'; browser errors: '+errors.join('; '),{cause:e});}
  assert.equal(await page.locator('canvas').count(),1);
  assert.equal(await page.locator('#patient-hud .patient-card').count(),3);
+ const openingSeed=await page.locator('#stats').getAttribute('data-seed');
+ await page.locator('#reset').click();
+ await page.waitForFunction(seed=>{
+  const d=document.getElementById('stats')?.dataset;
+  return d?.state==='running'&&d.seed!==seed&&Number(d.tick)>2;
+ },openingSeed);
  assert.equal(await page.locator('#patient-hud .patient-card [data-segment]').count(),51);
  await page.locator('#support-debug').check();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.supportCount)>0);

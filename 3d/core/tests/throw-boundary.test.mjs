@@ -29,11 +29,11 @@ test('Rapier throw handoff stays inside low ring even with outward velocity and 
   assert.ok(world.branchSnapshot()[0].settled);assert.equal(world.branchSnapshot()[0].parts.length,3);
  }finally{world.dispose();}
 });
-test('ring spawns face adjacent opponents',()=>{
+test('ring spawns face away from the center',()=>{
  for(let n=2;n<=8;n++){
   const fs=createAuthoredCombatConfig(7,ring,n).fighters;
   for(let i=0;i<n;i++){
-   const f=fs[i],p=fs[i%2===0&&i+1<n?i+1:i-1],dx=p.origin[0]-f.origin[0],dz=p.origin[2]-f.origin[2];
+   const f=fs[i],[dx,,dz]=f.origin;
    assert.ok((Math.sin(f.yawRad)*dx-Math.cos(f.yawRad)*dz)/Math.hypot(dx,dz)>.99999);
   }
  }
