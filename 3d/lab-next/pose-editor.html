@@ -20,6 +20,11 @@
      <button data-view="front">Спереди</button><button data-view="side">Сбоку</button><button data-view="perspective" aria-pressed="true">3/4</button>
     </div>
    </div>
+   <div class="layers" aria-label="Слои отображения">
+    <label><input type="checkbox" id="show-geometry" checked> Геометрия</label>
+    <label><input type="checkbox" id="show-bones" checked> Кости</label>
+    <label><input type="checkbox" id="show-colliders" checked> Коллайдеры</label>
+   </div>
    <div id="viewport"></div>
    <p class="hint">Перетаскивание вращает камеру. Колесо меняет масштаб.</p>
   </section>
@@ -27,7 +32,16 @@
    <h2>Анатомия</h2>
    <label>Сегмент <select id="segment"></select></label>
    <label class="check"><input type="checkbox" id="enabled"> Оставить сегмент</label>
-   <div class="size"><label>Длина, м <input type="number" id="length" min=".02" max="1.5" step=".01"></label><label>Радиус, м <input type="number" id="radius" min=".01" max=".5" step=".005"></label></div>
+   <div class="size"><label>Длина кости, м <input type="number" id="length" min=".02" max="1.5" step=".01"></label><label>Радиус геометрии, м <input type="number" id="radius" min=".01" max=".5" step=".005"></label></div>
+   <fieldset class="collider-settings">
+    <legend>Коллайдер сегмента</legend>
+    <div class="size">
+     <label>Радиус, м <input type="number" id="collider-radius" min=".01" max=".5" step=".005"></label>
+     <label>Длина оси, м <input type="number" id="collider-length" min="0" max="1.5" step=".005"></label>
+    </div>
+    <p class="hint">Габарит вдоль оси <output id="collider-span"></output></p>
+    <button id="reset-collider">Сбросить размер коллайдера</button>
+   </fieldset>
    <h2>Положение</h2><div class="actions"><button id="translate" aria-pressed="true">Переместить</button><button id="rotate" aria-pressed="false">Повернуть</button><button id="ik" aria-pressed="false">ИК</button></div>
    <p class="hint" id="coord-hint">Координаты в метрах. Направление задаёт ось капсулы, соединения восстанавливаются по скелету.</p>
    <div id="coords"></div>

@@ -24,6 +24,7 @@ export interface PoseSegment extends RigPose{
  readonly offset?:Vec3;
  readonly rotation?:Vec3;
  readonly bindOffset?:Vec3;
+ readonly collider?:{readonly radius?:number;readonly length?:number};
 }
 export interface PoseDocument{
  readonly schemaVersion:1;
@@ -123,9 +124,18 @@ export function readPoseDocument(value:unknown):PoseDocument{
     !number(p.length,def.nominalLength===0?0:.02,def.nominalLength===0?0:1.5)||
     typeof p.enabled!=='boolean'||(def.protected&&!p.enabled))
     throw new RangeError('Некорректный сегмент '+def.id);
+   const collider=p.collider;
+   if(collider!==undefined&&(!record(collider)||
+    (collider.radius!==undefined&&!number(collider.radius,.01,.5))||
+    (collider.length!==undefined&&!number(collider.length,0,def.nominalLength===0?0:1.5))))
+    throw new RangeError('Некорректный размер коллайдера '+def.id);
    const metric=legacy?editorScale:1;
    const position=(v:unknown)=>legacy?scalePoint(point(v)):point(v);
-   return {id:def.id,a:position(p.a),b:position(p.b),radius:p.radius*metric,length:p.length*metric,enabled:p.enabled,offset:position(p.offset??[0,0,0]),rotation:point(p.rotation??[0,0,0]),...(p.bindOffset!==undefined?{bindOffset:position(p.bindOffset)}:{})};
+   return {id:def.id,a:position(p.a),b:position(p.b),radius:p.radius*metric,length:p.length*metric,enabled:p.enabled,offset:position(p.offset??[0,0,0]),rotation:point(p.rotation??[0,0,0]),...(p.bindOffset!==undefined?{bindOffset:position(p.bindOffset)}:{}),
+    ...(record(collider)?{collider:{
+     ...(typeof collider.radius==='number'?{radius:collider.radius*metric}:{}),
+     ...(typeof collider.length==='number'?{length:collider.length*metric}:{})
+    }}:{})};
   });
   slots[slot as PoseSlot]=value.pivotVersion===2?parts:rebaseJointOffsets(parts);
  }

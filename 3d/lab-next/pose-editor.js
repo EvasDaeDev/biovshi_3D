@@ -12,6 +12,8 @@ const element=id=>document.getElementById(id);
 const poseSelect=element('pose'),segmentSelect=element('segment'),status=element('status');
 const enabled=element('enabled'),lengthInput=element('length'),radius=element('radius');
 const workspace=element('viewport');
+const colliderRadius=element('collider-radius'),colliderLength=element('collider-length');
+const showGeometry=element('show-geometry'),showBones=element('show-bones'),showColliders=element('show-colliders');
 const labels={pelvis:'Таз',abdomen:'Живот',chest:'Грудная клетка',neck:'Шея',head:'Голова',
  upperLeg:'бедро',lowerLeg:'голень',foot:'стопа',upperArm:'плечо',lowerArm:'предплечье',hand:'кисть'};
 for(const [id,name] of Object.entries(POSE_SLOTS))poseSelect.add(new Option(name,id));
@@ -49,10 +51,18 @@ let camera=perspective,flatView=false;
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));workspace.append(renderer.domElement);
 const actor=new THREE.Group();scene.add(actor);
+const colliderMaterial=new THREE.LineBasicMaterial({color:0x63d6ef,transparent:true,opacity:.38,depthTest:false});
+const selectedCollider=new THREE.LineBasicMaterial({color:0x79edff,transparent:true,opacity:.94,depthTest:false});
+const bones=new THREE.LineSegments(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffbc72,depthTest:false}));
+const bonePoints=new Float32Array((LAB_SEGMENTS.length-1)*6);
+bones.geometry.setAttribute('position',new THREE.BufferAttribute(bonePoints,3));
+bones.frustumCulled=false;bones.renderOrder=3;scene.add(bones);
+const outlines=[];
 const primary=new THREE.MeshStandardMaterial({color:0xb1c6bd,roughness:.55});
 const selected=new THREE.MeshStandardMaterial({color:0xb5eda0,roughness:.6,emissive:0x193211});
 const basis=new THREE.Matrix4();
 const raycaster=new THREE.Raycaster();
+raycaster.params.Line.threshold=.018;
 let azimuth=.95,elevation=.15,distance=4.6;
 function draw(){
  camera=flatView?orthographic:perspective;
@@ -68,7 +78,19 @@ function draw(){
   target.y+distance*Math.sin(elevation),
   target.z+distance*Math.cos(elevation)*Math.cos(azimuth),
  );
- camera.lookAt(target);renderer.render(scene,camera);
+ camera.lookAt(target);
+ bones.visible=showBones.checked;
+ if(bones.visible){
+  let vertex=0;
+  for(const node of nodes.values()){
+   if(!node.parent.userData.id)continue;
+   bonePoints.set(worldPosition(node.parent).toArray(),vertex++*3);
+   bonePoints.set(worldPosition(node).toArray(),vertex++*3);
+  }
+  bones.geometry.attributes.position.needsUpdate=true;
+  bones.geometry.setDrawRange(0,vertex);
+ }
+ renderer.render(scene,camera);
 }
 const controls=new TransformControls(camera,renderer.domElement),pickable=[],nodes=new Map();
 const ikTarget=new THREE.Object3D();scene.add(ikTarget);
@@ -142,6 +164,8 @@ for(const id of ['translate','rotate','ik'])element(id).onclick=()=>{
 };
 function renderPose(){
  controls.detach();
+ for(const outline of outlines)outline.geometry.dispose();
+ outlines.length=0;
  actor.clear();pickable.length=0;
  const parts=current(),settings=new Map(parts.map(p=>[p.id,p]));
  nodes.clear();
@@ -168,7 +192,16 @@ function renderPose(){
   visual.position.copy(a).lerp(b,.5).sub(anchor).add(bind);
   const vector=values=>new THREE.Vector3(...values);
   visual.quaternion.setFromRotationMatrix(basis.makeBasis(vector(frame.x),vector(frame.y),vector(frame.z)));
+  visual.visible=showGeometry.checked;
   joint.add(visual);pickable.push(...visual.children);
+  const dimensions=params.collider;
+  const r=dimensions?.radius??part.radius,l=dimensions?.length??frame.length;
+  const shape=l>0?new THREE.CapsuleGeometry(r,l,5,12):new THREE.SphereGeometry(r,12,10);
+  const outline=new THREE.LineSegments(new THREE.WireframeGeometry(shape),part.id===segmentSelect.value?selectedCollider:colliderMaterial);
+  shape.dispose();outline.position.copy(visual.position);outline.quaternion.copy(visual.quaternion);
+  outline.visible=showColliders.checked;outline.renderOrder=part.id===segmentSelect.value?2:1;
+  outline.userData.segment=part.id;joint.add(outline);outlines.push(outline);
+  pickable.push(outline);
  }
  actor.updateMatrixWorld(true);attachControl();
  workspace.dataset.segments=String(nodes.size);
@@ -180,6 +213,11 @@ function refresh(){
  enabled.checked=part.enabled;enabled.disabled=mandatory;
  lengthInput.value=part.length;lengthInput.disabled=nominalLength===0;
  radius.value=part.radius;
+ const r=part.collider?.radius??part.radius,l=part.collider?.length??part.length;
+ colliderRadius.value=Number(r.toFixed(4));colliderLength.value=Number(l.toFixed(4));
+ colliderLength.disabled=nominalLength===0;
+ element('reset-collider').disabled=!part.collider;
+ element('collider-span').value=(l+2*r).toLocaleString('ru-RU',{maximumFractionDigits:3})+' м';
  for(const {field,index,input} of coordinates){
   input.value=String(Number(part[field][index].toFixed(4)));
   input.disabled=part.id==='abdomen'||part.id==='neck'||(field==='b'&&nominalLength===0);
@@ -227,6 +265,14 @@ segmentSelect.onchange=refresh;
 enabled.onchange=()=>edit({enabled:enabled.checked});
 lengthInput.onchange=()=>edit({length:lengthInput.valueAsNumber});
 radius.onchange=()=>edit({radius:radius.valueAsNumber});
+const editCollider=(name,value)=>{
+ const part=current().find(p=>p.id===segmentSelect.value);
+ edit({collider:{...part.collider,[name]:value}});
+};
+colliderRadius.onchange=()=>editCollider('radius',colliderRadius.valueAsNumber);
+colliderLength.onchange=()=>editCollider('length',colliderLength.valueAsNumber);
+element('reset-collider').onclick=()=>edit({collider:undefined});
+for(const layer of [showBones,showGeometry,showColliders])layer.onchange=renderPose;
 element('reset-pose').onclick=()=>{
  const {slots}=data;delete slots[poseSelect.value];
  save('Выбранная поза сброшена.');refresh();
@@ -275,7 +321,7 @@ workspace.onpointerup=e=>{
  if(pointer.travel<4){
   const rect=workspace.getBoundingClientRect();
   raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,1-(e.clientY-rect.top)/rect.height*2),camera);
-  const [hit]=raycaster.intersectObjects(pickable,false);
+  const [hit]=raycaster.intersectObjects(pickable.filter(item=>item.visible&&item.parent.visible),false);
   if(hit){segmentSelect.value=hit.object.userData.segment;refresh();}
  }
  pointer=null;

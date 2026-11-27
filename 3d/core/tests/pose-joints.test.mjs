@@ -38,3 +38,17 @@ test('rotating the chest or skull in a saved slot sweeps its centre around the p
   assert.ok(Math.abs(distance(midpoint(base.get(id)),anchor)-distance(midpoint(edited.get(id)),anchor))<1e-8);
  }
 });
+
+test('custom collider size round-trips independently of the edited bone length',()=>{
+ const parts=referencePose('tPose'),id='L.upperArm';
+ const parse=values=>readPoseDocument({schemaVersion:1,pivotVersion:2,stature:1.65,slots:{tPose:values}});
+ const original=parse(parts),edited=parse(parts.map(p=>p.id===id?{...p,collider:{radius:.075,length:.2}}:p));
+ assert.deepEqual(buildEditedPose(edited.slots.tPose),buildEditedPose(original.slots.tPose));
+ assert.deepEqual(parse(edited.slots.tPose).slots.tPose.find(p=>p.id===id).collider,{radius:.075,length:.2});
+ const extended=parse(edited.slots.tPose.map(p=>p.id===id?{...p,length:p.length+.12}:p));
+ const rig=buildEditedPose(extended.slots.tPose),byId=new Map(rig.map(p=>[p.id,p]));
+ assert.ok(Math.abs(distance(byId.get(id).a,byId.get(id).b)-extended.slots.tPose.find(p=>p.id===id).length)<1e-8);
+ assert.deepEqual(byId.get('L.lowerArm').a,byId.get(id).b);
+ assert.deepEqual(extended.slots.tPose.find(p=>p.id===id).collider,{radius:.075,length:.2});
+ assert.throws(()=>parse(parts.map(p=>p.id==='head'?{...p,collider:{length:.1}}:p)),/коллайдера/);
+});
