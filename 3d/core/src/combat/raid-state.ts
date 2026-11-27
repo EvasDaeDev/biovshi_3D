@@ -4,7 +4,7 @@ import type {StrikeKind,StrikePhase} from './strike.js';
 import {FIXED_DT} from '../fixed-clock.js';
 export type RaidPhase='search'|'observe'|'flank'|'rush'|'attack'|'withdraw'|'reassess';
 export interface RaidProfile {readonly patience:number;readonly risk:number;readonly safeDistance:number;readonly drive:number;readonly initiative:number;readonly openingTicks:number;readonly searchPace:number;readonly counterTicks:number;readonly preferredStrike:StrikeKind;readonly side:1|-1}
-export interface RaidOpponent extends PointXZ {readonly id:number;readonly yaw:number;readonly threatening:boolean;readonly grounded:boolean;readonly recovering?:boolean}
+export interface RaidOpponent extends PointXZ {readonly id:number;readonly yaw:number;readonly threatening:boolean;readonly grounded:boolean;readonly offBalance?:boolean;readonly recovering?:boolean}
 export interface RaidSnapshot {readonly phase:RaidPhase;readonly targetId:number|null;readonly goal:PointXZ|null;readonly attempts:number;readonly hits:number;readonly rush:number;readonly profile:RaidProfile}
 export interface RaidInput {readonly tick:number;readonly here:PointXZ;readonly target:RaidOpponent|null;readonly visible:readonly RaidOpponent[];readonly strike:StrikePhase;readonly interrupted:boolean;readonly ready:boolean;readonly clear:(goal:PointXZ)=>boolean;readonly defiant?:boolean;readonly hysterical?:boolean}
 export interface RaidIntent {readonly phase:RaidPhase;readonly goal:PointXZ|null;readonly pace:number;readonly sprint:boolean;readonly attack:boolean}
@@ -34,7 +34,7 @@ export function seriesRisk(profile:RaidProfile,rush:number):number{
 }
 export function continueSeries(profile:RaidProfile,attempts:number,rush:number,landed:boolean,target:RaidOpponent,exposure:number,bias:number):boolean{
  if(attempts>=8)return false;
- const heat=clamp(rush,0,1),danger=target.threatening&&!target.grounded;
+ const heat=clamp(rush,0,1),danger=target.threatening;
  if(danger&&seriesRisk(profile,heat)<.48)return false;
  const value=.83+.12*profile.risk+.12*heat+.12*clamp(exposure,0,1)
   +(target.grounded?.16:0)+(target.recovering?.10:0)-(landed?0:.10)
@@ -139,7 +139,7 @@ export class RaidState{
    return this.intent(target,d>.60?1:0,d>1.6,true);
   }
   if(target&&target.id===this.targetId)this.remembered={x:target.x,z:target.z};
-  const active=strike!=='idle',danger=visible.filter(o=>!o.grounded&&dist(here,o)<1.45&&(o.threatening||dist(here,o)<.95));
+  const active=strike!=='idle',danger=visible.filter(o=>dist(here,o)<1.45&&(o.threatening||!o.grounded&&dist(here,o)<.95));
   const close=visible.filter(o=>dist(here,o)<1.35);
   // Two adjacent opponents can lie along one swing. Keep pincer/third
   // party avoidance, but do not categorically abort a committed sweep.
@@ -150,7 +150,7 @@ export class RaidState{
   // party. Close telegraphed attacks are still handled in observe/rush
   // and the situation-dependent series evaluation.
   const intendedTarget=target?.id??this.targetId;
-  const counter=!!target&&!target.grounded&&target.threatening&&dist(here,target)<1.45;
+  const counter=!!target&&target.threatening&&dist(here,target)<1.45;
   if(this.phase!=='withdraw'&&(crowded||interrupted||danger.some(o=>o.id!==intendedTarget)&&!active&&!sharedLane||this.phase==='reassess'&&counter))this.withdraw(tick);
   if(this.phase==='attack'&&this.attempts>0&&(strike==='recover'||!active)){
    const exposure=target?Math.abs(wrap(bearing(target,here)-target.yaw))/Math.PI:0;
@@ -185,10 +185,13 @@ export class RaidState{
    this.enter('observe',tick,this.profile.patience*(.85+this.approachPreference*.30));
   }
   if(active)return this.intent(target,d>.72?.5+.4*this.rush:0,false,false);
+  const exposedFall=target.offBalance&&!target.threatening&&d<1.25;
+  const occupiedLane=()=>visible.some(o=>o.id!==target.id&&pathDistance(here,target,o)<.65&&dist(here,o)<2);
   if(this.phase==='observe'){
    // Close threat triggers separation instead of a stationary face-off.
    if(d<.85&&target.threatening&&this.profile.risk<.5){this.withdraw(tick);return this.advance(i);}
-   if(tick<this.deadline)return this.intent(null,0,false,false);
+   if(tick<this.deadline&&!exposedFall)return this.intent(null,0,false,false);
+   if(exposedFall&&occupiedLane()){this.withdraw(tick);return this.advance(i);}
    if(target.grounded||d<1.12||exposure>1.15+(this.approachPreference-.5)*.55&&d<2.6){this.enter('rush',tick,1.8*this.profile.initiative);}
    else this.enter('flank',tick,1.35*this.profile.initiative);
   }
@@ -196,7 +199,7 @@ export class RaidState{
    if(tick>=this.retry||this.goal&&!clear(this.goal)){this.goal=approachLane(here,target,visible,this.profile,this.side,clear);this.retry=tick+15;}
    if(d<1.10||target.grounded||exposure>1.10&&d<2.4||this.goal&&dist(here,this.goal)<.28||tick>=this.deadline){
     // Do not charge through a third patient's occupied lane.
-    if(visible.some(o=>o.id!==target.id&&pathDistance(here,target,o)<.65&&dist(here,o)<2)){
+    if(occupiedLane()){
      this.withdraw(tick);return this.advance(i);
     }
     this.enter('rush',tick,1.8*this.profile.initiative);

@@ -525,6 +525,7 @@ export class LabSimulationCore implements SimulationCore {
         :opponents.sort((b,c)=>distanceTo(b)-distanceTo(c)||b.id-c.id)[0];
       const targetPoint=(b:Actor):PointXZ=>mobileStrikes&&b.gait.posture!=='upright'&&(!sensing||visibleIds.includes(b.id))?groundedContactPoint(a,vision?.get(b.id)?.parts??this.actorPose(b),b):b;
       const raidOpponent=(b:Actor):RaidOpponent=>({id:b.id,...targetPoint(b),yaw:b.segments.includes('head')?b.perception.gaze(b.yaw):b.yaw,grounded:b.gait.posture!=='upright',
+        offBalance:(this.combatFloor(b)||b.knockdown.phase==='rising'&&(b.knockdown.amount??0)>.45)&&this.navigation.clear(a,b,0),
         threatening:(telegraphs?.get(b.id)?.targetId===a.id||telegraphs?.get(b.id)?.targetIds?.includes(a.id)===true)&&['windup','thrust'].includes(telegraphs?.get(b.id)?.phase??'idle'),recovering:telegraphs?.get(b.id)?.phase==='recover'});
       const observed=raiding?visible.map(raidOpponent):[];
       const clearRaid=(goal:PointXZ)=>this.navigation.clear(goal,goal,.50)&&this.navigation.clear(a,goal,.30)&&!observed.some(o=>Math.hypot(o.x-goal.x,o.z-goal.z)<.55);

@@ -9,11 +9,11 @@ const commands=(overrides={})=>({commands:[
  {fighterId:0,forward:0,turn:0,sprint:false,...overrides},
  {fighterId:1,forward:0,turn:0,sprint:false}
 ]});
-function setupFall(opponentOrigin,missing=[]){
+function setupFall(opponentOrigin,missing=[],opponentYaw=0){
  const core=new LabSimulationCore();
  core.initialize({...base,fighters:[
   {...base.fighters[0],origin:[0,0,0],yawRad:0,segmentIds:base.fighters[0].segmentIds.filter(id=>!missing.includes(id))},
-  {...base.fighters[1],origin:opponentOrigin,yawRad:0}
+  {...base.fighters[1],origin:opponentOrigin,yawRad:opponentYaw}
  ]});
  assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'chest',amount:DAMAGE.criticalDamage}));
  core.step(FIXED_DT,commands());
@@ -133,5 +133,21 @@ for(const missing of [[],['L.hand','R.upperArm','R.lowerArm','R.hand']])test(`ba
    before=after;
   }
   assert.ok(peak>.01&&peak<.12,`elbow moved ${peak} m in one tick`);
+ }finally{core.dispose();}
+});
+
+test('an autonomous pursuer takes an opening before the victim finishes the fall',()=>{
+ const core=setupFall([.8,0,0],[],-Math.PI/2);
+ try{
+  let tookOpening=false,landed=false;
+  for(let i=0;i<80;i++){
+   const balance=core.getSnapshot().balanceStates[0];
+   core.step(FIXED_DT,i<14?commands():{commands:commands().commands.slice(0,1)});
+   const state=core.getSnapshot();
+   if(state.tick<=25&&state.raids[1].phase==='rush'&&balance==='falling')tookOpening=true;
+   if(balance!=='standing'&&core.drainEvents().some(e=>e.type==='fighter-damaged'&&e.fighterId===0&&e.attackerId===1&&e.tick>1))landed=true;
+  }
+  assert.ok(tookOpening,'the pursuer must cut observation short during the fall');
+  assert.ok(landed,'a hit still depends on a real segment contact');
  }finally{core.dispose();}
 });

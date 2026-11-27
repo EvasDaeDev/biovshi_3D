@@ -118,3 +118,25 @@ test('safe completed series holds position; a real counterattack still triggers 
  const out=state.advance(input(650,near,threat,{strike:'recover'}));
  assert.equal(out.phase,'withdraw');assert.ok(out.goal);
 });
+
+test('a nearby temporary fall opens an immediate rush during observation',()=>{
+ const state=new RaidState(7,1,'hesitant'),here={x:0,z:1.1};
+ const grounded={...opponent,grounded:true};
+ assert.equal(state.advance(input(0,here,grounded)).phase,'observe','an already crawling target uses normal observation');
+ assert.equal(state.advance(input(1,here,{...grounded,offBalance:true})).phase,'rush');
+ assert.equal(state.advance(input(2,here,{...grounded,offBalance:true})).attack,true);
+ const crowded=new RaidState(7,1,'hesitant');
+ const opening={...grounded,offBalance:true};
+ const other={...opponent,id:2,x:.7,z:1.1,threatening:true};
+ assert.equal(crowded.advance(input(0,here,opening,{visible:[opening,other]})).phase,'withdraw');
+});
+
+test('a telegraphed ground counter still makes a cautious attacker break off',()=>{
+ const state=new RaidState(7,1,'hesitant'),here={x:0,z:.8};
+ const downed={...opponent,grounded:true,offBalance:true};
+ assert.equal(state.advance(input(0,here,downed)).phase,'rush');
+ state.committed(0,downed.id);
+ const counter={...downed,threatening:true};
+ assert.equal(state.advance(input(30,here,counter,{strike:'recover',ready:false})).phase,'withdraw');
+ assert.equal(continueSeries(state.profile,1,.14,false,counter,0,0),false);
+});
