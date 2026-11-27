@@ -363,8 +363,11 @@ try{
  const motionURL=base+'/3d/lab-next/rig.html?scenario=motion-review';
  const sampleReview=async suffix=>{
   await page.goto(motionURL+suffix);
+  await page.waitForFunction(()=>document.getElementById('stats').dataset.state==='running');
+  await page.locator('#pause').click();
+  await page.locator('#reset').click();
   await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;
-   return d.state==='running'&&d.reviewPhase==='idle'&&Number.isFinite(Number(d.thoraxPitch))&&d.thoraxPitch!=='';
+   return d.state==='running'&&d.tick==='0'&&d.reviewPhase==='idle'&&Number.isFinite(Number(d.thoraxPitch))&&d.thoraxPitch!=='';
   });
   return Number(await page.locator('#stats').getAttribute('data-thorax-pitch'));
  };
