@@ -33,10 +33,39 @@ export function footContacts(before,after){
  return contacts;
 }
 
+/** Horizontal bearing keeps the cue stable when looking up or down.
+ * HRTF handles stereo direction. The shelves give the same recording a
+ * distinguishable heel/body and edge across the two hemispheres. */
+export function stepDirectionTone(eye,forward,point){
+ const dx=point[0]-eye[0],dz=point[2]-eye[2];
+ const scale=Math.hypot(dx,dz)*Math.hypot(forward[0],forward[2]);
+ const bearing=scale>1e-6?clamp((dx*forward[0]+dz*forward[2])/scale,-1,1):0;
+ const front=Math.max(0,bearing),rear=Math.max(0,-bearing);
+ return {body:3.5*rear-1.5*front,edge:3*front-8.5*rear};
+}
+
+export function createStepTone(context){
+ const body=context.createBiquadFilter(),edge=context.createBiquadFilter();
+ body.type='lowshelf';body.frequency.value=520;
+ edge.type='highshelf';edge.frequency.value=1150;
+ body.connect(edge);
+ return {body,edge};
+}
+
+function updateTone(voice,eye,forward,time,immediate=false){
+ const {body,edge}=voice.own?{body:0,edge:0}:stepDirectionTone(eye,forward,voice.point);
+ if(immediate){voice.tone.body.gain.value=body;voice.tone.edge.gain.value=edge;}
+ else if(Math.abs(body-voice.body)>.08||Math.abs(edge-voice.edge)>.08){
+  voice.tone.body.gain.setTargetAtTime(body,time,.035);
+  voice.tone.edge.gain.setTargetAtTime(edge,time,.035);
+ }else return;
+ voice.body=body;voice.edge=edge;
+}
+
 export class FootstepAudio{
  constructor(){
   this.pending=[];
-  this.voices=0;
+  this.voices=new Set();
  }
  async unlock(){
   if(this.context){
@@ -65,6 +94,8 @@ export class FootstepAudio{
  }
  clear(){
   this.pending.length=0;
+  for(const voice of this.voices)voice.source.stop();
+  this.voices.clear();
  }
  update(eye,forward,up,controlled,clear){
   const pending=this.pending.splice(0),ctx=this.context,sample=this.sample;
@@ -75,8 +106,9 @@ export class FootstepAudio{
    listener['forward'+axis].value=forward[i];
    listener['up'+axis].value=up[i];
   }
+  for(const voice of this.voices)updateTone(voice,eye,forward,ctx.currentTime);
   for(const step of pending){
-   if(this.voices>=14)break;
+   if(this.voices.size>=14)break;
    const distance=Math.hypot(...step.point.map((value,i)=>value-eye[i]));
    const gain=stepDistanceGain(distance);
    if(gain<=.002)continue;
@@ -91,9 +123,15 @@ export class FootstepAudio{
    panner.rolloffFactor=0;
    [panner.positionX.value,panner.positionY.value,panner.positionZ.value]=step.point;
    level.gain.value=.54*gain*(own?2/3:1)*(step.landed?1.12:1)*(unobstructed?1:.62);
-   source.connect(filter).connect(panner).connect(level).connect(this.bus);
-   this.voices++;
-   source.onended=()=>{this.voices--;source.disconnect();filter.disconnect();panner.disconnect();level.disconnect();};
+   const tone=createStepTone(ctx),voice={point:step.point,own,tone,source};
+   updateTone(voice,eye,forward,ctx.currentTime,true);
+   source.connect(filter).connect(tone.body);
+   tone.edge.connect(panner).connect(level).connect(this.bus);
+   this.voices.add(voice);
+   source.onended=()=>{
+    this.voices.delete(voice);
+    for(const node of [source,filter,tone.body,tone.edge,panner,level])node.disconnect();
+   };
    source.start();
   }
  }

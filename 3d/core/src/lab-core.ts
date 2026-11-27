@@ -58,7 +58,7 @@ const damp = (a: number, b: number, k: number) => a + (b - a) * (1 - Math.exp(-k
 
 interface Actor {
   id: number; x: number; y: number; z: number; yaw: number; baseY:number;
-  speed: number; velocity:Vec3; playerPitch:number|null; playerTravelOffset:number; distress:DistressState; throwing:ThrowDecision; crouchAmount:number;crouchUntil:number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
+  speed: number; velocity:Vec3; playerPitch:number|null; playerTravelOffset:number; playerFlightYaw:number|null; distress:DistressState; throwing:ThrowDecision; crouchAmount:number;crouchUntil:number; wanderTimer: number; wanderAngle: number; wanderSpeed: number;
   raid:RaidState;variety:FightVariety;gazePitch:GazePitch;gazeFocus:Vec3|null;lookTarget:PointXZ|null;lastKind?:StrikeKind;lastContact?:string; pivotTarget:number|null; manualKickUntil:number; groundStrikeUsed:boolean; strikeGap:number;
   segments: string[]; gait: PatientGait; knockdown:Knockdown; fixed:boolean; health:DamageState; impact:ImpactState; oil:OilState; strike:StrikeState; behavior:PatientBehavior; tactics:CombatTactics; hunt:HuntState; escape:EscapeState; perception:PatientPerception; route:RouteState; disarmedGoal:PointXZ|null; disarmedUntil:number; disarmedThreatIds:string; lastHitTick:number; terrainOnly:boolean; physicsPose:readonly RigPose[];
 }
@@ -130,7 +130,7 @@ export class LabSimulationCore implements SimulationCore {
       if (new Set(f.segmentIds).size !== f.segmentIds.length || f.segmentIds.some(s => !s))
         throw new RangeError('Invalid segment IDs');
       const motionProfile=patientMotionProfile(config.seed,f.id,authored?.stalk&&f.profile?(f.profile.temperament??'balanced'):undefined);
-      return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,playerPitch:null,playerTravelOffset:0,velocity:[0,0,0] as Vec3,distress:new DistressState(config.seed,f.id),throwing:new ThrowDecision(config.seed,f.id),crouchAmount:0,crouchUntil:0,wanderTimer:1+f.id*.3,
+      return {id:f.id,x,y:y+gradeHeight(x,z,graded),z,yaw:f.yawRad,baseY:y,speed:0,playerPitch:null,playerTravelOffset:0,playerFlightYaw:null,velocity:[0,0,0] as Vec3,distress:new DistressState(config.seed,f.id),throwing:new ThrowDecision(config.seed,f.id),crouchAmount:0,crouchUntil:0,wanderTimer:1+f.id*.3,
         wanderAngle:f.yawRad,wanderSpeed:.35,raid:new RaidState(config.seed,f.id,f.profile?.temperament??(f.profile?'balanced':'baseline')),variety:new FightVariety(config.seed,f.id),gazePitch:new GazePitch(),gazeFocus:null,lookTarget:null,pivotTarget:null,manualKickUntil:0,groundStrikeUsed:false,strikeGap:0,segments:expandLegacyTorso(f.segmentIds),gait:new PatientGait(this.scalePoint(f.origin,1/scale),f.yawRad,scale!==1,authored,motionProfile),knockdown:new Knockdown(),fixed:false,health:new DamageState(expandLegacyTorso(f.segmentIds)),impact:new ImpactState(),oil:new OilState(),strike:new StrikeState(authored?.stalk&&f.profile?motionProfile.strikeTempo:1,!!authored?.stalk&&scale!==1),behavior:new PatientBehavior(config.seed,f.id,f.profile),tactics:new CombatTactics(config.seed,f.id),hunt:new HuntState(config.seed,f.id,motionProfile),escape:new EscapeState(config.seed,f.id),perception:new PatientPerception(config.seed,f.id,!!authored?.stalk),route:new RouteState(),disarmedGoal:null,disarmedUntil:0,disarmedThreatIds:'',lastHitTick:0,terrainOnly:false,physicsPose:[]};
     }).sort((a,b)=>a.id-b.id);
     const navigation=config.location?new PolygonNavigation(config.location):new ArenaNavigation(config.walls);
@@ -167,8 +167,9 @@ export class LabSimulationCore implements SimulationCore {
     // configuration. Missing source, flight and ground transitions win.
     const compatible=visual?.weight===1||a.gait.posture==='upright'&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare';
     const mobile=!!this.authored?.stalk&&this.patientScale!==1&&a.gait.posture==='upright'&&!strike?.prone;
-    const support=mobile&&strike?.kind==='leg'&&!strike.pounce?a.gait.footStates[strike.side==='L'?1:0]?.point:undefined;
-    const striking=strike&&visual&&compatible&&(!a.knockdown.blocked||!!strike.prone&&(this.combatFloor(a)||a.knockdown.phase==='rising'))&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,yaw:strike.aimedByPlayer||mobile&&strike.kind!=='leg'?a.yaw:strike.yaw,aim:strike.aimedByPlayer?this.playerAttackAim(a,pose,strike):this.gaitPoint(strike.aim),...(strike.secondary?{secondary:{...strike.secondary,aim:this.gaitPoint(strike.secondary.aim)}}:{})},visual.tick,this.gaitGround(a),this.authored,visual.weight,support,false,true):undefined;
+    const airborne=!!strike?.aimedByPlayer&&a.gait.hopPhase==='flight';
+    const support=mobile&&strike?.kind==='leg'&&!strike.pounce&&!airborne?a.gait.footStates[strike.side==='L'?1:0]?.point:undefined;
+    const striking=strike&&visual&&compatible&&(!a.knockdown.blocked||!!strike.prone&&(this.combatFloor(a)||a.knockdown.phase==='rising'))&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,airborne,yaw:strike.aimedByPlayer||mobile&&strike.kind!=='leg'?a.yaw:strike.yaw,aim:strike.aimedByPlayer?this.playerAttackAim(a,pose,strike):this.gaitPoint(strike.aim),...(strike.secondary?{secondary:{...strike.secondary,aim:this.gaitPoint(strike.secondary.aim)}}:{})},visual.tick,this.gaitGround(a),this.authored,visual.weight,support,false,true):undefined;
     const fitted=striking??(rawAnatomy?pose:fitSharedAnatomy(pose,this.authored?.anatomy));
     const posed=!rawAnatomy&&this.authored?.anatomy?.size&&a.gait.posture!=='upright'?a.gait.replantGroundPose(fitted,pose,!!striking):fitted;
     if(nominal)return posed;
@@ -422,7 +423,8 @@ export class LabSimulationCore implements SimulationCore {
     const preferred=a.strike.attempts%2?'L':'R';
     const side=([preferred,preferred==='L'?'R':'L'] as const).find(s=>usableStrike(a.segments,kind,s));
     if(!side)return;
-    if(a.strike.start(this.tick,side,-1,[0,0,0],a.yaw,undefined,kind,prone,undefined,false,false,true)){
+    const airAttack=!prone&&(command.jump||a.gait.hopPhase==='prepare'||a.gait.hopPhase==='flight');
+    if(a.strike.start(this.tick,side,-1,[0,0,0],a.yaw,undefined,kind,prone,undefined,false,false,true,airAttack)){
       a.tactics.setMode('strike');
       this.events.push({tick:this.tick,type:'combat-windup',fighterId:a.id,strikeKind:kind,segmentId:strikeSource(kind,side,a.segments),proneStrike:prone});
     }
@@ -887,7 +889,7 @@ export class LabSimulationCore implements SimulationCore {
       const player=commands.get(a.id)?.player;
       if((a.playerPitch!==null)!==!!player){
         a.strike.releaseControl();a.throwing.plan=null;a.route.clear();
-        a.crouchUntil=0;a.manualKickUntil=0;a.gazeFocus=null;a.lookTarget=null;a.playerTravelOffset=0;
+        a.crouchUntil=0;a.manualKickUntil=0;a.gazeFocus=null;a.lookTarget=null;a.playerTravelOffset=0;a.playerFlightYaw=null;
         a.tactics.setMode('inactive');
       }
       a.playerPitch=player?clamp(player.pitch,-1.35,1.35):null;
@@ -996,9 +998,14 @@ export class LabSimulationCore implements SimulationCore {
         &&input.commands.some(request=>request.fighterId===a.id&&request.sprint);
       a.speed = planted||crouch&&!c?.player||mobility.mode==='unsupported'||kick&&!organic||a.strike.punch?.prone?0:damp(a.speed,target,strikeBraking?16:headBraking?9:organic&&c?.sprint&&mobility.mode==='biped'?5.5:3);
       const ground=(x:number,z:number)=>this.ground(a,x,z);
-      const travelYaw=a.yaw+(c?.player?a.playerTravelOffset:0);
+      const driveYaw=a.yaw+(c?.player?a.playerTravelOffset:0);
+      const travelYaw=c?.player&&a.gait.hopPhase==='flight'?(a.playerFlightYaw??driveYaw):driveYaw;
       const travelX=Math.sin(travelYaw),travelZ=-Math.cos(travelYaw);
-      const travel=a.strike.punch?.prone||kick&&mobility.mode==='single-support'?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),(!crouch||!!c?.player)&&c?.jump,Math.abs(target)>.025,kickSupport,!!attack?.pounce,travelYaw)*this.patientScale;
+      const travel=a.strike.punch?.prone||kick&&mobility.mode==='single-support'?0:a.gait.travel(dt,a.speed/this.patientScale,mobility,a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,this.gaitGround(a),(!crouch||!!c?.player)&&c?.jump,Math.abs(target)>.025,kickSupport,!!attack?.pounce,travelYaw,!!c?.player)*this.patientScale;
+      if(c?.player){
+        if(a.gait.hopPhase==='prepare'||a.gait.hopPhase==='flight')a.playerFlightYaw=travelYaw;
+        else a.playerFlightYaw=null;
+      }
       const oldX=a.x,oldZ=a.z;
       a.x = clamp(a.x+travelX*travel+recoil[0],-5.65,5.65);
       a.z = clamp(a.z+travelZ*travel+recoil[2],-5.65,5.65);
@@ -1007,7 +1014,7 @@ export class LabSimulationCore implements SimulationCore {
       // Update local neck angle against the new body yaw/position, once per tick.
       if(this.authored?.stalk&&this.combat&&!this.fightEnded)a.perception.advanceLook(a.yaw,a,a.lookTarget,(a.yaw-beforeYaw)/dt,!!a.strike.punch||!!c?.sprint);
       const actualSpeed=mobility.mode==='biped'?((a.x-oldX)*travelX+(a.z-oldZ)*travelZ)/dt:a.speed;
-      a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,crouch&&!c?.player||kick||kickPreparations.has(a.id),(a.yaw-beforeYaw)/dt,a.speed/this.patientScale,travelYaw);
+      a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,actualSpeed/this.patientScale,dt,this.gaitGround(a),mobility,a.segments,undefined,crouch&&!c?.player||kick&&!(c?.player&&(c.jump||a.gait.hopPhase==='prepare'||a.gait.hopPhase==='flight'))||kickPreparations.has(a.id),(a.yaw-beforeYaw)/dt,a.speed/this.patientScale,travelYaw);
       const mode=a.tactics.snapshot().mode;
       const intent=this.authoredArenaCombat&&!this.fightEnded?(a.strike.punch?'aggressive':mode==='search'||mode==='memory'?(Math.abs(a.speed)<.055?'freeze':'stalk'):mode==='pursuit'?(Math.abs(c?.forward??0)<.08?'freeze':c?.sprint?'aggressive':'stalk'):'stance'):'stance';
       // Guard is a combat-distance state, not the generic aggressive

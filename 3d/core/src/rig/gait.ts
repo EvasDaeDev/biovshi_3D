@@ -109,7 +109,7 @@ export class PatientGait {
   private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
-  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R',pounce=false,travelYaw=yaw):number{
+  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R',pounce=false,travelYaw=yaw,playerMomentum=false):number{
     if(this.downAnchorWeight>0){this.downAnchorWeight=0;this.anchors.reset();}
     let groundedLeap=false;
     if(mobility.mode==='biped'&&this.groundedStride){
@@ -123,14 +123,17 @@ export class PatientGait {
       if(attackLaunch){this.pouncing=true;this.attackLeap.reset();}
       if(launch||this.hopSample.phase!=='idle'){
         const leap=this.pouncing?this.attackLeap:this.leap;
-        this.hopSample=leap.advance(dt,attackLaunch?POUNCE.distance/(POUNCE.prepare+POUNCE.flight+POUNCE.settle):launch?(Math.abs(speed)>.03?speed:.035):0);
+        const carry=playerMomentum&&!this.pouncing;
+        const jumpSpeed=attackLaunch?POUNCE.distance/(POUNCE.prepare+POUNCE.flight+POUNCE.settle):
+          launch?(Math.abs(speed)>.03?speed:.035):carry&&this.hopSample.phase==='prepare'?speed:0;
+        this.hopSample=leap.advance(dt,jumpSpeed,carry);
         const phase=this.hopSample.phase;
         if(phase==='idle')this.pouncing=false;
-        groundedLeap=this.organic&&!this.pouncing&&driveRequested&&!this.hopSample.followsRoot&&(phase==='prepare'||phase==='pause');
+        groundedLeap=this.organic&&!this.pouncing&&(driveRequested||playerMomentum&&Math.abs(speed)>.03)&&!this.hopSample.followsRoot&&(phase==='prepare'||phase==='pause');
         if(!groundedLeap)return this.hopSample.distance;
-        // Keep a little ground travel through anticipation and absorption.
+        // Player momentum carries through anticipation and absorption.
         // The normal stance envelope still protects the planted foot.
-        speed*=phase==='prepare'?.55:.70;
+        if(!playerMomentum)speed*=phase==='prepare'?.55:.70;
       }
     }else{this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.leapHeld=jump;this.leapQueued=0;}
     if(this.anchored(mobility)&&this.proneAmount===1){
@@ -154,7 +157,7 @@ export class PatientGait {
       }));
       const limit=this.organic&&this.sprintCycle&&!kickSupport&&speed>0?HORROR_MOVEMENT.maxRunSpeed:HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,this.motionProfile.strideTempo);
       const requested=direction*Math.min((this.organic?Math.min(Math.abs(speed),limit):Math.abs(speed))*dt,Math.max(0,reach));
-      return this.organic&&kickSupport?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,travelYaw,requested):requested;
+      return this.organic&&kickSupport&&!(playerMomentum&&groundedLeap)?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,travelYaw,requested):requested;
     }
     if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
     const traction=residualTraction(this.pose(id,root,yaw,t),mobility,this.crawlPhase,ground);

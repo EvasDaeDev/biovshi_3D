@@ -4,7 +4,7 @@ import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 import {LabSimulationCore,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {headAimPoint,headFrame} from '../dist/rig/head-frame.js';
 import {manualInput} from '../../lab-next/manual-control.js';
-import {footContacts,stepDistanceGain} from '../../lab-next/footstep-audio.js';
+import {footContacts,stepDirectionTone,stepDistanceGain} from '../../lab-next/footstep-audio.js';
 
 const {ring}=await buildLocationCatalog();
 const base=createAuthoredCombatConfig(7,ring,2);
@@ -134,4 +134,63 @@ test('playing the same swing at different crosshair heights changes physical con
  assert.deepEqual(strikeAt(-.45),['chest']);
  assert.deepEqual(strikeAt(-.22),['head']);
  assert.deepEqual(strikeAt(.5),[]);
+});
+
+test('footsteps have contrasting front and rear timbre at the same stereo bearing',()=>{
+ const eye=[0,1.65,0],forward=[0,0,-1];
+ const front=stepDirectionTone(eye,forward,[-1,0,-2]);
+ const rear=stepDirectionTone(eye,forward,[-1,0,2]);
+ assert.ok(front.edge>2&&rear.edge<-7);
+ assert.ok(front.body<0&&rear.body>3);
+ assert.deepEqual(stepDirectionTone(eye,[0,.99,-.1],[-1,0,2]),rear);
+ assert.deepEqual(stepDirectionTone(eye,[0,0,1],[-1,0,-2]),rear);
+ assert.deepEqual(stepDirectionTone(eye,forward,[-1,0,0]),{body:0,edge:0});
+});
+
+test('a run-up carries through preparation and flight independently of looking sideways',()=>{
+ const core=setup([-2,0,-2]);
+ try{
+  let previous;
+  for(let i=0;i<16;i++)previous=tick(core,{forward:1,sprint:true});
+  const preparation=[],flight=[];
+  for(let i=0;i<51;i++){
+   const steer=previous.hopPhases[0]==='flight'&&flight.length===0;
+   const state=tick(core,{forward:1,sprint:true,jump:i===0},steer?{yawDelta:.65}:{});
+   const dz=previous.roots[2]-state.roots[2];
+   if(state.hopPhases[0]==='prepare')preparation.push(dz);
+   if(previous.hopPhases[0]==='flight'&&state.hopPhases[0]==='flight'){
+    flight.push(dz);
+    assert.ok(Math.abs(state.roots[0]-previous.roots[0])<1e-5);
+   }
+   previous=state;
+  }
+  assert.ok(preparation.some(distance=>distance>.025),JSON.stringify(preparation));
+  assert.ok(flight.length>15&&Math.min(...flight)>.025,JSON.stringify(flight));
+  assert.ok(Math.max(...flight)-Math.min(...flight)<1e-5,JSON.stringify(flight));
+ }finally{core.dispose();}
+});
+
+for(const kind of ['arm','leg','head'])test(`a direct ${kind} strike pressed during flight can deal damage before landing`,()=>{
+ const core=setup([0,0,-.7]);
+ try{
+  let flight=0,started=false;
+  let state=core.getSnapshot();
+  for(let i=0;i<55;i++){
+   if(state.hopPhases[0]==='flight')flight++;
+   state=tick(core,{forward:1,sprint:true,jump:i===14,attack:flight===4,attackKind:kind},{pitch:-.5});
+   const events=core.drainEvents();
+   if(events.some(e=>e.fighterId===0&&e.type==='combat-windup'&&e.strikeKind===kind)){
+    assert.equal(state.hopPhases[0],'flight');
+    started=true;
+   }
+   if(events.some(e=>e.attackerId===0&&e.type==='strike-contact'&&e.strikeKind===kind)){
+    assert.ok(started);
+    assert.equal(state.hopPhases[0],'flight');
+    assert.ok(state.hopHeights[0]>.05);
+    assert.ok(events.some(e=>e.type==='fighter-damaged'&&e.fighterId===1));
+    return;
+   }
+  }
+  assert.fail('the airborne strike must contact its target');
+ }finally{core.dispose();}
 });

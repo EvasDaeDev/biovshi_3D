@@ -2,24 +2,26 @@ import { JUMP_HEIGHT_SCALE,MOVEMENT } from './movement-timing.js';
 const smooth=(q:number)=>q*q*(3-2*q);
 export interface HopSample { readonly distance:number; readonly lift:number; readonly phase:'idle'|'prepare'|'flight'|'pause';readonly crouch?:number; readonly followsRoot:boolean }
 /** Fixed-step, continuous phase boundaries; finishes an already launched hop
- * even if input is released. Horizontal displacement uses v1's smooth curve. */
+ * even if input is released. A manual leap carries takeoff speed. */
 export class HopCycle {
- private age=0;private travel=0;private running=false;
+ private age=0;private travel=0;private running=false;private carry=false;
  constructor(private readonly preparation=0,private readonly flightTime:number=MOVEMENT.hopFlightSeconds,private readonly pauseTime:number=MOVEMENT.hopPauseSeconds,private readonly absorb=false,private readonly maxDistance=MOVEMENT.hopMaxDistance){}
  reset():void{this.age=0;this.travel=0;this.running=false;}
- advance(dt:number,speed:number):HopSample{
+ advance(dt:number,speed:number,carryMomentum=false):HopSample{
   const flight=this.flightTime,pause=this.pauseTime,takeoff=this.preparation,landing=takeoff+flight,cycle=landing+pause;
   let remaining=dt,distance=0,followsRoot=false;
   while(remaining>1e-10){
    if(!this.running){
     if(Math.abs(speed)<.03)break;
     this.running=true;this.age=0;
-    this.travel=Math.sign(speed)*Math.min(this.maxDistance,Math.abs(speed)*cycle);
+    this.carry=carryMomentum;
+    this.travel=this.carry?speed*flight:Math.sign(speed)*Math.min(this.maxDistance,Math.abs(speed)*cycle);
    }
+   if(this.carry&&this.age<takeoff-1e-10)this.travel=speed*flight;
    const end=this.age<takeoff-1e-10?takeoff:this.age<landing-1e-10?landing:cycle;
    const delta=Math.min(remaining,end-this.age);
    const a=Math.max(0,Math.min(1,(this.age-takeoff)/flight)),b=Math.max(0,Math.min(1,(this.age+delta-takeoff)/flight));
-   if(b>a){distance+=this.travel*(smooth(b)-smooth(a));followsRoot=true;}
+   if(b>a){distance+=this.travel*(this.carry?b-a:smooth(b)-smooth(a));followsRoot=true;}
    this.age+=delta;remaining-=delta;
    if(this.age>=cycle-1e-10){this.running=false;this.age=0;}
   }

@@ -33,18 +33,27 @@ export function extraStrikePose(pose:readonly PhysicsSegmentPose[],p:Punch,phase
   const back:Vec3=[hip.a[0]-Math.sin(aimYaw)*.14,Math.max(base[1]+.23,hip.a[1]-.48)+.08*low,hip.a[2]+Math.cos(aimYaw)*.14];
   const aim:Vec3=[p.aim[0],Math.max(ground(p.aim[0],p.aim[2])+source.radius,p.aim[1]),p.aim[2]];
   const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,t,low,'leg',aimYaw,p.side):phase==='windup'?mix(base,back,t):phase==='thrust'?mix(back,aim,t):mix(aim,base,t);
-  if(p.pounce){
+  if(p.pounce||p.airborne){
    // In flight neither leg is a world-space support anchor. Reconnect
    // both leg chains to the rotated pelvis, preserving the other leg's
    // pose relative to its hip. The attacking foot uses the normal IK.
    const pelvis=pose.find(v=>v.id==='pelvis');if(!pelvis)return pose;
    const updates=new Map<string,PhysicsSegmentPose>();
    for(const side of ['L','R'] as const){
-    const u=pose.find(v=>v.id===side+'.upperLeg'),l=pose.find(v=>v.id===side+'.lowerLeg'),f=pose.find(v=>v.id===side+'.foot');if(!u||!l||!f)continue;
-    const root=side==='L'?pelvis.a:pelvis.b,offset=sub(l.b,f.a);
-    const target=side===p.side?add(weight===1?rawTarget:mix(base,rawTarget,weight),offset):add(l.b,sub(root,u.a));
+    const u=pose.find(v=>v.id===side+'.upperLeg'),l=pose.find(v=>v.id===side+'.lowerLeg'),f=pose.find(v=>v.id===side+'.foot');
+    if(!u)continue;
+    const root=side==='L'?pelvis.a:pelvis.b;
+    const desired=weight===1?rawTarget:mix(base,rawTarget,weight);
+    if(!l){
+     const direction=unit(sub(side===p.side?desired:u.b,u.a),[0,-1,0]);
+     updates.set(u.id,{...u,a:root,b:add(root,scale(direction,.49))});
+     continue;
+    }
+    const offset=f?sub(l.b,f.a):[0,0,0] as Vec3;
+    const target=side===p.side?add(desired,offset):add(l.b,sub(root,u.a));
     const leg=solveTwoBone(root,target,.49,.50,[Math.sin(p.yaw),.02,-Math.cos(p.yaw)]),tip=sub(leg.end,offset);
-    updates.set(u.id,{...u,a:root,b:leg.joint});updates.set(l.id,{...l,a:leg.joint,b:leg.end});updates.set(f.id,{...f,a:tip,b:tip});
+    updates.set(u.id,{...u,a:root,b:leg.joint});updates.set(l.id,{...l,a:leg.joint,b:leg.end});
+    if(f)updates.set(f.id,{...f,a:tip,b:tip});
    }
    return pose.map(v=>updates.get(v.id)??v);
   }

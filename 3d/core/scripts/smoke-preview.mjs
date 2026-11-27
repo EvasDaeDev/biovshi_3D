@@ -237,6 +237,37 @@ try{
  await page.goto(base+'/3d/lab-next/rig.html?scenario=one-arm',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
  const release=await page.locator('#stats').getAttribute('data-build');
+ const spectralBalance=await page.evaluate(async release=>{
+  const {createStepTone,stepDirectionTone}=await import('/releases/'+release+'/3d/lab-next/footstep-audio.js');
+  const audio=new OfflineAudioContext(2,44100,44100);
+  const sample=await fetch('/releases/'+release+'/3d/lab-next/audio/step_1.mp3').then(response=>response.arrayBuffer());
+  const buffer=await audio.decodeAudioData(sample);
+  async function measure(z){
+   const context=new OfflineAudioContext(2,44100,44100);
+   const source=context.createBufferSource(),panner=context.createPanner(),tone=createStepTone(context);
+   const {body,edge}=stepDirectionTone([0,0,0],[0,0,-1],[-1,0,z]);
+   source.buffer=buffer;
+   tone.body.gain.value=body;
+   tone.edge.gain.value=edge;
+   panner.panningModel='HRTF';
+   panner.rolloffFactor=0;
+   panner.positionX.value=-1;
+   panner.positionZ.value=z;
+   // Measure the rendered ratio of high-frequency energy to total energy.
+   const high=context.createBiquadFilter();high.type='highpass';high.frequency.value=1800;
+   const stereo=context.createChannelMerger(2),mono=context.createGain();
+   mono.channelCount=1;mono.channelCountMode='explicit';
+   source.connect(tone.body);tone.edge.connect(panner).connect(mono);
+   mono.connect(stereo,0,0);mono.connect(high).connect(stereo,0,1);stereo.connect(context.destination);
+   source.start();
+   const output=await context.startRendering();
+   const energy=i=>output.getChannelData(i).reduce((sum,x)=>sum+x*x,0);
+   return energy(1)/energy(0);
+  }
+  return [await measure(-2),await measure(2)];
+ },release);
+ assert.ok(spectralBalance[0]>2*spectralBalance[1],JSON.stringify(spectralBalance));
+
  const shadowPixels=await page.evaluate(async release=>{
   const root='/releases/'+release+'/3d/lab-next/';
   const T=await import(root+'vendor/three.module.js');
@@ -384,7 +415,16 @@ try{
  await page.locator('#match-result').waitFor({state:'visible',timeout:100000});
  assert.match(await page.locator('#match-result-title').textContent(),/Победил пациент № [01]|Ничья/);
  assert.match(await page.locator('#match-result p').textContent(),/Время боя \d+:\d{2}/);
- await page.getByRole('link',{name:'В меню боя'}).click();
+ await page.locator('#control-patient').selectOption('0');
+ await page.locator('#match-again').click();
+ await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.controlled==='0'&&d.camera==='gopro';});
+ await page.locator('#match-preparation').waitFor({state:'hidden',timeout:15000});
+ const replayStart=await page.locator('#stats').evaluate(e=>Number(e.dataset.controlledZ));
+ await page.keyboard.down('KeyW');
+ try{
+  await page.waitForFunction(z=>Math.abs(Number(document.getElementById('stats').dataset.controlledZ)-z)>.05,replayStart);
+ }finally{await page.keyboard.up('KeyW');}
+ await page.locator('#match-exit').click();
  await page.locator('#start-match').waitFor({state:'visible'});
  await page.goto(base+'/3d/lab-next/pose-editor.html');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');

@@ -144,8 +144,13 @@ function tickFrame(t){
 }
 const query=new URLSearchParams(location.search);
 const match=query.get('play')==='1'?new MatchFlow(document.getElementById('match-preparation'),document.getElementById('match-result')):null;
-if(match){
- document.getElementById('match-again').href=location.href;
+const matchAgain=document.getElementById('match-again');
+function updateReplayLink(){
+ if(!match)return;
+ const replay=new URL(location.href);
+ if(controlPatient.value==='')replay.searchParams.delete('player');
+ else replay.searchParams.set('player',controlPatient.value);
+ matchAgain.href=replay.href;
 }
 const requestedSession=query.get('session');
 const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:match?'quick-match':'lab-preview';
@@ -159,22 +164,30 @@ const scenario=document.getElementById('scenario'),patientCount=document.getElem
 const controlPatient=document.getElementById('control-patient');
 let controlScenario=null;
 function resetControl(s){
- const old=controlPatient.value,changed=controlScenario!==scenario.value;controlScenario=scenario.value;
+ const first=controlScenario===null,old=controlPatient.value,changed=controlScenario!==scenario.value;controlScenario=scenario.value;
  const auto=document.createElement('option');auto.value='';auto.textContent='Все под ИИ';controlPatient.replaceChildren(auto);
  for(const id of s.fighterIds){const o=document.createElement('option');o.value=String(id);o.textContent='Пациент № '+id;controlPatient.append(o);}
  const autonomous=scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||!!selectedLocation();
  controlPatient.value=!changed&&Array.from(s.fighterIds).includes(Number(old))&&old!==''?old:!changed&&old===''?'':autonomous?'':String(s.fighterIds[0]);
  controlPatient.disabled=scenario.value==='motion-review';
+ const replayPlayer=first&&match?query.get('player'):null;
+ if(replayPlayer!==null&&[...controlPatient.options].some(option=>option.value===replayPlayer))
+  controlPatient.value=replayPlayer;
+ syncPlayerCamera();
+}
+function syncPlayerCamera(){
  cameraControl.allowFree(controlPatient.value==='');
+ if(controlPatient.value!==''&&(match||cameraControl.mode==='gopro')){
+  cameraPatient.value=controlPatient.value;
+  cameraControl.select('gopro');
+ }
+ updateReplayLink();
 }
 controlPatient.onchange=()=>{
  clearPlayerInput(true);
  controlPatient.blur();
- cameraControl.allowFree(controlPatient.value==='');
- if(controlPatient.value!==''){
-  cameraPatient.value=controlPatient.value;
-  cameraControl.select('gopro');
- }
+ if(controlPatient.value!=='')cameraControl.select('gopro');
+ syncPlayerCamera();
 };
 // An explicit seed pins a replay. Ordinary ring resets start a fresh match.
 const requestedSeed=query.get('seed');
@@ -290,8 +303,11 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
 let mouseYaw=0,mousePitch=-.14,queuedAttack=null,jumpPressed=false;
 const heldButtons=new Set();
 const manualActive=()=>!controlPatient.disabled&&controlPatient.value!==''&&currentFrame?.state.lifeStates[currentFrame.state.fighterIds.indexOf(Number(controlPatient.value))]==='active'&&!currentFrame.state.fight.ended;
+function clearMouseInput(){
+ heldButtons.clear();mouseYaw=0;queuedAttack=null;
+}
 function clearPlayerInput(release=false){
- keys.clear();heldButtons.clear();mouseYaw=0;queuedAttack=null;jumpPressed=false;
+ keys.clear();jumpPressed=false;clearMouseInput();
  if(release){mousePitch=-.14;if(document.pointerLockElement)document.exitPointerLock();}
 }
 const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyJ','KeyK','KeyL','ControlLeft','ControlRight','AltLeft','AltRight']);
@@ -327,7 +343,7 @@ view.addEventListener('pointerdown',e=>{
  cameraPointer=e.pointerId;view.setPointerCapture(e.pointerId);
 });
 addEventListener('mouseup',event=>heldButtons.delete(event.button));
-document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)clearPlayerInput();});
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)clearMouseInput();});
 view.addEventListener('pointermove',e=>{
  if(manualActive()){
   mouseYaw+=e.movementX*.0025;
@@ -345,7 +361,17 @@ function input(){
  mouseYaw=0;queuedAttack=null;jumpPressed=false;
  return manualInput(fighterIds,lifeStates,controlPatient.value,has,scenario.value==='fall',player);
 }
-document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);clearPlayerInput(true);last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};
+const pauseButton=document.getElementById('pause');
+function setPaused(value){
+ paused=value;
+ playback.setPaused(value);
+ stepButton.disabled=!value;
+ pauseButton.textContent=value?'Продолжить':'Пауза';
+}
+pauseButton.onclick=()=>{
+ setPaused(!paused);clearPlayerInput(true);last=null;
+ if(currentFrame)resetFrameHistory();
+};
  rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
  stepButton.onclick=()=>{if(stats.dataset.state==='running'&&paused)playback.requestStep();};
  function suspendRound(message){
@@ -378,7 +404,8 @@ document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(p
  };
  scenario.onchange=()=>{scenario.blur();void restoreScenario();};
  patientCount.onchange=()=>{preferredPatients=Number(patientCount.value);if(selectedLocation()&&scenario.value!=='motion-review')void restoreScenario();};
- document.getElementById('next-round').onclick=async()=>{
+ const nextRound=document.getElementById('next-round');
+ nextRound.onclick=async()=>{
   // A premature click must not invalidate an in-flight load or clear.
   if(stats.dataset.state!=='running'){floorStatus.textContent='Дождитесь загрузки арены.';return;}
   const arena=floorArenaId();
@@ -392,6 +419,8 @@ document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(p
    try{await saveFloorHistory(floorSession,arena,saved);}
    catch(error){warning='Следующий раунд запущен, но запись пола не удалась: '+error.message;}
    if(operation!==floorOperation||arena!==floorArenaId())return;
+   setPaused(false);
+   nextRound.blur();
    reset(saved);
    if(warning)floorStatus.textContent=warning;
    else floorStatus.textContent+=' Сохранено в IndexedDB ('+floorSession+').';
