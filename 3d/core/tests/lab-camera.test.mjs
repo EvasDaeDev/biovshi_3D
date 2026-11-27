@@ -66,3 +66,35 @@ test('free camera uses a contained horizontal path and yields to manual control'
  controller.allowFree(false);
  assert.equal(controller.mode,'corner-1');
 });
+
+test('corners smoothly reframe around active patients and hold when nobody remains',()=>{
+ const {camera,controller}=setup(catalog.ring);
+ const {camera:reference,controller:activeOnly}=setup(catalog.ring);
+ const snapshot={rigSegments:[fighter(-2,1),fighter(2,-1)],lifeStates:['active','active']};
+ const step=(cam,state)=>cam.update(state,state,1,new Map(),.05,1/60);
+ for(let i=1;i<=4;i++){
+  controller.select('corner-'+i);
+  activeOnly.select('corner-'+i);
+  step(controller,snapshot);
+  step(activeOnly,snapshot);
+  const before=camera.quaternion.clone(),fov=camera.fov;
+  const after={...snapshot,lifeStates:['incapacitated','active']};
+  const survivor={rigSegments:[snapshot.rigSegments[1]],lifeStates:['active']};
+  step(controller,after);
+  const firstTurn=before.angleTo(camera.quaternion);
+  assert.ok(firstTurn>0);
+  assert.ok(Math.abs(camera.fov-fov)<5);
+  for(let frame=0;frame<100;frame++){
+   step(controller,{...after,rigSegments:[fighter(-3,frame%2?2:-2),snapshot.rigSegments[1]]});
+   step(activeOnly,survivor);
+  }
+  step(activeOnly,survivor);
+  assert.ok(firstTurn<before.angleTo(camera.quaternion)/4);
+  assert.ok(camera.quaternion.angleTo(reference.quaternion)<1e-7);
+  assert.equal(camera.fov,reference.fov);
+  const last=camera.quaternion.toArray(),lastFov=camera.fov;
+  step(controller,{...after,lifeStates:['incapacitated','incapacitated']});
+  assert.deepEqual(camera.quaternion.toArray(),last);
+  assert.equal(camera.fov,lastFov);
+ }
+});

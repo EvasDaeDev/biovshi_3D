@@ -124,7 +124,10 @@ export class LabCamera {
  }
  update(s,prior,alpha,meshes,clearance,dt=0){
   if(this.mode==='free')return;
-  if(this.mode!=='fisheye'){this.track(s.rigSegments,dt);return;}
+  if(this.mode!=='fisheye'){
+   this.track(s.rigSegments.filter((_,i)=>s.lifeStates[i]==='active'),dt);
+   return;
+  }
   const id=Number(this.patientInput.value),i=s.fighterIds.indexOf(id),j=prior.fighterIds.indexOf(id);
   const h=i>=0?s.headFrames?.[i]:null,m=meshes.get(id+':head');
   if(!h||!m?.visible){this.select(cornerModes[this.corner]);return;}
