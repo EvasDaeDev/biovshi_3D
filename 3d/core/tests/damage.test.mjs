@@ -9,12 +9,11 @@ const hit=(c,id,amount=1)=>c.applyDamage({fighterId:0,segmentId:id,amount});
 test('native segment HP, critical hit, fixed-tick invulnerability and independent segments',()=>{
  const c=make();
  assert.equal(health(c,'head').hp,8);assert.equal(health(c,'pelvis').hp,5);assert.equal(health(c,'R.upperArm').hp,4);
- assert.equal(hit(c,'R.upperArm',2),true);assert.equal(health(c,'R.upperArm').hp,2);
+ assert.equal(hit(c,'R.upperArm',3),true);assert.equal(health(c,'R.upperArm').hp,1);
  assert.equal(hit(c,'R.upperArm'),false);assert.equal(hit(c,'L.hand'),true);
  for(let i=0;i<16;i++)c.step(FIXED_DT,idle);assert.equal(hit(c,'R.upperArm'),false);
- c.step(FIXED_DT,idle);assert.equal(hit(c,'R.upperArm'),true);assert.equal(health(c,'R.upperArm').hp,1);
- wait(c);assert.equal(hit(c,'R.upperArm'),true);
- const ev=c.drainEvents();assert.equal(ev.filter(e=>e.type==='fighter-damaged').length,4);assert.equal(ev[0].critical,true);
+ c.step(FIXED_DT,idle);assert.equal(hit(c,'R.upperArm'),true);assert.equal(health(c,'R.upperArm').hp,0);
+ const ev=c.drainEvents();assert.equal(ev.filter(e=>e.type==='fighter-damaged').length,3);assert.equal(ev[0].critical,true);
  assert.equal(c.getSnapshot().health[0].trauma,5);
  assert.ok(['R.upperArm','R.lowerArm','R.hand'].every(id=>!health(c,id).attached&&health(c,id).hp===0));
  const cuts=ev.filter(e=>e.type==='segment-detached');assert.equal(cuts.length,1);assert.deepEqual(cuts[0].detachedParts.map(p=>p.id),['R.upperArm','R.lowerArm','R.hand']);assert.equal(c.getSnapshot().damageStats.detached,3);
@@ -40,7 +39,7 @@ test('trauma counts actual HP only, head weighted, does not count descendants',(
  const c=make();
  // Damage many different parts without destroying head or central torso.
  for(const id of ['head','pelvis','abdomen','chest','neck','L.upperLeg','L.lowerLeg','L.foot','R.upperLeg','R.lowerLeg','R.foot','L.upperArm','L.lowerArm','L.hand','R.upperArm','R.lowerArm','R.hand']){
-  if(c.getSnapshot().lifeStates[0]==='active')hit(c,id,id==='neck'?1:2);
+  if(c.getSnapshot().lifeStates[0]==='active')hit(c,id,2);
  }
  assert.equal(c.getSnapshot().health[0].cause,'trauma');
  assert.ok(c.getSnapshot().health[0].trauma>=DAMAGE.traumaThreshold);
@@ -62,11 +61,11 @@ test('depleted central segment remains attached and is not an instant knockout',
 
 test('endurance is v1 trauma budget with a bounded anatomy-dependent capacity',()=>{
  const state=new DamageState(f.segmentIds),start=state.snapshot();
- assert.equal(start.endurance,24);assert.equal(start.maxEndurance,24);assert.equal(start.baseEndurance,24);assert.equal(start.lostSegments,0);
- state.apply('head',2,0);assert.equal(state.snapshot().endurance,21);
+ assert.equal(start.endurance,35);assert.equal(start.maxEndurance,35);assert.equal(start.baseEndurance,35);assert.equal(start.lostSegments,0);
+ state.apply('head',2,0);assert.equal(state.snapshot().endurance,32);
  state.apply('L.upperArm',99,0);
  const cut=state.snapshot();assert.equal(cut.lostSegments,3);
- assert.ok(Math.abs(cut.maxEndurance-24*(1-.4*3/17))<1e-9);
+ assert.ok(Math.abs(cut.maxEndurance-35*(1-.4*3/17))<1e-9);
  assert.equal(cut.trauma,7);assert.ok(Math.abs(cut.endurance-(cut.maxEndurance-7))<1e-9);
  state.detach(['L.upperArm','L.lowerArm','L.hand']);assert.deepEqual(state.snapshot(),cut,'no duplicate loss');
  const diagnostic=new DamageState(f.segmentIds.filter(id=>!id.startsWith('L.')));
@@ -76,6 +75,7 @@ test('endurance is v1 trauma budget with a bounded anatomy-dependent capacity',(
  for(const id of ['L.upperArm','R.upperArm','L.upperLeg','R.upperLeg'])exhausted.apply(id,99,0);
  assert.equal(exhausted.snapshot().cause,null,'oil loss can still occur after loss of four limbs');
  assert.ok(exhausted.endurance>0);
- assert.equal(exhausted.apply('chest',2,0).cause,'trauma');
+ assert.equal(exhausted.apply('chest',4,0).cause,null);
+ assert.equal(exhausted.apply('head',4,0).cause,'trauma');
  assert.equal(exhausted.snapshot().endurance,0);
 });

@@ -1,7 +1,7 @@
 /** Temporary lab reaction; not yet combat damage/trauma or a rigid-body solver.
  * The .52 s grounded hold uses the existing v1 reaction duration
  * (src/robot/anatomy.js). Fall and rise are native 3D timings. */
-export const KNOCKDOWN=Object.freeze({fall:.65,hold:.52,rise:.85,cooldown:.60,
+export const KNOCKDOWN=Object.freeze({fall:.65,hold:.52,bracedHold:.24,groundStrikeHold:.66,rise:.85,cooldown:.60,
  softDisplacement:.065,hardDisplacement:.11,margin:-.025});
 export type BalancePhase='standing'|'falling'|'down'|'rising';
 export class Knockdown {
@@ -27,12 +27,12 @@ export class Knockdown {
   if(displacement<KNOCKDOWN.hardDisplacement&&!(displacement>=KNOCKDOWN.softDisplacement&&(margin===null||margin<KNOCKDOWN.margin)))return false;
   this.state='falling';this.age=0;this.braced=false;return true;
  }
- advance(dt:number,canStand:boolean):void{
+ advance(dt:number,canStand:boolean,finishingGroundStrike=false):void{
   if(!canStand){this.state='standing';this.age=0;this.cooldown=0;return;}
   this.cooldown=Math.max(0,this.cooldown-dt);
   if(!this.blocked)return;
   this.age+=dt;
-  const duration=this.state==='falling'?KNOCKDOWN.fall:this.state==='down'?(this.braced?.24:KNOCKDOWN.hold):KNOCKDOWN.rise;
+  const duration=this.state==='falling'?KNOCKDOWN.fall:this.state==='down'?(finishingGroundStrike?KNOCKDOWN.groundStrikeHold:this.braced?KNOCKDOWN.bracedHold:KNOCKDOWN.hold):KNOCKDOWN.rise;
   if(this.age+1e-10<duration)return;
   this.age=0;
   if(this.state==='falling')this.state='down';

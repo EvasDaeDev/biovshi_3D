@@ -3,7 +3,7 @@ import { FIXED_DT } from '../fixed-clock.js';
 /** Native 3D rules, sourced from src/config.js and src/robot/{robot,anatomy}.js.
  * Central torso capsules remain attached at zero HP. Endurance is the
  * remaining v1 trauma budget, reduced by lost anatomy (not by movement). */
-export const DAMAGE=Object.freeze({segmentHP:4,headHP:8,pelvisHP:5,invulnerabilitySeconds:.28,traumaThreshold:24,headMultiplier:1.5,lostCapacityFraction:.4});
+export const DAMAGE=Object.freeze({segmentHP:4,headHP:8,pelvisHP:5,invulnerabilitySeconds:.28,traumaThreshold:35,criticalDamage:3,headMultiplier:1.5,lostCapacityFraction:.4});
 export type IncapacitationCause='head-loss'|'torso-failure'|'trauma'|'oil-loss'|'manual';
 export interface SegmentHealth {readonly id:string;readonly hp:number;readonly maxHp:number;readonly attached:boolean}
 export interface HealthSnapshot {readonly segments:readonly SegmentHealth[];readonly trauma:number;readonly traumaThreshold:number;readonly endurance:number;readonly maxEndurance:number;readonly baseEndurance:number;readonly lostSegments:number;readonly cause:IncapacitationCause|null}
@@ -38,7 +38,7 @@ export class DamageState {
   }
   if(!cause&&this.trauma>=this.maxEndurance)cause='trauma';
   if(cause)this.finish(cause);
-  return {amount:actual,remainingHP:p.hp,critical:amount===2,detached,cause};
+  return {amount:actual,remainingHP:p.hp,critical:amount===DAMAGE.criticalDamage,detached,cause};
  }
  canDamage(id:string,tick:number):boolean{const p=this.parts.get(id);return !this.cause&&!!p?.attached&&p.hp>0&&tick-p.lastHit>=cooldownTicks;}
  /** Synchronizes lab-only fracture; no trauma from artificial stress contacts. */

@@ -200,7 +200,7 @@ export class PatientGait {
       const amount=clamp(forcedProne);
       if(this.knockdownMotion&&amount<this.proneAmount)this.knockdownRising=true;
       this.proneAmount=amount;this.anchors.reset();this.hop.reset();this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.hopSample={distance:0,lift:0,phase:'idle',followsRoot:false};
-      this.crawlEffort=0;this.signedSpeed=0;this.moveAmount=0;this.runAmount=0;this.stepWait=0;
+      this.signedSpeed=0;this.moveAmount=0;this.runAmount=0;this.stepWait=0;
       this.supportDrop=0;
       for(let i=0;i<2;i++){
         const side=i===0?-1:1;
@@ -342,6 +342,11 @@ export class PatientGait {
       const phase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
       this.motion.advance(dt,this.proneAmount===0?speed:0,phase,this.proneAmount===0?weightSide:0);
     }
+  }
+  get bracingSide(): 'L'|'R'|null{return this.fallBrace?.side??null;}
+  crawlWhileDown(dt:number,effort:number):void{
+    this.crawlEffort+=(clamp(effort)-this.crawlEffort)*(1-Math.exp(-16*dt));
+    this.crawlPhase+=dt*this.crawlEffort*8;
   }
   plantedBrace(pose:readonly RigPose[]):boolean{
     if(!this.fallBrace||this.proneAmount<.25||this.proneAmount>.85)return false;

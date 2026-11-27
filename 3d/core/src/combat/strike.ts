@@ -17,10 +17,10 @@ const smooth=(t:number)=>{const v=Math.max(0,Math.min(1,t));return v*v*(3-2*v);}
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 export type StrikePhase='idle'|'windup'|'thrust'|'recover';
 export type StrikeKind='arm'|'leg'|'head';
-const CANCEL_TICKS=ticks(.24);
+const CANCEL_TICKS=ticks(.24),FALL_WINDUP_TICKS=ticks(.16);
 export interface StrikeVisual {readonly punch:Punch;readonly tick:number;readonly weight:number}
 export interface StrikeChannel {readonly side:'L'|'R';readonly kind:'arm'|'leg';readonly targetId:number;readonly aim:Vec3;readonly targetSegment?:string}
-export interface Punch {readonly fastThrust?:boolean;readonly pounce?:boolean;readonly crouch?:boolean;readonly secondary?:StrikeChannel;readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string;readonly tempo?:number}
+export interface Punch {readonly quickWindup?:boolean;readonly fastThrust?:boolean;readonly pounce?:boolean;readonly crouch?:boolean;readonly secondary?:StrikeChannel;readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string;readonly tempo?:number}
 export interface StrikeSnapshot {readonly phase:StrikePhase;readonly kind?:StrikeKind;readonly prone?:boolean;readonly source:string|null;readonly targetId:number|null;readonly resolved:boolean;readonly hitIds?:readonly number[];readonly targetIds?:readonly number[];readonly secondarySource?:string;readonly crouch?:boolean;readonly pounce?:boolean}
 export function usableArm(ids:readonly string[],side:'L'|'R'):boolean{
  return ids.includes('chest')&&ids.includes(side+'.upperArm')&&ids.includes(side+'.lowerArm');
@@ -49,10 +49,11 @@ export function strikeChannels(p:Punch):readonly Punch[]{
  return [primary,{...secondary,start:p.start,yaw:p.yaw,...(p.tempo===undefined?{}:{tempo:p.tempo}),...(p.fastThrust?{fastThrust:true}:{})}];
 }
 export const AUTHORED_THRUST_SECONDS=.15;
-/** Map the faster thrust clock onto the existing canonical pose samples.
- * Windup, recovery and cooldown are unchanged, including individual tempo. */
+/** Map the shorter attack phases onto the canonical pose samples while
+ * preserving the full recovery and individual tempo. */
 export function strikeAge(p:Punch,tick:number):number{
- const age=(tick-p.start)/(p.tempo??1);
+ let age=(tick-p.start)/(p.tempo??1);
+ if(p.quickWindup)age=age<FALL_WINDUP_TICKS?age*W/FALL_WINDUP_TICKS:age+W-FALL_WINDUP_TICKS;
  if(!p.fastThrust||age<W)return age;
  const fast=ticks(AUTHORED_THRUST_SECONDS);
  return age<W+fast?W+(age-W)*T/fast:age+(T-fast);
@@ -89,11 +90,11 @@ export class StrikeState{
   if(!this.cancelled||tick>=this.cancelled.tick+CANCEL_TICKS)return null;
   return {punch:this.cancelled.punch,tick:this.cancelled.tick,weight:1-smooth((tick-this.cancelled.tick)/CANCEL_TICKS)};
  }
- start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm',prone=false,secondary?:StrikeChannel,crouch=false,pounce=false):boolean{
+ start(tick:number,side:'L'|'R',targetId:number,aim:Vec3,yaw:number,targetSegment?:string,kind:StrikeKind='arm',prone:boolean|'falling'=false,secondary?:StrikeChannel,crouch=false,pounce=false):boolean{
   if(crouch&&(prone||kind!=='arm'||secondary||pounce)||pounce&&(prone||secondary))return false;
-  if(!this.ready(tick)||secondary&&!compatibleChannels({side,kind,targetId,prone},secondary))return false;
+  if(!this.ready(tick)||secondary&&!compatibleChannels({side,kind,targetId,prone:!!prone},secondary))return false;
   this.cancelled=null;
-  this.current={side,kind,prone,targetId,aim:[...aim],start:tick,yaw,...(crouch?{crouch:true}:{}),...(pounce?{pounce:true}:{}),...(this.fastThrust||pounce?{fastThrust:true}:{}),...(secondary?{secondary:{...secondary,aim:[...secondary.aim] as Vec3}}:{}),...(this.tempo===1||pounce?{}:{tempo:this.tempo}),...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.contacted.clear();this.sequence++;return true;
+  this.current={side,kind,prone:!!prone,...(prone==='falling'?{quickWindup:true}:{}),targetId,aim:[...aim],start:tick,yaw,...(crouch?{crouch:true}:{}),...(pounce?{pounce:true}:{}),...(this.fastThrust||pounce?{fastThrust:true}:{}),...(secondary?{secondary:{...secondary,aim:[...secondary.aim] as Vec3}}:{}),...(this.tempo===1||pounce?{}:{tempo:this.tempo}),...(targetSegment===undefined?{}:{targetSegment})};this.last=tick;this.done=false;this.contacted.clear();this.sequence++;return true;
  }
  /** Track the target only during preparation; commit the aim for thrust. */
  track(tick:number,aim:Vec3,targetId?:number):void{

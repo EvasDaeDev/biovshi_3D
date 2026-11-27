@@ -1,3 +1,4 @@
+import {DAMAGE} from '../core/dist/combat/damage.js';
 /** Compact anatomical status overlay. Read-only view of the same fixed
  * snapshot used by the arena; never simulates damage, bleeding or time. */
 export const BODY_MAP=Object.freeze([
@@ -16,7 +17,7 @@ export function segmentPresentation(part){
  return {ratio,state:ratio>=1?'healthy':'damaged',fill:'hsl('+Math.round(120*ratio)+' 76% 49%)',detail:number(part.hp)+' / '+number(part.maxHp)+' HP'};
 }
 export function patientPresentation(health,oil,life,fight,id,distress){
- const current=health?.endurance??0,max=health?.maxEndurance??0,base=health?.baseEndurance??24,wounds=oil?.wounds?.length??0;
+ const current=health?.endurance??0,max=health?.maxEndurance??0,base=health?.baseEndurance??DAMAGE.traumaThreshold,wounds=oil?.wounds?.length??0;
  const alive=life==='active',finished=!!fight?.ended;
  const state=!alive?'Выбыл':finished?(fight.winnerId===id?'Победитель':'Бой завершён'):distress?.mode==='prey'?'Жертва':distress?.mode==='hysteria'?'Истерика':distress?.mode==='last-stand'?'Последний бой':'В бою';
  const bleeding=!alive?'Нет':finished?(wounds?'Остановлено':'Нет'):oil?.remainingTicks!=null?'Отказ через '+Math.ceil(oil.remainingTicks/60)+' с':wounds?'Истекание · '+wounds+' ран':'Нет истекания';

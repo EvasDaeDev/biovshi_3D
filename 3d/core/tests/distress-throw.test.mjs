@@ -49,7 +49,7 @@ test('sacrifice preserves mobility, another usable arm and endurance; applies sa
  assert.ok(after.endurance<preview.endurance&&after.endurance>after.maxEndurance*.25);
  assert.equal(sacrificeArm(remaining,after,'R'),null);
  assert.equal(sacrificeArm(ids.filter(id=>id!=='R.foot'),preview,'L'),null);
- const weak=new DamageState(ids);weak.apply('chest',4,0);weak.apply('abdomen',4,0);
+ const weak=new DamageState(ids);weak.apply('chest',4,0);weak.apply('abdomen',4,0);weak.apply('head',1,0);
  assert.equal(sacrificeArm(ids,weak.snapshot(),'L'),null);
 });
 test('seeded accuracy is approximately 80%; lead and gravity meet a moving target, no synthetic hit',()=>{
@@ -96,7 +96,7 @@ test('authored AI can sacrifice a real arm to throw at a visible low-endurance p
  const config=createAuthoredCombatConfig(seed,ring,2),core=new LabSimulationCore(),events=[];
  core.initialize({...config,fighters:[{...config.fighters[0],origin:[0,0,1.5],yawRad:0},{...config.fighters[1],origin:[0,0,-1.5],yawRad:Math.PI}]});
  try{
-  for(const [segmentId,amount] of [['chest',4],['abdomen',4],['pelvis',5],['head',2],['neck',2]])assert.ok(core.applyDamage({fighterId:1,segmentId,amount}));
+  for(const [segmentId,amount] of [['chest',4],['abdomen',4],['pelvis',5],['head',7],['neck',3]])assert.ok(core.applyDamage({fighterId:1,segmentId,amount}));
   core.drainEvents();
   core.step(FIXED_DT,{commands:[]});events.push(...core.drainEvents());
   assert.equal(core.getSnapshot().distress[1].mode,'prey');
@@ -107,7 +107,7 @@ test('authored AI can sacrifice a real arm to throw at a visible low-endurance p
   const launch=launches[0],cuts=events.filter(e=>e.type==='segment-detached'&&e.flightId===launch.flightId);
   assert.equal(cuts.length,1);assert.equal(cuts[0].detachedParts.length,3);
   assert.equal(core.getSnapshot().mobilityModes[0],'biped');
-  assert.ok(core.getSnapshot().health[0].endurance<24);
+  assert.ok(core.getSnapshot().health[0].endurance<DAMAGE.traumaThreshold);
   assert.ok(events.some(e=>e.type==='limb-flight-ended'&&e.flightId===launch.flightId));
   const hits=events.filter(e=>e.type==='limb-hit'&&e.flightId===launch.flightId);
   assert.ok(hits.length<=1);

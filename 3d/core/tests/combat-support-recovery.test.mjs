@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LabSimulationCore,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
+import {LabSimulationCore,createAuthoredCombatConfig,FIXED_DT,DAMAGE} from '../dist/index.js';
 import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 
 const {ring}=await buildLocationCatalog();
@@ -14,7 +14,7 @@ for(const missing of [false,true])test(`contact provokes a planted recovery with
  const idle={commands:[0,1].map(fighterId=>({fighterId,forward:0,turn:0,sprint:false}))};
  try{
   const before=core.getSnapshot();
-  assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'chest',amount:2}));
+  assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'chest',amount:DAMAGE.criticalDamage}));
   const start=core.getSnapshot();
   const leg=start.footStates[0].findIndex(f=>f.moving);
   assert.ok(leg>=0);
@@ -46,9 +46,9 @@ test('a second impact during a catch step can bring the patient down; a planted 
   ]});
   const idle={commands:[0,1].map(fighterId=>({fighterId,forward:0,turn:0,sprint:false}))};
   try{
-   assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'chest',amount:2}));
+   assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'chest',amount:DAMAGE.criticalDamage}));
    core.step(FIXED_DT,idle);
-   assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'abdomen',amount:2}));
+   assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'abdomen',amount:DAMAGE.criticalDamage}));
    const events=core.drainEvents(),lengths=new Map(core.getSnapshot().rigSegments[0].map(p=>[p.id,Math.hypot(...p.a.map((v,i)=>v-p.b[i]))]));
    for(let i=0;i<140;i++){
     core.step(FIXED_DT,idle);

@@ -1,3 +1,4 @@
+import {DAMAGE} from '../core/dist/combat/damage.js';
 import {FrameMeter,RoundClock} from './round-telemetry.js';
 import {FisheyeView} from './fisheye-view.js';
 import {createSegmentVisual} from './segment-visual.js';
@@ -135,7 +136,7 @@ function authoredPatients(loc){return Math.min(loc.capacity,Math.max(2,Number(pa
 const damageControls=document.getElementById('damage-controls'),damageSegment=document.getElementById('damage-segment'),damageHP=document.getElementById('damage-hp');
 let pendingDamage=null;
 const queueDamage=amount=>{if(scenario.value==='damage'&&!paused)pendingDamage={fighterId:0,segmentId:damageSegment.value,amount};};
-document.getElementById('damage-hit').onclick=()=>queueDamage(1);document.getElementById('damage-crit').onclick=()=>queueDamage(2);
+document.getElementById('damage-hit').onclick=()=>queueDamage(1);document.getElementById('damage-crit').onclick=()=>queueDamage(DAMAGE.criticalDamage);
 const requestedScenario=new URLSearchParams(location.search).get('scenario');
 if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario))scenario.value=requestedScenario;
 function selectedLocation(){return scenario.value==='motion-review'?authoredLocations.ring:scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}

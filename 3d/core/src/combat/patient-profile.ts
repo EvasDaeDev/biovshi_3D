@@ -1,3 +1,4 @@
+import {DAMAGE} from './damage.js';
 import { FIXED_DT } from '../fixed-clock.js';
 /** Effective points, independent of progression and equipment storage. */
 export interface PatientProfile {
@@ -39,10 +40,10 @@ export class PatientBehavior {
  }
  ready(tick:number):boolean{return tick>=this.noticedAt+this.traits.reactionTicks&&tick>=this.nextAttack;}
  started(tick:number,baseCooldown:number):void{this.nextAttack=tick+baseCooldown+this.traits.recoveryTicks;}
- damage():1|2{
+ damage():1|typeof DAMAGE.criticalDamage{
   if(this.traits.criticalChance===0)return 1;
   this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;
-  return this.rng/4294967296<this.traits.criticalChance?2:1;
+  return this.rng/4294967296<this.traits.criticalChance?DAMAGE.criticalDamage:1;
  }
  snapshot(){return {...this.traits,targetId:this.targetId,noticedAt:this.noticedAt,nextAttack:this.nextAttack};}
 }

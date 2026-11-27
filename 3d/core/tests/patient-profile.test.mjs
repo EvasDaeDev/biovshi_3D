@@ -18,7 +18,7 @@ test('individual reaction and recovery are bounded and deterministic',()=>{
 test('critical rolls are independent of other fighters and reproduce from seed',()=>{
  const a=new PatientBehavior(7,1,profile(3,9)),b=new PatientBehavior(7,1,profile(3,9)),other=new PatientBehavior(7,0,profile(3,9)),zero=new PatientBehavior(7,0,profile(3,2));
  const seq=Array.from({length:200},()=>{other.damage();other.damage();return a.damage();});
- assert.deepEqual(seq,Array.from({length:200},()=>b.damage()));assert.ok(seq.filter(n=>n===2).length>70&&seq.filter(n=>n===2).length<150);
+ assert.deepEqual(seq,Array.from({length:200},()=>b.damage()));assert.ok(seq.filter(n=>n===3).length>70&&seq.filter(n=>n===3).length<150);
  assert.ok(Array.from({length:100},()=>zero.damage()).every(n=>n===1));
 });
 test('movement and turning use separate effective stats, snapshots are owned',()=>{
