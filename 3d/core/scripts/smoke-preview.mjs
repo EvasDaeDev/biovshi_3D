@@ -238,36 +238,26 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
  const release=await page.locator('#stats').getAttribute('data-build');
  const spectralBalance=await page.evaluate(async release=>{
-  const {createStepTone,stepDirectionTone}=await import('/releases/'+release+'/3d/lab-next/footstep-audio.js');
-  const audio=new OfflineAudioContext(2,44100,44100);
-  const sample=await fetch('/releases/'+release+'/3d/lab-next/audio/step_1.mp3').then(response=>response.arrayBuffer());
-  const buffer=await audio.decodeAudioData(sample);
-  async function measure(z){
-   const context=new OfflineAudioContext(2,44100,44100);
-   const source=context.createBufferSource(),panner=context.createPanner(),tone=createStepTone(context);
-   const {body,edge}=stepDirectionTone([0,0,0],[0,0,-1],[-1,0,z]);
-   source.buffer=buffer;
-   tone.body.gain.value=body;
-   tone.edge.gain.value=edge;
-   panner.panningModel='HRTF';
-   panner.rolloffFactor=0;
-   panner.positionX.value=-1;
-   panner.positionZ.value=z;
-   // Measure the rendered ratio of high-frequency energy to total energy.
-   const high=context.createBiquadFilter();high.type='highpass';high.frequency.value=1800;
-   const stereo=context.createChannelMerger(2),mono=context.createGain();
-   mono.channelCount=1;mono.channelCountMode='explicit';
-   source.connect(tone.body);tone.edge.connect(panner).connect(mono);
-   mono.connect(stereo,0,0);mono.connect(high).connect(stereo,0,1);stereo.connect(context.destination);
-   source.start();
-   const output=await context.startRendering();
-   const energy=i=>output.getChannelData(i).reduce((sum,x)=>sum+x*x,0);
-   return energy(1)/energy(0);
-  }
-  return [await measure(-2),await measure(2)];
+  const root='/releases/'+release+'/3d/lab-next/';
+  const {createStepTone,stepDirectionTone}=await import(root+'footstep-audio.js');
+  const recording=await fetch(root+'audio/step_1.mp3');
+  if(!recording.ok||(await recording.arrayBuffer()).byteLength===0)throw Error('Missing footstep recording');
+  const audio=new OfflineAudioContext(2,128,44100);
+  const frequencies=new Float32Array([300,3000]);
+  const measure=node=>{
+   const magnitude=new Float32Array(2);
+   node.getFrequencyResponse(frequencies,magnitude,new Float32Array(2));
+   return magnitude;
+  };
+  return [-2,2].map(z=>{
+   const tone=createStepTone(audio),settings=stepDirectionTone([0,0,0],[0,0,-1],[-1,0,z]);
+   tone.body.gain.value=settings.body;
+   tone.edge.gain.value=settings.edge;
+   const body=measure(tone.body),edge=measure(tone.edge);
+   return body[1]*edge[1]/(body[0]*edge[0]);
+  });
  },release);
  assert.ok(spectralBalance[0]>2*spectralBalance[1],JSON.stringify(spectralBalance));
-
  const shadowPixels=await page.evaluate(async release=>{
   const root='/releases/'+release+'/3d/lab-next/';
   const T=await import(root+'vendor/three.module.js');

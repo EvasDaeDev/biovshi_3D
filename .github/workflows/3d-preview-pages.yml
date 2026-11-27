@@ -61,6 +61,7 @@ jobs:
       # OS packages still need verification on each fresh runner.
       - run: npx --prefix 3d/core playwright install --with-deps chromium
       - run: npm --prefix 3d/core run preview:smoke
+        timeout-minutes: 12
       - name: Upload tested Lab Next preview for manual debugging
         uses: actions/upload-artifact@v4
         with:
