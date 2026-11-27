@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PolygonNavigation,ArenaNavigation,LabSimulationCore,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
-import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from './legacy-location-fixtures.mjs';
 
 const diamond=[{x:-1,z:0},{x:0,z:-1},{x:1,z:0},{x:0,z:1}];
 const box={minX:-1,maxX:1,minZ:-1,maxZ:1,height:2.8};

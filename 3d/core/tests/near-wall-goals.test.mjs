@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from './legacy-location-fixtures.mjs';
 import {PolygonNavigation} from '../dist/index.js';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);

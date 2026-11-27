@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from './legacy-location-fixtures.mjs';
 import {createAuthoredCombatConfig,LabSimulationCore,PolygonNavigation,FIXED_DT} from '../dist/index.js';
 
 let cached;

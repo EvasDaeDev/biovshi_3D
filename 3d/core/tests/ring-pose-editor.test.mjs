@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLocationCatalog,buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
+import {DebrisWorld} from '../../lab-next/debris.js';
+import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 import {LabSimulationCore,PolygonNavigation,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {buildEditedPose,readPoseDocument,referencePose} from '../dist/rig/pose-editor.js';
 
-test('the active catalog restores the original arenas alongside the 9 m ring and protects its perimeter in movement',async()=>{
+test('the active catalog exposes two native arenas and the 9 m ring protects its perimeter',async()=>{
  const catalog=await buildLocationCatalog();
- assert.deepEqual(Object.keys(catalog),['ring','ward','annulus','sluice','zigzag','columns','maze','throat']);
+ assert.deepEqual(Object.keys(catalog),['ring','square']);
  const {ring}=catalog;
  assert.equal(ring.shape,'circle');
  assert.equal(ring.capacity,8);
@@ -58,33 +60,42 @@ test('pose files restore adjusted anatomy and connected bones and reject invalid
  assert.throws(()=>readPoseDocument({schemaVersion:1,slots:{punch:parts.slice(1)}}),RangeError);
 });
 
-test('published legacy arena outlines and obstacles have 25% more area',async()=>{
- const published=await buildLocationCatalog(),legacy=await buildLegacyLocationFixtures();
- const area=points=>Math.abs(points.reduce((sum,p,i)=>{
-  const next=points[(i+1)%points.length];
-  return sum+p.x*next.z-p.z*next.x;
- },0))/2;
- for(const [id,original] of Object.entries(legacy)){
-  if(id==='ring')continue;
-  const arena=published[id],nav=new PolygonNavigation(arena);
-  assert.equal(arena.capacity,original.capacity);
-  assert.ok(Math.abs(area(arena.boundary)/area(original.boundary)-1.25)<1e-10,id);
-  const freeArea=location=>area(location.boundary)-location.objects.reduce((sum,object)=>sum+area(object.points),0);
-  assert.ok(Math.abs(freeArea(arena)/freeArea(original)-1.25)<1e-10,id);
-  assert.deepEqual(arena.spawns,original.spawns.map(point=>point.map((n,axis)=>axis===1?n:n*Math.sqrt(1.25))));
-  assert.equal(arena.spawnSlots.length,arena.capacity,id);
-  const corners=[[1,1],[-1,-1],[-1,1],[1,-1]];
-  for(const [i,[x,,z]] of arena.spawnSlots.entries()){
-   assert.ok(nav.clear({x,z},{x,z},.65),id);
-   assert.ok(arena.spawnSlots.slice(0,i).every(([a,,b])=>Math.hypot(x-a,z-b)>=1),id);
-   if(i<4){
-    assert.deepEqual([Math.sign(x),Math.sign(z)],corners[i],id);
-    assert.ok(Math.abs(x)>arena.width/5&&Math.abs(z)>arena.depth/5,id);
-   }
-  }
-  const config=createAuthoredCombatConfig(7,arena,2);
-  assert.equal(config.patientScale,createAuthoredCombatConfig(7,published.ring,2).patientScale);
-  for(const {origin:[x,,z],yawRad} of config.fighters)
-   assert.ok(x*Math.sin(yawRad)-z*Math.cos(yawRad)>0,id);
+test('square has 9 m sides, a 50 cm column and safe starts for all eight patients',async()=>{
+ const {ring,square}=await buildLocationCatalog();
+ const nav=new PolygonNavigation(square);
+ assert.equal(square.width,9);
+ assert.equal(square.depth,9);
+ assert.deepEqual(square.boundary.map(({x,z})=>[x,z]),[[-4.5,-4.5],[4.5,-4.5],[4.5,4.5],[-4.5,4.5]]);
+ assert.equal(square.capacity,8);
+ assert.equal(square.objects.length,1);
+ const [column]=square.objects;
+ assert.ok(column.points.every(({x,z})=>Math.abs(Math.hypot(x,z)-.25)<1e-12));
+ assert.equal(column.height,3.1);
+ const from={x:-2,z:0},to={x:2,z:0};
+ assert.equal(nav.clear(from,to),false);
+ assert.equal(nav.sightClear([-2,1.65,0],[2,1.65,0]),false);
+ assert.equal(nav.reachable(from,to,nav.routePad),true);
+ const corners=[[1,1],[-1,-1],[-1,1],[1,-1]];
+ for(const [i,[x,,z]] of square.spawnSlots.entries()){
+  assert.ok(nav.clear({x,z},{x,z},.65));
+  assert.ok(square.spawnSlots.slice(0,i).every(([a,,b])=>Math.hypot(x-a,z-b)>=1));
+  if(i<4)assert.deepEqual([Math.sign(x),Math.sign(z)],corners[i]);
  }
+ const config=createAuthoredCombatConfig(7,square);
+ assert.equal(config.patientScale,createAuthoredCombatConfig(7,ring).patientScale);
+ for(const {origin:[x,,z],yawRad} of config.fighters)
+  assert.ok(x*Math.sin(yawRad)-z*Math.cos(yawRad)>0);
+});
+
+test('the square column stops horizontal Rapier queries at its visible surface',async()=>{
+ await RAPIER.init();
+ const debris=new DebrisWorld(RAPIER),{square}=await buildLocationCatalog();
+ try{
+  debris.reset(square.walls,null,square.id,square);
+  debris.step(FIXED_DT);
+  const east={x:1,y:0,z:0};
+  const ray=z=>debris.world.castRay(new RAPIER.Ray({x:-2,y:1.65,z},east),4,true);
+  assert.ok(Math.abs(ray(0).timeOfImpact-1.75)<1e-6);
+  assert.equal(ray(.4),null);
+ }finally{debris.dispose();}
 });

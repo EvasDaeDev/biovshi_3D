@@ -29,11 +29,11 @@ test('ring AI can land a punch and a kick while retaining striking distance',asy
  }finally{core.dispose();}
 });
 
-test('an imported arena keeps the same reach-based fight spacing as the ring',async()=>{
- const {ring,ward}=await buildLocationCatalog();
+test('the square arena keeps the same reach-based fight spacing as the ring',async()=>{
+ const {square}=await buildLocationCatalog();
  const core=new LabSimulationCore();
- const config=createAuthoredCombatConfig(19,ward,2);
- core.initialize({...config,patientPoses:ring.patientPoses});
+ const config=createAuthoredCombatConfig(19,square,2);
+ core.initialize(config);
  try{
   let distantPunch=false,distantKick=false;
   for(let tick=0;tick<1800&&!(distantPunch&&distantKick);tick++){

@@ -95,8 +95,7 @@ try{
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&Number(d.hits)>0;},{},{timeout:45000});
  await page.locator('#scenario').selectOption('duel-prone');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='ring'&&d.posture==='prone'&&Number(d.hits)>0;},{},{timeout:45000});
- const capacities={ring:8,ward:10,annulus:4,sluice:5,zigzag:7,columns:10,maze:10,throat:6};
- assert.deepEqual(await page.locator('#scenario option[value^="location-"]').evaluateAll(options=>options.map(o=>o.value)),Object.keys(capacities).map(id=>'location-'+id));
+ assert.deepEqual(await page.locator('#scenario option[value^="location-"]').evaluateAll(options=>options.map(o=>o.value)),['location-ring','location-square']);
  await page.locator('#scenario').selectOption('location-ring');
  await page.locator('#vision-debug').check();
  await page.locator('#route-debug').check();
@@ -124,19 +123,15 @@ try{
  await page.locator('#patient-count').selectOption('3');
  await page.locator('#vision-debug').uncheck();
  await page.locator('#route-debug').uncheck();
- for(const [id,capacity] of Object.entries(capacities).slice(1)){
-  await page.locator('#scenario').selectOption('location-'+id);
-  await page.waitForFunction(name=>{const d=document.getElementById('stats').dataset;
-   return d.state==='running'&&d.location===name&&Number(d.authoredObjects)>0&&Number(d.tick)>0;
-  },id);
-  assert.equal(await page.locator('#patient-count option').count(),capacity-1);
- }
- await page.locator('#scenario').selectOption('location-ward');
- await page.waitForFunction(()=>document.getElementById('stats').dataset.location==='ward');
- await page.locator('#patient-count').selectOption('10');
- await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location==='ward'&&d.patients==='10';});
- await page.locator('#scenario').selectOption('location-annulus');
- await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location==='annulus'&&d.patients==='4';});
+ await page.locator('#scenario').selectOption('location-square');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;
+  return d.state==='running'&&d.location==='square'&&d.authoredObjects==='1'&&Number(d.tick)>0;
+ });
+ assert.equal(await page.locator('#patient-count option').count(),7);
+ await page.locator('#patient-count').selectOption('8');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;
+  return d.state==='running'&&d.location==='square'&&d.patients==='8';
+ });
  await page.locator('#scenario').selectOption('damage');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='4';});
  await page.locator('#damage-crit').click();
@@ -278,16 +273,17 @@ try{
  // Real authored arenas use isolated floor histories within one session.
  await page.evaluate(async({release,session,archived})=>{
   const storage=await import('/releases/'+release+'/3d/lab-next/floor-storage.js');
-  await storage.saveFloorHistory(session,'ward@area125-v1-165',{...archived,arenaId:'ward@area125-v1-165'});
+  await storage.saveFloorHistory(session,'square@9m-column50-v1-165',{...archived,arenaId:'square@9m-column50-v1-165'});
  },{release,session:floorSession,archived});
- for(const [id,count] of [['ward','1'],['annulus','0'],['ward','1']]){
+ for(const [id,count] of [['square','1'],['ring','0'],['square','1']]){
   await page.locator('#scenario').selectOption('location-'+id);
   await page.waitForFunction(([arena,count])=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location===arena&&d.floorVisuals===count;},[id,count]);
  }
  await page.goto(base+'/');
  await page.getByRole('link',{name:'Быстрый бой'}).click();
- await page.locator('#arena').selectOption('location-throat');
- assert.equal(await page.locator('#participants option').count(),5);
+ assert.deepEqual(await page.locator('#arena option').evaluateAll(options=>options.map(o=>o.value)),['location-ring','location-square']);
+ await page.locator('#arena').selectOption('location-square');
+ assert.equal(await page.locator('#participants option').count(),7);
  await page.locator('#participants').selectOption('2');
  await page.locator('form').evaluate(form=>{
   const seed=document.createElement('input');seed.type='hidden';seed.name='seed';seed.value='19';form.append(seed);
@@ -296,14 +292,23 @@ try{
  await page.locator('#match-preparation').waitFor({state:'visible'});
  await page.waitForFunction(()=>document.getElementById('stats').dataset.state==='running');
  assert.equal(await page.locator('#stats').getAttribute('data-tick'),'0');
- assert.equal(await page.locator('#stats').getAttribute('data-location'),'throat');
+ assert.equal(await page.locator('#stats').getAttribute('data-location'),'square');
  assert.equal(await page.locator('#stats').getAttribute('data-patients'),'2');
  assert.equal(await page.locator('#scenario').isVisible(),false);
  assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');
  await page.waitForTimeout(500);
  assert.equal(await page.locator('#stats').getAttribute('data-tick'),'0','preparation does not step combat');
  await page.locator('#match-preparation').waitFor({state:'hidden',timeout:15000});
- await page.locator('#match-result').waitFor({state:'visible',timeout:60000});
+ await page.waitForFunction(()=>Number(document.getElementById('stats').dataset.tick)>3);
+ // Check the reusable result flow with the fixed ring duel.
+ await page.locator('#match-exit').click();
+ await page.locator('#arena').selectOption('location-ring');
+ await page.locator('#participants').selectOption('2');
+ await page.locator('form').evaluate(form=>{
+  const seed=document.createElement('input');seed.type='hidden';seed.name='seed';seed.value='19';form.append(seed);
+ });
+ await page.locator('#start-match').click();
+ await page.locator('#match-result').waitFor({state:'visible',timeout:100000});
  assert.match(await page.locator('#match-result-title').textContent(),/Победил пациент № [01]|Ничья/);
  assert.match(await page.locator('#match-result p').textContent(),/Время боя \d+:\d{2}/);
  await page.getByRole('link',{name:'В меню боя'}).click();

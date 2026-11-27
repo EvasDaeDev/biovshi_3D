@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from './legacy-location-fixtures.mjs';
 import {PolygonNavigation,ArenaNavigation,RouteState,PatientPerception,FIXED_DT} from '../dist/index.js';
 
 const gap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);

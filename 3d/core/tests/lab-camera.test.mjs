@@ -50,7 +50,7 @@ test('a corner frames the group in portrait and landscape and follows motion smo
 });
 
 test('free camera uses a contained horizontal path and yields to manual control',()=>{
- const {camera,controller}=setup(catalog.ward);
+ const {camera,controller}=setup(catalog.square);
  assert.equal(controller.select('free'),false);
  controller.allowFree(true);
  assert.equal(controller.select('free'),true);

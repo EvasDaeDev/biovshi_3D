@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
-import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from './legacy-location-fixtures.mjs';
 import {ArenaNavigation,LabSimulationCore,createArenaCombatConfig,FIXED_DT} from '../dist/index.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
 const ids=['ward','ring','annulus','sluice','zigzag','columns','maze','throat'];

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {gradeHeight,validateGradeSurface,lowHill,LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {createGradeContact} from '../dist/collision/grade-contact.js';
-import {buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
+import {buildLegacyLocationFixtures} from './legacy-location-fixtures.mjs';
 import {applyLocationTerrain} from '../scripts/location-terrain.mjs';
 import {DebrisWorld} from '../../lab-next/debris.js';
 const near=(actual,expected,tolerance=1e-9)=>assert.ok(Math.abs(actual-expected)<=tolerance,`${actual} != ${expected}`);
