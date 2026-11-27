@@ -33,7 +33,7 @@ const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
 const core=new LabSimulationCore(),clock=new FixedClock(),keys=new Set();
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x09100e);const oilMarks=new OilMarks(THREE,scene);
 const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.05,60);
-const cameraControl=new LabCamera(THREE,camera,document.getElementById('camera-mode'),document.getElementById('camera-patient'),document.getElementById('camera-fov'));
+const cameraControl=new LabCamera(THREE,camera,document.getElementById('camera-mode'),document.getElementById('camera-patient'));
 window.labStartup.show('Инициализация WebGL…');
 let lens;
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));document.body.append(renderer.domElement);
@@ -43,25 +43,6 @@ scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.D
 const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,grid);
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
-const foregroundWall=wallMaterial.clone();
-foregroundWall.transparent=true;foregroundWall.opacity=.14;foregroundWall.depthWrite=false;
-const boundaryMeshes=[];
-let lastBoundaryView=null;
-function updateBoundaryView(){
- const external=cameraControl.external;
- const {x:cx,z:cz}=camera.position;
- if(lastBoundaryView?.external===external&&(!external||(lastBoundaryView.x===cx&&lastBoundaryView.z===cz)))return;
- lastBoundaryView={external,x:cx,z:cz};
- let translucent=0;
- for(const mesh of boundaryMeshes){
-  const {x,z,dx,dz}=mesh.userData.edge;
-  const facing=dz*(camera.position.x-x)-dx*(camera.position.z-z)>0;
-  const softened=external&&facing;
-  mesh.material=softened?foregroundWall:wallMaterial;
-  if(softened)translucent++;
- }
- stats.dataset.foregroundWalls=String(translucent);
-}
 const scaleMaterial=new THREE.LineBasicMaterial({color:0x617368});
 const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
 const routeDebug=document.getElementById('route-debug'),routeLines=[];
@@ -122,8 +103,6 @@ const query=new URLSearchParams(location.search);
 const match=query.get('play')==='1'?new MatchFlow(document.getElementById('match-preparation'),document.getElementById('match-result')):null;
 if(match){
  document.getElementById('match-again').href=location.href;
- cameraControl.modeInput.value='overview';
- cameraControl.sync();
 }
 const requestedSession=query.get('session');
 const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:match?'quick-match':'lab-preview';
@@ -143,8 +122,9 @@ function resetControl(s){
  const autonomous=scenario.value.startsWith('arena')||scenario.value.startsWith('duel')||!!selectedLocation();
  controlPatient.value=!changed&&Array.from(s.fighterIds).includes(Number(old))&&old!==''?old:!changed&&old===''?'':autonomous?'':String(s.fighterIds[0]);
  controlPatient.disabled=scenario.value==='motion-review';
+ cameraControl.allowFree(controlPatient.value==='');
 }
-controlPatient.onchange=()=>{keys.clear();controlPatient.blur();if(controlPatient.value!==''&&['head','fisheye','follow'].includes(cameraControl.mode))document.getElementById('camera-patient').value=controlPatient.value;};
+controlPatient.onchange=()=>{keys.clear();controlPatient.blur();cameraControl.allowFree(controlPatient.value==='');if(controlPatient.value!==''&&cameraControl.mode==='fisheye')document.getElementById('camera-patient').value=controlPatient.value;};
 // An explicit seed pins a replay. Ordinary ring resets start a fresh match.
 const requestedSeed=query.get('seed');
 const pinnedSeed=requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):null;
@@ -202,7 +182,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const config=scenarioConfig();
  const defaults=config.location?.patientPoses??authoredLocations.ring.patientPoses;
  const patientPoses=scenario.value==='motion-review'?defaults:roundPatientPoses(defaults,{getItem:key=>window.localStorage.getItem(key)});
- debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;boundaryMeshes.length=0;lastBoundaryView=null;
+ debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
  for(const tri of config.gradedSurface??[]){
   const geo=new THREE.BufferGeometry(),p=new Float32Array(tri.flatMap(v=>v));
   geo.setAttribute('position',new THREE.BufferAttribute(p,3));geo.computeVertexNormals();
@@ -244,8 +224,8 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    const height=location.boundaryHeight??2.8,offset=location.shape==='circle'?.10:0;
    const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,height,.20),wallMaterial);
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
-   mesh.rotation.y=-Math.atan2(dz,dx);mesh.userData.edge={x:a.x,z:a.z,dx,dz};
-   scene.add(mesh);wallMeshes.push(mesh);boundaryMeshes.push(mesh);
+   mesh.rotation.y=-Math.atan2(dz,dx);
+   scene.add(mesh);wallMeshes.push(mesh);
   }
  }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
@@ -256,8 +236,23 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
 const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyJ','KeyK','KeyL']);
-addEventListener('keydown',e=>{if(controls.has(e.code)&&!capturesTextInput(document.activeElement)){e.preventDefault();keys.add(e.code);}});addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
+addEventListener('keydown',e=>{
+ if(capturesTextInput(document.activeElement))return;
+ const number=/^(?:Digit|Numpad)([1-4])$/.exec(e.code);
+ if(number&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();const mode='corner-'+number[1];if(!e.repeat&&cameraControl.mode!==mode)cameraControl.select(mode);return;}
+ if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}
+});addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
+const view=renderer.domElement,freeHint=document.getElementById('free-camera-hint');
+let cameraPointer=null;
+view.addEventListener('pointerdown',e=>{
+ if(e.button!==0||cameraControl.mode!=='free')return;
+ cameraPointer=e.pointerId;view.setPointerCapture(e.pointerId);
+});
+view.addEventListener('pointermove',e=>{
+ if(e.pointerId===cameraPointer)cameraControl.look(e.movementX,e.movementY);
+});
+view.addEventListener('lostpointercapture',()=>{cameraPointer=null;});
 const input=()=>scenario.value==='motion-review'?reviewInput(currentFrame.state.tick).input:manualInput(currentFrame.state.fighterIds,currentFrame.state.lifeStates,controlPatient.value,has,scenario.value==='fall');
 document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);keys.clear();last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};
  rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
@@ -342,8 +337,11 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
    }
   }
  });
- cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);updateBoundaryView();
+ cameraControl.move(has('KeyW')-has('KeyS'),has('KeyD')-has('KeyA'),dt);
+ cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);
+ freeHint.hidden=cameraControl.mode!=='free';
  stats.dataset.camera=cameraControl.mode;stats.dataset.cameraHeight=String(camera.position.y);
+ stats.dataset.cameraX=String(camera.position.x);stats.dataset.cameraZ=String(camera.position.z);
  const falling=currentFrame.debris,oldDebris=new Map(previousFrame.debris.map(d=>[d.id,d])),active=new Set(falling.map(d=>d.id));
  for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);m.children[0].material.dispose();debrisMeshes.delete(id);}
  for(const d of falling){

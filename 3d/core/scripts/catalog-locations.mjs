@@ -5,7 +5,7 @@ import {parseLocation,convexParts,locationBoundary,locationSpawnSlots} from '../
 import {applyLocationTerrain} from './location-terrain.mjs';
 import {readPoseDocument} from '../dist/rig/pose-editor.js';
 import {createRingLocation} from '../dist/arena/ring.js';
-import {adaptLegacyLocation} from '../dist/arena/location-adapter.js';
+import {adaptLegacyLocation,ARENA_WALL_HEIGHT} from '../dist/arena/location-adapter.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 /** Keep the original geometry available for regression tests. The published
@@ -34,10 +34,10 @@ function expandLegacyArena(location){
  const width=location.width*scale,depth=location.depth*scale;
  const title=location.id==='maze'?'Лабиринт':location.name.split(' · ')[0];
  return {...location,width,depth,name:title+' · '+metres.format(width)+' × '+metres.format(depth)+' м',
-  floorRevision:'area125-v1',
+  floorRevision:'area125-v1',boundaryHeight:ARENA_WALL_HEIGHT,
   boundary:location.boundary.map(point),patrol:location.patrol.map(point),
   spawns:location.spawns.map(spawn),spawnSlots:location.spawnSlots.map(spawn),
-  objects:location.objects.map(object=>({...object,points:object.points.map(point),
+  objects:location.objects.map(object=>({...object,height:object.kind==='wall'?ARENA_WALL_HEIGHT:object.height,points:object.points.map(point),
    convexParts:object.convexParts.map(part=>part.map(point))})),
   walls:location.walls.map(wall=>({...wall,minX:wall.minX*scale,maxX:wall.maxX*scale,minZ:wall.minZ*scale,maxZ:wall.maxZ*scale}))
  };

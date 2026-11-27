@@ -1,89 +1,142 @@
-/** Presentation-only camera, independent of combat and input. */
+import {PolygonNavigation} from '../core/dist/arena/polygon-navigation.js';
+import {CAMERA_CLEARANCE,CAMERA_HEIGHT,cornerMounts} from './arena-camera-layout.js';
+
+const DEG=Math.PI/180;
+const LIMIT=155;
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+const wrap=value=>Math.atan2(Math.sin(value),Math.cos(value));
+const cornerModes=['corner-1','corner-2','corner-3','corner-4'];
+const damping=(dt,seconds)=>1-Math.exp(-clamp(dt,0,.1)/seconds);
+
+/** Spectator views read snapshots and never drive the simulation. */
 export class LabCamera {
- constructor(T,camera,mode,patient,fov){
-  this.camera=camera;this.modeInput=mode;this.patientInput=patient;this.fovInput=fov;this.arena=null;
+ constructor(T,camera,mode,patient){
+  this.camera=camera;this.modeInput=mode;this.patientInput=patient;
   this.up=new T.Vector3();this.forward=new T.Vector3();this.right=new T.Vector3();this.back=new T.Vector3();
-  this.target=new T.Vector3();this.targetMatrix=new T.Matrix4();
   this.mount=new T.Vector3();this.previousMount=new T.Vector3();
-  this.matrix=new T.Matrix4();this.q=new T.Quaternion();this.oldQ=new T.Quaternion();this.worldUp=new T.Vector3(0,1,0);
-  this.modeInput.onchange=()=>{this.sync();this.staticView();};this.sync();this.staticView();
+  this.matrix=new T.Matrix4();this.q=new T.Quaternion();this.oldQ=new T.Quaternion();
+  this.worldUp=new T.Vector3(0,1,0);this.view=new T.Vector3();this.samples=[];
+  this.modeInput.onchange=()=>this.select(this.modeInput.value);
+  this.select(cornerModes[0]);
  }
- sync(){
-  this.mode=this.modeInput.value;
-  this.patientInput.disabled=!['head','fisheye','follow'].includes(this.mode);
-  this.fovInput.disabled=this.mode!=='head';
+ setArena(arena){
+  this.navigation=arena?new PolygonNavigation(arena):null;
+  this.mounts=arena?cornerMounts(arena,this.navigation):null;
+  this.select(this.mode);
  }
- setArena(location){
-  this.arena=location;
-  this.staticView();
+ allowFree(allowed){
+  this.freeAllowed=allowed&&!!this.navigation;
+  const option=this.modeInput.querySelector?.('option[value="free"]');
+  if(option)option.disabled=!this.freeAllowed;
+  if(!this.freeAllowed&&this.mode==='free')this.select(cornerModes[this.corner]);
+ }
+ select(mode){
+  if(mode==='free'&&!this.freeAllowed)return false;
+  if(cornerModes.includes(mode))this.corner=cornerModes.indexOf(mode);
+  this.mode=this.modeInput.value=mode;
+  this.patientInput.disabled=mode!=='fisheye';
+  const mount=this.mounts?.[this.corner];
+  const camera=this.camera;
+  camera.up.copy(this.worldUp);
+  if(mode!=='fisheye'){
+   camera.position.set(mount?.x??5.8,mount?CAMERA_HEIGHT:3.6,mount?.z??6.6);
+   this.homeYaw=Math.atan2(-camera.position.x,-camera.position.z);
+   this.yaw=this.homeYaw;this.pitch=Math.atan2(1-camera.position.y,Math.hypot(camera.position.x,camera.position.z));
+   this.aimAt(this.yaw,this.pitch);
+  }
+  this.framed=false;
+  this.project(65,.05);
+  return true;
  }
  reset(s){
   const old=this.patientInput.value;this.patientInput.replaceChildren();
-  for(const id of s.fighterIds){const o=document.createElement('option');o.value=String(id);o.textContent='№ '+id;this.patientInput.append(o);}
+  for(const id of s.fighterIds){const option=document.createElement('option');option.value=String(id);option.textContent='№ '+id;this.patientInput.append(option);}
   if(Array.from(s.fighterIds).includes(Number(old)))this.patientInput.value=old;
-  if(!this.patientInput.value&&s.fighterIds.length)this.patientInput.value=String(s.fighterIds[0]);this.sync();
+  if(!this.patientInput.value&&s.fighterIds.length)this.patientInput.value=String(s.fighterIds[0]);
  }
- resize(aspect){this.camera.aspect=aspect;this.staticView();this.projection(true);}
- projection(force=false){
-  const c=this.camera,h=Number(this.fovInput.value)||90;
-  const head=this.mode==='head'||this.mode==='fisheye';
-  const tangent=this.mode==='fisheye'?Math.tan(72*Math.PI/180)/Math.hypot(c.aspect,1):Math.tan(h*Math.PI/360)/c.aspect;
-  const v=head?2*Math.atan(tangent)*180/Math.PI:65;
-  const near=head?.015:.05;
-  if(force||c.fov!==v||c.near!==near){c.fov=v;c.near=near;c.updateProjectionMatrix();}
+ resize(aspect){this.camera.aspect=aspect;this.framed=false;this.camera.updateProjectionMatrix();}
+ project(fov,near){
+  const c=this.camera;
+  if(c.fov===fov&&c.near===near)return;
+  c.fov=fov;c.near=near;c.updateProjectionMatrix();
  }
- staticView(){
-  const c=this.camera;c.up.copy(this.worldUp);
-  const overview=this.mode==='overview';
-  if(this.arena){
-   const {width,depth,boundaryHeight=2.8,shape}=this.arena;
-   const extent=Math.max(width,depth);
-   const fit=(shape==='circle'?extent/2:Math.hypot(width,depth)/2)/
-    (Math.tan(65*Math.PI/360)*Math.min(1,c.aspect));
-   const distance=overview?Math.max(extent*1.55,fit*1.2):Math.max(10.5,extent*1.12);
-   const height=overview?boundaryHeight:boundaryHeight*.86;
-   c.position.set(distance*.6,height,distance*.8);
-   c.lookAt(0,shape==='circle'?.75:1,0);
-  }else{
-   c.position.set(...(overview?[8,6,9]:[5.8,3.6,6.6]));
-   c.lookAt(0,1,0);
+ aimAt(yaw,pitch){
+  const {position:p}=this.camera,flat=Math.cos(pitch);
+  this.camera.lookAt(p.x+Math.sin(yaw)*flat,p.y+Math.sin(pitch),p.z+Math.cos(yaw)*flat);
+ }
+ look(dx,dy){
+  if(this.mode!=='free')return;
+  this.yaw=wrap(this.yaw-dx*.003);
+  this.pitch=clamp(this.pitch-dy*.003,-1.45,1.45);
+  this.aimAt(this.yaw,this.pitch);
+ }
+ move(forward,strafe,dt){
+  if(this.mode!=='free'||!this.freeAllowed||(!forward&&!strafe))return;
+  const p=this.camera.position,step=3*clamp(dt,0,.05)/Math.max(1,Math.hypot(forward,strafe));
+  const sin=Math.sin(this.yaw),cos=Math.cos(this.yaw);
+  const next=this.navigation.move(p,{x:p.x+(forward*sin-strafe*cos)*step,z:p.z+(forward*cos+strafe*sin)*step},CAMERA_CLEARANCE);
+  p.set(next.x,CAMERA_HEIGHT,next.z);
+  this.aimAt(this.yaw,this.pitch);
+ }
+ track(parts,dt){
+  const p=this.camera.position;
+  let left=Infinity,right=-Infinity;
+  const points=this.samples;points.length=0;
+  for(const patient of parts)for(const segment of patient){
+   for(let end=0;end<2;end++){
+    const point=end===0?segment.a:segment.b;
+    const x=point[0]-p.x,y=point[1]-p.y,z=point[2]-p.z;
+    const bearing=wrap(Math.atan2(x,z)-this.homeYaw);
+    const margin=Math.atan2(segment.radius,Math.hypot(x,y,z));
+    left=Math.min(left,bearing-margin);right=Math.max(right,bearing+margin);
+    points.push(x,y,z,segment.radius,margin);
+   }
   }
-  this.projection();
+  if(!points.length)return;
+  const turn=this.framed?damping(dt,.34):1;
+  const targetYaw=this.homeYaw+clamp((left+right)/2,-1.1,1.1);
+  const sin=Math.sin(targetYaw),cos=Math.cos(targetYaw);
+  let low=Infinity,high=-Infinity;
+  for(let i=0;i<points.length;i+=5){
+   const elevation=Math.atan2(points[i+1],points[i]*sin+points[i+2]*cos),margin=points[i+4];
+   low=Math.min(low,elevation-margin);high=Math.max(high,elevation+margin);
+  }
+  this.yaw+=wrap(targetYaw-this.yaw)*turn;
+  this.pitch+=(clamp((low+high)/2,-1.5,1.5)-this.pitch)*turn;
+  this.aimAt(this.yaw,this.pitch);
+  this.q.copy(this.camera.quaternion).invert();
+  let tangent=0;
+  for(let i=0;i<points.length;i+=5){
+   const radius=points[i+3];
+   const v=this.view.set(points[i],points[i+1],points[i+2]).applyQuaternion(this.q);
+   const depth=Math.max(.04,-v.z-radius);
+   tangent=Math.max(tangent,(Math.abs(v.y)+radius)/depth,(Math.abs(v.x)+radius)/(depth*this.camera.aspect));
+  }
+  const goal=clamp(2*Math.atan(tangent*1.12)/DEG,37,LIMIT);
+  this.project(this.framed?this.camera.fov+(goal-this.camera.fov)*damping(dt,goal>this.camera.fov?.16:.56):goal,.05);
+  this.framed=true;
  }
- get external(){return this.mode!=='head'&&this.mode!=='fisheye';}
  orientation(h,out){
-  // A level horizon is independent of the neck's attack/impact roll.
   this.forward.set(...h.forward).normalize();this.right.crossVectors(this.forward,this.worldUp);
   if(this.right.lengthSq()<1e-8)this.right.crossVectors(this.forward,this.up.set(...h.up));
   this.right.normalize();this.up.crossVectors(this.right,this.forward).normalize();this.back.copy(this.forward).negate();
   return out.setFromRotationMatrix(this.matrix.makeBasis(this.right,this.up,this.back));
  }
  update(s,prior,alpha,meshes,clearance,dt=0){
-  this.sync();
+  if(this.mode==='free')return;
+  if(this.mode!=='fisheye'){this.track(s.rigSegments,dt);return;}
   const id=Number(this.patientInput.value),i=s.fighterIds.indexOf(id),j=prior.fighterIds.indexOf(id);
-  if(this.mode==='follow'){
-   const chest=meshes.get(id+':chest'),head=meshes.get(id+':head');
-   const subject=chest?.visible?chest:head;
-   if(subject?.visible)this.target.copy(subject.position);
-   else if(i>=0)this.target.set(s.roots[i*4],s.roots[i*4+1]+.65,s.roots[i*4+2]);
-   else return;
-   this.q.setFromRotationMatrix(this.targetMatrix.lookAt(this.camera.position,this.target,this.worldUp));
-   this.camera.quaternion.slerp(this.q,1-Math.exp(-Math.min(dt,.1)/.18));
-   return;
-  }
-  if(this.mode!=='head'&&this.mode!=='fisheye'){this.staticView();return;}
   const h=i>=0?s.headFrames?.[i]:null,m=meshes.get(id+':head');
-  if(!h||!m?.visible){this.modeInput.value='overview';this.sync();this.staticView();return;}
+  if(!h||!m?.visible){this.select(cornerModes[this.corner]);return;}
   const old=j>=0?prior.headFrames?.[j]:null,parts=s.rigSegments[i],oldParts=j>=0?prior.rigSegments[j]:null;
   const compatible=old&&oldParts&&oldParts.length===parts.length&&s.lifeStates[i]===prior.lifeStates[j]&&parts.every(p=>oldParts.some(q=>q.id===p.id));
   this.orientation(h,this.q);
   if(compatible&&alpha<1){this.orientation(old,this.oldQ);this.q.slerp(this.oldQ,1-alpha);}
   this.up.copy(this.worldUp).applyQuaternion(this.q);
-  // Interpolate the virtual mount only across continuous anatomy. On a
-  // head strike it follows the unstruck rig, not the lunge of the skull.
   this.mount.set(...(h.cameraCenter??h.center));
   if(compatible&&alpha<1)this.mount.lerp(this.previousMount.set(...(old.cameraCenter??old.center)),1-alpha);
   this.camera.position.copy(this.mount).addScaledVector(this.up,h.radius+clearance);
-  this.camera.quaternion.copy(this.q);this.camera.up.copy(this.up);this.projection();
+  this.camera.quaternion.copy(this.q);this.camera.up.copy(this.up);
+  this.project(2*Math.atan(Math.tan(72*DEG)/Math.hypot(this.camera.aspect,1))/DEG,.015);
  }
 }

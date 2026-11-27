@@ -40,6 +40,7 @@ export interface NativeLocation{
  readonly spawnSlots:readonly Vec3[];
  readonly patrol:readonly NativePoint[];
 }
+export const ARENA_WALL_HEIGHT=3.1;
 const CM=.01,HEIGHT=2.8,BORDER=.20;
 const finite=(n:number)=>Number.isFinite(n);
 const box=(p:readonly NativePoint[]):ArenaWall=>{

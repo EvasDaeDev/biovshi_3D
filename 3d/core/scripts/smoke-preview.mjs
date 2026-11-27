@@ -29,8 +29,7 @@ try{
   await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&Number(document.getElementById('stats')?.dataset.tick)>2,{},{timeout:45000});
  }catch(e){throw new Error('Lab startup failed: '+await page.locator('#stats').innerText()+'; browser errors: '+errors.join('; '),{cause:e});}
  assert.equal(await page.locator('canvas').count(),1);
- assert.ok(Number(await page.locator('#stats').getAttribute('data-camera-height'))<=.30);
- assert.ok(Number(await page.locator('#stats').getAttribute('data-foreground-walls'))>0);
+ assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');
  assert.match(await page.locator('#round-clock').textContent(),/^\d+:\d{2}$/);
  await page.waitForFunction(()=>/^\d+ FPS · CPU \d+%.*GPU/.test(document.querySelector('#frame-meter').textContent));
  assert.equal(await page.locator('#patient-hud .patient-card').count(),3);
@@ -44,18 +43,35 @@ try{
  await page.locator('#support-debug').check();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.supportCount)>0);
  await page.locator('#support-debug').uncheck();
- await page.locator('#camera-mode').selectOption('head');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='head'&&document.getElementById('stats')?.dataset.foregroundWalls==='0');
- await page.locator('#camera-fov').selectOption('75');
- await page.locator('#camera-mode').selectOption('follow');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='follow');
- assert.equal(await page.locator('#camera-patient').isEnabled(),true);
+ const mounts=[];
+ for(const n of [1,2,3,4]){
+  await page.keyboard.press('Digit'+n);
+  await page.waitForFunction(number=>document.getElementById('stats')?.dataset.camera==='corner-'+number,n);
+  mounts.push(await page.locator('#stats').evaluate(el=>el.dataset.cameraX+':'+el.dataset.cameraZ));
+ }
+ assert.equal(new Set(mounts).size,4);
  await page.locator('#camera-mode').selectOption('fisheye');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='fisheye');
- assert.equal(await page.locator('#camera-fov').isDisabled(),true);
-
- await page.locator('#camera-mode').selectOption('close');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='close');
+ assert.equal(await page.locator('#camera-patient').isEnabled(),true);
+ await page.locator('#camera-mode').selectOption('free');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='free');
+ await page.locator('#camera-mode').evaluate(el=>el.blur());
+ const xz=()=>page.locator('#stats').evaluate(el=>[Number(el.dataset.cameraX),Number(el.dataset.cameraZ)]);
+ const startCamera=await xz();
+ await page.mouse.move(540,540);
+ await page.mouse.down();
+ await page.mouse.move(610,550,{steps:3});
+ await page.mouse.up();
+ await page.keyboard.down('KeyW');
+ try{
+  await page.waitForFunction(([x,z])=>{const d=document.getElementById('stats').dataset;
+   return Math.hypot(Number(d.cameraX)-x,Number(d.cameraZ)-z)>.08&&d.controlled==='';},startCamera);
+ }finally{await page.keyboard.up('KeyW');}
+ await page.locator('#control-patient').selectOption('1');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='corner-4');
+ assert.equal(await page.locator('#camera-mode option[value="free"]').evaluate(option=>option.disabled),true);
+ await page.locator('#control-patient').selectOption('');
+ await page.locator('#camera-mode').selectOption('corner-1');
  await page.locator('#pause').click();
  await page.waitForFunction(()=>document.getElementById('stats')?.textContent.includes('PAUSED'));
  await page.locator('#reset').click();
@@ -283,8 +299,7 @@ try{
  assert.equal(await page.locator('#stats').getAttribute('data-location'),'annulus');
  assert.equal(await page.locator('#stats').getAttribute('data-patients'),'2');
  assert.equal(await page.locator('#scenario').isVisible(),false);
- assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'2.8');
- assert.ok(Number(await page.locator('#stats').getAttribute('data-foreground-walls'))>0);
+ assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');
  await page.waitForTimeout(500);
  assert.equal(await page.locator('#stats').getAttribute('data-tick'),'0','preparation does not step combat');
  await page.locator('#match-preparation').waitFor({state:'hidden',timeout:15000});

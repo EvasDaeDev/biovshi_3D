@@ -1,4 +1,4 @@
-import type {NativeLocation} from './location-adapter.js';
+import {ARENA_WALL_HEIGHT,type NativeLocation} from './location-adapter.js';
 import type {Vec3} from '../types.js';
 
 export function createRingLocation():NativeLocation{
@@ -10,7 +10,7 @@ export function createRingLocation():NativeLocation{
  const spawnSlots=ringSpawnSlots(8);
  return {
   id:'ring',name:'Ринг · ⌀ 9 м',capacity:8,width:9,depth:9,
-  shape:'circle',boundaryHeight:.30,floorRevision:'9m-v1',boundary,objects:[],walls:[],
+  shape:'circle',boundaryHeight:ARENA_WALL_HEIGHT,floorRevision:'9m-v1',boundary,objects:[],walls:[],
   spawns:spawnSlots,spawnSlots,
   patrol:[{x:0,z:0},...spawnSlots.map(([x,,z])=>({x,z}))],
  };

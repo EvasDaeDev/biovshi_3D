@@ -2,52 +2,67 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {LabCamera} from '../../lab-next/lab-camera.js';
+import {CAMERA_CLEARANCE} from '../../lab-next/arena-camera-layout.js';
+import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 
-test('follow camera rotates toward the selected patient without leaving the close camera position',()=>{
- const camera=new THREE.PerspectiveCamera(65,16/9,.05,60);
- const mode={value:'close'},patient={value:'2'},fov={value:'90'};
- const controller=new LabCamera(THREE,camera,mode,patient,fov);
- controller.setArena({shape:'circle',width:9,depth:9});
- const position=camera.position.clone(),initial=camera.quaternion.clone();
- const target=new THREE.Vector3(-2,1,0);
- const meshes=new Map([['2:chest',{visible:true,position:target}]]);
- const state={fighterIds:[2],roots:[-2,0,0,0]};
- const goal=camera.clone();goal.lookAt(target);
+const catalog=await buildLocationCatalog();
+function setup(arena,aspect=16/9){
+ const camera=new THREE.PerspectiveCamera(65,aspect,.05,60);
+ const controller=new LabCamera(THREE,camera,{value:'corner-1'},{value:'0'});
+ controller.setArena(arena);
+ return {camera,controller};
+}
+const fighter=(x,z)=>[{a:[x,.2,z],b:[x,1.58,z],radius:.12}];
 
- mode.value='follow';mode.onchange();
- controller.update(state,state,1,meshes,0,1/60);
- assert.equal(patient.disabled,false);
- assert.deepEqual(camera.position.toArray(),position.toArray());
- assert.ok(camera.quaternion.angleTo(initial)>0);
- assert.ok(camera.quaternion.angleTo(goal.quaternion)>0.01);
-
- for(let frame=0;frame<60;frame++)controller.update(state,state,1,meshes,0,1/60);
- assert.deepEqual(camera.position.toArray(),position.toArray());
- assert.ok(camera.quaternion.angleTo(goal.quaternion)<.01);
+test('every arena has four distinct unobstructed mounts 3 m above the floor',()=>{
+ for(const arena of Object.values(catalog)){
+  const {camera,controller}=setup(arena),mounts=new Set();
+  assert.equal(arena.boundaryHeight,3.1);
+  for(let i=1;i<=4;i++){
+   controller.select('corner-'+i);
+   const {x,y,z}=camera.position;
+   assert.equal(y,3);
+   assert.ok(controller.navigation.clear({x,z},{x,z},CAMERA_CLEARANCE),arena.id);
+   mounts.add([x,z].join());
+  }
+  assert.equal(mounts.size,4,arena.id);
+ }
 });
 
-test('external cameras stay behind the perimeter and below its top',()=>{
- const camera=new THREE.PerspectiveCamera(65,16/9,.05,60);
- const mode={value:'close'};
- const controller=new LabCamera(THREE,camera,mode,{value:'0'},{value:'90'});
- for(const arena of [{width:9,depth:9,shape:'circle',boundaryHeight:.3},{width:11.18,depth:5.59}]){
-  controller.setArena(arena);
-  const closeDistance=Math.hypot(camera.position.x,camera.position.z);
-  assert.ok(closeDistance>9);
-  assert.ok(camera.position.y<= (arena.boundaryHeight??2.8));
-  mode.value='overview';mode.onchange();
-  assert.ok(Math.hypot(camera.position.x,camera.position.z)>closeDistance);
-  assert.ok(camera.position.y<= (arena.boundaryHeight??2.8));
-  controller.resize(.56);
+test('a corner frames the group in portrait and landscape and follows motion smoothly',()=>{
+ for(const aspect of [.56,16/9]){
+  const {camera,controller}=setup(catalog.ring,aspect);
+  const group=[fighter(-2,1),fighter(1,-2),fighter(2,0)];
+  controller.track(group,1/60);
   camera.updateMatrixWorld();
-  const border=arena.shape==='circle'?
-   Array.from({length:16},(_,i)=>[4.5*Math.cos(i*Math.PI/8),4.5*Math.sin(i*Math.PI/8)]):
-   [-1,1].flatMap(i=>[-1,1].map(j=>[i*arena.width/2,j*arena.depth/2]));
-  for(const [x,z] of border){
-   const point=new THREE.Vector3(x,0,z).project(camera);
-   assert.ok(Math.abs(point.x)<1&&Math.abs(point.y)<1);
+  for(const part of group.flat())for(const p of [part.a,part.b]){
+   const projected=new THREE.Vector3(...p).project(camera);
+   assert.ok(Math.abs(projected.x)<1&&Math.abs(projected.y)<1);
   }
-  controller.resize(16/9);
-  mode.value='close';mode.onchange();
+  const before=camera.quaternion.clone(),mount=camera.position.clone();
+  const moved=[fighter(-1,-2),fighter(-2,0)];
+  controller.track(moved,1/60);
+  const first=before.angleTo(camera.quaternion);
+  for(let i=0;i<100;i++)controller.track(moved,1/60);
+  assert.ok(first>0&&first<before.angleTo(camera.quaternion)/4);
+  assert.deepEqual(camera.position.toArray(),mount.toArray());
  }
+});
+
+test('free camera uses a contained horizontal path and yields to manual control',()=>{
+ const {camera,controller}=setup(catalog.ward);
+ assert.equal(controller.select('free'),false);
+ controller.allowFree(true);
+ assert.equal(controller.select('free'),true);
+ const mount=camera.position.clone();
+ controller.look(50,20);
+ for(let i=0;i<300;i++){
+  controller.move(1,1,1/60);
+  const {x,z}=camera.position;
+  assert.ok(controller.navigation.clear({x,z},{x,z},CAMERA_CLEARANCE-1e-5));
+ }
+ assert.ok(camera.position.distanceTo(mount)>.3);
+ assert.equal(camera.position.y,3);
+ controller.allowFree(false);
+ assert.equal(controller.mode,'corner-1');
 });
