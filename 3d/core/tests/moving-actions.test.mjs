@@ -35,7 +35,9 @@ test('walking and running neck inherits both chest lean and shoulder roll while 
    const thorax=unit(sub(center(chest),part('abdomen').b));
    const chestUp=unit(thorax.map((v,i)=>v-dot(thorax,across)*across[i]));
    assert.ok(dot(unit(sub(neck.b,neck.a)),chestUp)>.999999,'neck must share the chest frame');
-   assert.ok(Math.hypot(...sub(neck.a,center(chest)))<1e-8);
+   const mount=ring.patientPoses.slots.tPose.find(p=>p.id==='neck').offset[1];
+   const expected=center(chest).map((v,i)=>v+chestUp[i]*mount);
+   assert.ok(Math.hypot(...sub(neck.a,expected))<1e-8);
    lean=Math.max(lean,Math.hypot(chestUp[0],chestUp[2]));
    roll=Math.max(roll,Math.abs(across[1]));
    measured++;
@@ -79,13 +81,14 @@ for(const sprint of [false,true]){
 
 for(const [kind,key] of [['arm','KeyJ'],['head','KeyL'],['leg','KeyK']])for(const sprint of [false,true]){
  test(`${kind} strike can land while ${sprint?'approaching at a run':'walking'}`,()=>{
-  const core=start(sprint?2.6:1.3);
+  const core=start(sprint?(kind==='head'?2.6:3):1.3);
+  const press=sprint?(kind==='leg'?35:31):15;
   try{
    let s=core.getSnapshot(),windup,contact;
    for(let tick=0;tick<100&&!contact;tick++){
     const keys=new Set(['KeyW',...(sprint?['ShiftLeft']:[])]);
     // Tap kick once during the run. It should wait for support and still fire.
-    if(sprint&&kind==='leg'?tick===31:tick>=(sprint?31:15))keys.add(key);
+    if(sprint&&kind==='leg'?tick===press:tick>=press)keys.add(key);
     const manual=manualInput(s.fighterIds,s.lifeStates,'0',(...names)=>Number(names.some(k=>keys.has(k))));
     if(!sprint)manual.commands[0].forward=.68;
     const prior=s;s=step(core,manual.commands[0]);
@@ -101,7 +104,7 @@ for(const [kind,key] of [['arm','KeyJ'],['head','KeyL'],['leg','KeyK']])for(cons
    }
    assert.ok(windup&&contact,'expected actual windup and contact');
    assert.equal(contact.event.strikeKind,kind);
-   if(sprint&&kind==='leg')assert.ok(windup.tick>31&&windup.tick<=55);
+   if(sprint&&kind==='leg')assert.ok(windup.tick>press&&windup.tick<=press+24);
    assert.ok(windup.z-contact.z>.025,'movement must continue into actual contact');
   }finally{core.dispose();}
  });

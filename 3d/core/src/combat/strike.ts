@@ -1,3 +1,4 @@
+import {fitSharedAnatomy} from '../rig/shared-anatomy.js';
 import {crouchPunchBase} from './crouch-punch.js';
 import {clampStrikeAim,strikeBearing} from './strike-sector.js';
 import {compensateHead} from '../animation/body-compensation.js';
@@ -114,6 +115,9 @@ export class StrikeState{
 /** Both arm bones drive the distal contact point through IK.
  * Preserve girdle attachment and nominal bone lengths. Aim is locked at start. */
 export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion,weight=1,supportPlant?:Vec3,bodyAlreadyCoordinated=false,crouchManaged=false):readonly PhysicsSegmentPose[]{
+ return fitSharedAnatomy(strikePose(pose,punch,tick,ground,motion,weight,supportPlant,bodyAlreadyCoordinated,crouchManaged),motion?.anatomy);
+}
+function strikePose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,ground:(x:number,z:number)=>number=()=>0,motion?:AuthoredMotion,weight=1,supportPlant?:Vec3,bodyAlreadyCoordinated=false,crouchManaged=false):readonly PhysicsSegmentPose[]{
  weight=Math.max(0,Math.min(1,weight));if(weight===0)return pose;
  const age=strikeAge(punch,tick);if(age<0||age>=W+T+R||age===0)return pose;
  if(punch.prone)return proneStrikePose(pose,punch,age<W?'windup':age<W+T?'thrust':'recover',age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R),ground);
@@ -142,8 +146,8 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
  // mixed attack, solve the arm before the kick's support/COM correction.
  if(coordinated&&punch.secondary&&!bodyAlreadyCoordinated){
   const [primary,secondary]=strikeChannels(punch);
-  const other=punchPose(pose,secondary!,tick,ground,motion,weight,undefined,true);
-  return stabilized(punchPose(other,primary!,tick,ground,motion,weight,supportPlant,true));
+  const other=strikePose(pose,secondary!,tick,ground,motion,weight,undefined,true);
+  return stabilized(strikePose(other,primary!,tick,ground,motion,weight,supportPlant,true));
  }
  if(punch.kind&&punch.kind!=='arm')return stabilized(extraStrikePose(pose,punch,phase,progress,ground,coordinated?load*weight:1,coordinated,weight,supportPlant));
  const key=punch.side+'.',u=pose.find(p=>p.id===key+'upperArm'),l=pose.find(p=>p.id===key+'lowerArm'),h=pose.find(p=>p.id===key+'hand');

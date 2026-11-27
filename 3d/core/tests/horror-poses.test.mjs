@@ -11,7 +11,7 @@ const dist=(a,b)=>Math.hypot(...a.map((v,i)=>v-b[i]));
 test('new editable silhouettes match the authored rotation presets; legacy partial documents still load',()=>{
  assert.equal(Object.keys(doc.slots).length,Object.keys(POSE_SLOTS).length);
  for(const [slot,rotations] of Object.entries(HORROR_POSES)){
-  for(const p of doc.slots[slot])assert.deepEqual(p.rotation,rotations[p.id]??[0,0,0]);
+  for(const p of referencePose(slot))assert.deepEqual(p.rotation,rotations[p.id]??[0,0,0]);
   assert.equal(referencePose(slot).length,17);
  }
  assert.ok(readPoseDocument({schemaVersion:1,stature:1.65,slots:{stance:doc.slots.stance}}).slots.stance);

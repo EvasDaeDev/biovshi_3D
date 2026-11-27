@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../core/dist/rig/shared-anatomy.js';
 import {boneFrame} from '../core/dist/rig/bone-frame.js';
 const sub=(a,b)=>a.map((v,i)=>v-b[i]);
 const add=(a,b)=>a.map((v,i)=>v+b[i]);
@@ -13,20 +14,23 @@ export function capsuleOrientation(axis){
 /** One rigid body, one collider per attached segment. Local endpoints
  * retain the exact relative geometry for rendering after the handoff. */
 export function createCompound(R,world,poses,{groups,linearDamping=.7,angularDamping=1.1,friction=.9}){
- const frames=poses.map(p=>({p,f:boneFrame(p.a,p.b)}));
- const mass=frames.map(({p,f})=>p.radius*p.radius*f.length+4*p.radius**3/3);
+ const frames=poses.map(p=>{
+  const capsule=physicalCapsule(p);
+  return {p,radius:capsule.radius,f:boneFrame(capsule.a,capsule.b)};
+ });
+ const mass=frames.map(({radius,f})=>radius*radius*f.length+4*radius**3/3);
  const total=mass.reduce((a,b)=>a+b,0);
  const origin=[0,1,2].map(i=>frames.reduce((a,{f},j)=>a+f.center[i]*mass[j],0)/total);
  const rb=world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(...origin).setLinearDamping(linearDamping).setAngularDamping(angularDamping));
  const parts=[],colliders=[];
- for(const {p,f} of frames){
-  const center=sub(f.center,origin),shape=f.length>1e-8?R.ColliderDesc.capsule(f.length/2,p.radius):R.ColliderDesc.ball(p.radius);
+ for(const {p,radius,f} of frames){
+  const center=sub(f.center,origin),shape=f.length>1e-8?R.ColliderDesc.capsule(f.length/2,radius):R.ColliderDesc.ball(radius);
   colliders.push(world.createCollider(shape.setTranslation(...center).setRotation(capsuleOrientation(f.y)).setDensity(25).setFriction(friction).setRestitution(0).setCollisionGroups(groups),rb));
-  parts.push({id:p.id,a:sub(p.a,origin),b:sub(p.b,origin),radius:p.radius});
+  parts.push({...p,a:sub(p.a,origin),b:sub(p.b,origin)});
  }
  return {rb,parts,colliders};
 }
 export function compoundPose({rb,parts}){
  const t=rb.translation(),q=rb.rotation(),origin=[t.x,t.y,t.z];
- return parts.map(p=>({id:p.id,a:add(origin,rotate(p.a,q)),b:add(origin,rotate(p.b,q)),radius:p.radius}));
+ return parts.map(p=>({...p,a:add(origin,rotate(p.a,q)),b:add(origin,rotate(p.b,q))}));
 }

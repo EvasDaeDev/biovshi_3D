@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../rig/shared-anatomy.js';
 import type { PhysicsSegmentPose } from '../types.js';
 import type { Mound } from './terrain.js';
 /** Up to four walkable cones for a settled body. Anatomical groups are
@@ -10,7 +11,7 @@ export function bodyTerrain(parts:readonly PhysicsSegmentPose[],baseHeight:(x:nu
   parts.filter(p=>/\.(lowerLeg|foot)$/.test(p.id))
  ];
  return groups.filter(g=>g.length>0).map(g=>{
-  const points=g.flatMap(p=>[{v:p.a,r:p.radius},{v:p.b,r:p.radius}]);
+  const points=g.map(physicalCapsule).flatMap(p=>[{v:p.a,r:p.radius},{v:p.b,r:p.radius}]);
   const x=(Math.min(...points.map(p=>p.v[0]-p.r))+Math.max(...points.map(p=>p.v[0]+p.r)))/2;
   const z=(Math.min(...points.map(p=>p.v[2]-p.r))+Math.max(...points.map(p=>p.v[2]+p.r)))/2;
   const height=Math.max(.001,Math.min(.30,Math.max(...points.map(p=>p.v[1]+p.r-baseHeight(p.v[0],p.v[2])))));

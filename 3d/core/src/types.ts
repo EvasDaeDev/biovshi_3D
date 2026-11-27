@@ -111,7 +111,7 @@ export interface WorldSnapshot {
   readonly rigVersion?: 1 | 2;
   /** World-space presentation frame; null for absent heads or inactive actors. */
   readonly headFrames?: readonly (HeadFrame|null)[];
-  readonly rigSegments?: readonly (readonly {readonly id: SegmentId; readonly a: Vec3; readonly b: Vec3; readonly radius: number}[])[];
+  readonly rigSegments?: readonly (readonly PhysicsSegmentPose[])[];
   readonly tick: number;
   readonly elapsedSeconds: number;
   readonly fighterIds: Uint32Array;
@@ -121,7 +121,7 @@ export interface WorldSnapshot {
   readonly segmentIds: readonly (readonly SegmentId[])[];
 }
 
-export interface PhysicsSegmentPose {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number}
+export interface PhysicsSegmentPose {readonly id:SegmentId;readonly a:Vec3;readonly b:Vec3;readonly radius:number;readonly collider?:{readonly length?:number;readonly radius?:number}}
 
 /** Captured world-space motion at a terminal animation-to-physics handoff. */
 export interface SegmentMotion {readonly id:SegmentId;readonly linear:Vec3;readonly angular:Vec3}

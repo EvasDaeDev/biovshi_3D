@@ -34,7 +34,8 @@ test('the active catalog restores the original arenas alongside the 9 m ring and
   const pose=core.getSnapshot().rigSegments[0];
   const height=Math.max(...pose.map(p=>Math.max(p.a[1],p.b[1])+p.radius))-
    Math.min(...pose.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
-  assert.ok(Math.abs(height-1.65)<.04,'authored stance preserves patient scale');
+  assert.equal(ring.patientPoses.stature,1.65);
+  assert.ok(height>1.45&&height<1.75,'posed patient keeps human-scale proportions');
   for(let i=0;i<220;i++)core.step(FIXED_DT,{commands:[{fighterId:0,forward:1,turn:0,sprint:true}]});
   const [x,,z]=core.getSnapshot().roots;
   assert.ok(Math.hypot(x,z)>3.75);

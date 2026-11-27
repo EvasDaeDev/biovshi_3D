@@ -331,22 +331,25 @@ try{
  await page.locator('#show-bones').check();
  await page.locator('#show-geometry').check();
  await page.locator('#reset-pose').click();
- await page.locator('#pose').selectOption('punch');
  await page.locator('#radius').fill('0.14');
  await page.locator('#radius').press('Tab');
+ await page.locator('#pose').selectOption('punch');
+ assert.ok(await page.locator('#radius').isDisabled());
+ assert.equal(await page.locator('#radius').inputValue(),'0.14');
  await page.locator('#enabled').uncheck();
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='14');
  const downloadPromise=page.waitForEvent('download');
  await page.locator('#export').click();
  const download=await downloadPromise, poseFile=await download.path();
  const exported=JSON.parse(await readFile(poseFile,'utf8'));
- assert.equal(exported.slots.punch.find(part=>part.id==='L.upperArm').radius,.14);
+ assert.equal(exported.slots.tPose.find(part=>part.id==='L.upperArm').radius,.14);
  await page.reload();
  await page.locator('#pose').selectOption('punch');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='14');
  await page.locator('#reset-pose').click();
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
  await page.locator('#import').setInputFiles(poseFile);
+ await page.locator('#pose').selectOption('punch');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='14');
  await page.evaluate(async release=>{
   const {readPoseDraft,POSE_DRAFT_KEY}=await import('/releases/'+release+'/3d/lab-next/pose-draft.js');

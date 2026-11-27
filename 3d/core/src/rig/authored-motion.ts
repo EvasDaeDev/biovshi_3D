@@ -1,3 +1,4 @@
+import {useSharedAnatomy,type SharedAnatomy,type SegmentDimensions} from './shared-anatomy.js';
 import {poseJointAnchor,poseRotation} from './pose-joints.js';
 import type {Vec3} from '../types.js';
 import {LAB_SEGMENTS} from './anatomy.js';
@@ -16,6 +17,7 @@ interface StandingAdjustment {
  readonly feet:readonly [Vec3,Vec3];
 }
 export type AuthoredMotion=Readonly<Partial<Record<PoseSlot,ReadonlyMap<string,RigPose>>>> & {
+ readonly anatomy?:SharedAnatomy;
  readonly torso?:Readonly<Partial<Record<PoseSlot,Pick<StandingAdjustment,'spine'|'thorax'>>>>;
  readonly standing?:Readonly<Partial<Record<'stance'|'aggressive',StandingAdjustment>>>;
 };
@@ -63,9 +65,9 @@ export function compileAuthoredMotion(doc:PoseDocument):AuthoredMotion{
  const standing:Partial<Record<typeof standingSlots[number],StandingAdjustment>>={};
  const delta=(value:number,reference:number)=>Math.atan2(Math.sin(value-reference),Math.cos(value-reference));
  for(const [name,parts] of Object.entries(doc.slots)){
-  const slot=name as PoseSlot,compiled=compileSlot(parts);
-  const defaults=baseline.get(slot)??compileSlot(referencePose(slot));
-  baseline.set(slot,defaults);
+  const slot=name as PoseSlot,compiled=compileSlot(useSharedAnatomy(parts,doc.slots.tPose));
+  const defaults=doc.slots.tPose?compileSlot(useSharedAnatomy(referencePose(slot),doc.slots.tPose)):baseline.get(slot)??compileSlot(referencePose(slot));
+  if(!doc.slots.tPose)baseline.set(slot,defaults);
   result[slot]=compiled.pose;
   torso[slot]={spine:limit(delta(compiled.spine,defaults.spine),Math.PI/3),thorax:limit(delta(compiled.thorax,defaults.thorax),Math.PI/3)};
   if(slot!=='stance'&&slot!=='aggressive')continue;
@@ -77,7 +79,19 @@ export function compileAuthoredMotion(doc:PoseDocument):AuthoredMotion{
   };
   standing[slot]={...torso[slot],neck:neck&&referenceNeck?limit(delta(pitch(neck),pitch(referenceNeck)),Math.PI/3):0,feet:[foot('L.foot'),foot('R.foot')]};
  }
- return {...result,standing,torso};
+ const anatomy=new Map<string,SegmentDimensions>();
+ for(const part of doc.slots.tPose??[]){
+  const nominal=LAB_SEGMENTS.find(segment=>segment.id===part.id)!;
+  const length=part.length/PATIENT_SCALE,radius=part.radius/PATIENT_SCALE;
+  const collider=part.collider?{
+   ...(part.collider.length!==undefined?{length:part.collider.length/PATIENT_SCALE}:{}),
+   ...(part.collider.radius!==undefined?{radius:part.collider.radius/PATIENT_SCALE}:{})
+  }:undefined;
+  const offset=part.offset?.some(value=>Math.abs(value)>1e-7)?times(part.offset,1/PATIENT_SCALE):undefined;
+  if(offset||collider||Math.abs(length-nominal.nominalLength)>1e-7||Math.abs(radius-nominal.radius)>1e-7)
+   anatomy.set(part.id,{length,radius,...(offset?{offset}:{}),...(collider?{collider}:{})});
+ }
+ return {...result,standing,torso,anatomy};
 }
 
 /** Body turn shared by strike preview and the live collision pose. The IK

@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../rig/shared-anatomy.js';
 import { strikeSource,type StrikeKind } from './strike.js';
 import type { PhysicsSegmentPose,Vec3 } from '../types.js';
 import { capsuleContact } from '../collision/capsule-contact.js';
@@ -7,6 +8,7 @@ const lerp=(a:Vec3,b:Vec3,t:number)=>({x:a[0]+(b[0]-a[0])*t,y:a[1]+(b[1]-a[1])*t
  * Sampling (not analytic continuous collision detection) uses relative
  * endpoint displacement and the smaller radius to avoid typical tunnelling. */
 export function sweptContact(a0:PhysicsSegmentPose,a1:PhysicsSegmentPose,b0:PhysicsSegmentPose,b1:PhysicsSegmentPose):number|null{
+ a0=physicalCapsule(a0);a1=physicalCapsule(a1);b0=physicalCapsule(b0);b1=physicalCapsule(b1);
  const motion=Math.max(delta(a0.a,a1.a),delta(a0.b,a1.b))+Math.max(delta(b0.a,b1.a),delta(b0.b,b1.b));
  const samples=Math.min(64,Math.max(1,Math.ceil(motion/Math.max(.005,Math.min(a1.radius,b1.radius)*.35))));
  for(let i=0;i<=samples;i++){
@@ -25,12 +27,14 @@ export function firstStrikeContactDetail(previous:readonly PhysicsSegmentPose[],
  if(!previousPart)return null;
  // A stump can hit only with its rounded distal end.
  const stump=/Arm$|Leg$/.test(source);
- const a0=stump?{...previousPart,a:previousPart.b,radius:previousPart.radius*.72}:previousPart;
- const a=stump?{...currentPart,a:currentPart.b,radius:currentPart.radius*.72}:currentPart;
+ const tip0=physicalCapsule(previousPart),tip1=physicalCapsule(currentPart);
+ const a0=stump?{...tip0,a:tip0.b,radius:tip0.radius*.72}:tip0;
+ const a=stump?{...tip1,a:tip1.b,radius:tip1.radius*.72}:tip1;
  const vp=new Map(victimPrevious.map(p=>[p.id,p]));
  let best:StrikeContactDetail|null=null,time=Infinity;
- for(const b of victimCurrent){
-  const b0=vp.get(b.id);if(!b0)continue;
+ for(const part of victimCurrent){
+  const prev=vp.get(part.id);if(!prev)continue;
+  const b=physicalCapsule(part),b0=physicalCapsule(prev);
   const t=sweptContact(a0,a,b0,b);
   if(t!==null&&t<time){
    time=t;

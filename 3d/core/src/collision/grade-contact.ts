@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../rig/shared-anatomy.js';
 import type {GradeSurface} from '../arena/graded-surface.js';
 import type {RigPose} from '../rig/gait.js';
 import type {Vec3} from '../types.js';
@@ -59,7 +60,8 @@ export function createGradeContact(surface:GradeSurface){
   * edges and their boundaries. Lift the connected rig without stretching it. */
  return (pose:readonly RigPose[],baseY:number):readonly RigPose[]=>{
   let lift=0;
-  for(const {a,b,radius:r} of pose){
+  for(const part of pose){
+   const {a,b,radius:r}=physicalCapsule(part);
    const reverse=sub(a,b),[dx,dy,dz]=reverse;
    for(const plane of planes){
     if(baseY+plane.maxY+r-Math.min(a[1],b[1])<=lift||

@@ -24,8 +24,7 @@ test('ring AI can land a punch and a kick while retaining striking distance',asy
     }
    }
   }
-  for(const kind of ['arm','leg']){
-   assert.ok(contacts[kind].some(c=>c.gap>.82&&c.closing<.24),JSON.stringify(contacts));
-  }
+  assert.ok(contacts.arm.some(c=>c.gap>.82&&c.closing<.24),JSON.stringify(contacts));
+  assert.ok(contacts.leg.some(c=>c.gap>.95&&c.closing<.28),JSON.stringify(contacts));
  }finally{core.dispose();}
 });

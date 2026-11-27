@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../core/dist/rig/shared-anatomy.js';
 import {bodyPool} from './body-pool.js';
 import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {terrainHeight} from '../core/dist/collision/terrain.js';
@@ -20,9 +21,10 @@ export class IncapacitatedBodies{
   for(const [fighterId,b] of this.bodies){
    if(b.settled)continue;
    const parts=this.worldPose(b),rag=b.rag,{sleeping,speed}=ragdollMotion(rag);
-   const near=parts.some(p=>[p.a,p.a.map((v,i)=>(v+p.b[i])*.5),p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],terrain)+.08));
-   const bottom=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
-   const top=Math.max(...parts.map(p=>Math.max(p.a[1],p.b[1])+p.radius));
+   const capsules=parts.map(physicalCapsule);
+   const near=capsules.some(p=>[p.a,p.a.map((v,i)=>(v+p.b[i])*.5),p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],terrain)+.08));
+   const bottom=Math.min(...capsules.map(p=>Math.min(p.a[1],p.b[1])-p.radius));
+   const top=Math.max(...capsules.map(p=>Math.max(p.a[1],p.b[1])+p.radius));
    const pelvis=parts.find(p=>p.id==='pelvis'),chest=parts.find(p=>p.id==='chest');
    const axis=pelvis&&chest?chest.a.map((v,i)=>(v+chest.b[i]-pelvis.a[i]-pelvis.b[i])*.5):null;
    const lying=axis?Math.abs(axis[1])<Math.hypot(...axis)*.45:top-bottom<.90;

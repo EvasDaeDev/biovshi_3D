@@ -1,3 +1,4 @@
+import {fitSharedAnatomy,physicalCapsule} from './rig/shared-anatomy.js';
 import {compileAuthoredMotion,type AuthoredMotion} from './rig/authored-motion.js';
 import type {Vec3} from './types.js';
 import { ArenaNavigation,RouteState } from './arena/navigation.js';
@@ -86,7 +87,10 @@ export class LabSimulationCore implements SimulationCore {
   private scalePoint([x,y,z]:Vec3,scale:number):Vec3{return [x*scale,y*scale,z*scale];}
   private gaitGround(a:Actor){return (x:number,z:number)=>this.ground(a,x*this.patientScale,z*this.patientScale)/this.patientScale;}
   private worldPose(parts:readonly RigPose[],scale=this.patientScale):readonly RigPose[]{
-    return scale===1?parts:parts.map(p=>({...p,a:this.scalePoint(p.a,scale),b:this.scalePoint(p.b,scale),radius:p.radius*scale}));
+    return scale===1?parts:parts.map(p=>({...p,a:this.scalePoint(p.a,scale),b:this.scalePoint(p.b,scale),radius:p.radius*scale,...(p.collider?{collider:{
+      ...(p.collider.length!==undefined?{length:p.collider.length*scale}:{}),
+      ...(p.collider.radius!==undefined?{radius:p.collider.radius*scale}:{})
+    }}:{})}));
   }
   private ground(a:Actor,x:number,z:number):number{return a.baseY+gradeHeight(x,z,this.grade)+terrainHeight(x,z,this.mounds);}
   private navigation=new ArenaNavigation();
@@ -151,7 +155,7 @@ export class LabSimulationCore implements SimulationCore {
     for(const a of this.actors)a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,0,this.gaitGround(a),mobilityFor(a.segments),a.segments);
   }
 
-  private actorPose(a:Actor,nominal=false,withoutStrike=false,withoutCrouch=false):readonly RigPose[]{
+  private actorPose(a:Actor,nominal=false,withoutStrike=false,withoutCrouch=false,rawAnatomy=false):readonly RigPose[]{
     if(a.fixed)return a.physicsPose;
     const standing=a.gait.pose(a.id,this.gaitPoint([a.x,a.y,a.z]),a.yaw,this.tick*FIXED_DT,a.impact.active,a.perception.gaze(a.yaw)-a.yaw,this.authored?.stalk?a.impact.reaction:undefined,a.gazePitch.pitch).filter(p=>a.segments.includes(p.id));
     const amount=a.crouchAmount*a.crouchAmount*(3-2*a.crouchAmount);
@@ -164,13 +168,15 @@ export class LabSimulationCore implements SimulationCore {
     const compatible=visual?.weight===1||a.gait.posture==='upright'&&a.gait.hopPhase!=='flight'&&a.gait.hopPhase!=='prepare';
     const mobile=!!this.authored?.stalk&&this.patientScale!==1&&a.gait.posture==='upright'&&!strike?.prone;
     const support=mobile&&strike?.kind==='leg'&&!strike.pounce?a.gait.footStates[strike.side==='L'?1:0]?.point:undefined;
-    const posed=strike&&visual&&compatible&&(!a.knockdown.blocked||!!strike.prone&&(this.combatFloor(a)||a.knockdown.phase==='rising'))&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,yaw:mobile&&strike.kind!=='leg'?a.yaw:strike.yaw,aim:this.gaitPoint(strike.aim),...(strike.secondary?{secondary:{...strike.secondary,aim:this.gaitPoint(strike.secondary.aim)}}:{})},visual.tick,this.gaitGround(a),this.authored,visual.weight,support,false,true):pose;
+    const striking=strike&&visual&&compatible&&(!a.knockdown.blocked||!!strike.prone&&(this.combatFloor(a)||a.knockdown.phase==='rising'))&&(!this.authored?.stalk||usableStrike(a.segments,strike.kind??'arm',strike.side))?punchPose(pose,{...strike,yaw:mobile&&strike.kind!=='leg'?a.yaw:strike.yaw,aim:this.gaitPoint(strike.aim),...(strike.secondary?{secondary:{...strike.secondary,aim:this.gaitPoint(strike.secondary.aim)}}:{})},visual.tick,this.gaitGround(a),this.authored,visual.weight,support,false,true):undefined;
+    const fitted=striking??(rawAnatomy?pose:fitSharedAnatomy(pose,this.authored?.anatomy));
+    const posed=!rawAnatomy&&this.authored?.anatomy?.size&&a.gait.posture!=='upright'?a.gait.replantGroundPose(fitted,pose,!!striking):fitted;
     if(nominal)return posed;
     const world=this.worldPose(posed);
     return this.gradeContact?.(world,a.baseY)??world;
   }
   private copyPose(parts:readonly PhysicsSegmentPose[]):readonly RigPose[]{
-    return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius}));
+    return parts.map(p=>({id:p.id,a:[...p.a],b:[...p.b],radius:p.radius,...(p.collider?{collider:{...p.collider}}:{})}));
   }
   /** Terminal handoff, used by lab and future damage resolver. An intact
    * anatomy stays intact; incapacitation is not a detachment event. */
@@ -242,10 +248,13 @@ export class LabSimulationCore implements SimulationCore {
        ![...p.a,...p.b].every(Number.isFinite)||
        Math.abs(Math.hypot(p.a[0]-p.b[0],p.a[1]-p.b[1],p.a[2]-p.b[2])-Math.hypot(old.a[0]-old.b[0],old.a[1]-old.b[1],old.a[2]-old.b[2]))>1e-5;
     }))throw new RangeError('Invalid physics pose');
-    a.physicsPose=this.copyPose(parts);a.terrainOnly||=settled;
+    a.physicsPose=this.copyPose(parts.map((part,i)=>{
+      const collider=a.physicsPose[i]?.collider;
+      return collider?{...part,collider}:part;
+    }));a.terrainOnly||=settled;
     const pelvis=parts.find(p=>p.id==='pelvis')??parts[0];
     if(pelvis){a.x=(pelvis.a[0]+pelvis.b[0])/2;a.z=(pelvis.a[2]+pelvis.b[2])/2;
-      a.y=Math.min(...parts.map(p=>Math.min(p.a[1],p.b[1])-p.radius));}
+      a.y=Math.min(...a.physicsPose.map(physicalCapsule).map(p=>Math.min(p.a[1],p.b[1])-p.radius));}
   }
   private oilRandom():number{
     this.oilRng=(Math.imul(this.oilRng,1664525)+1013904223)>>>0;
@@ -382,12 +391,12 @@ export class LabSimulationCore implements SimulationCore {
     const nearest=targets.reduce<Actor|undefined>((best,b)=>!best||Math.hypot(b.x-a.x,b.z-a.z)<Math.hypot(best.x-a.x,best.z-a.z)?b:best,undefined);
     const kind=input?.attackKind??'arm';
     if(nearest&&!a.groundStrikeUsed&&a.strike.ready(this.tick)&&(input?input.attack&&kind!=='leg':a.distress.snapshot().mode!=='prey')){
-      const base=this.worldPose(this.actorPose(a,false,true),1/this.patientScale);
+      const base=this.worldPose(this.actorPose(a,false,true,false,true),1/this.patientScale);
       const victim=this.worldPose(this.actorPose(nearest),1/this.patientScale),ground=this.gaitGround(a);
       const eligible=(id:string)=>nearest.health.canDamage(id,this.tick);
       let actualKind:'arm'|'head'=kind==='head'?'head':'arm';
-      let choice=chooseProneStrike(base,ids,victim,a.yaw,eligible,actualKind,ground,a.strike.attempts+a.id);
-      if(!choice&&!input){actualKind='head';choice=chooseProneStrike(base,ids,victim,a.yaw,eligible,actualKind,ground,a.id);}
+      let choice=chooseProneStrike(base,ids,victim,a.yaw,eligible,actualKind,ground,a.strike.attempts+a.id,false,this.authored);
+      if(!choice&&!input){actualKind='head';choice=chooseProneStrike(base,ids,victim,a.yaw,eligible,actualKind,ground,a.id,false,this.authored);}
       if(choice){
         const yaw=a.yaw,offset=(falling?.20:.09)*(this.random()*2-1);
         const aim=this.scalePoint([choice.aim[0]+Math.cos(yaw)*offset,choice.aim[1],choice.aim[2]+Math.sin(yaw)*offset],this.patientScale);
@@ -676,7 +685,7 @@ export class LabSimulationCore implements SimulationCore {
         &&(incoming.targetId===a.id||incoming.secondary?.targetId===a.id);
       if(!a.gait.recoveringSupport&&!timingGap&&unobstructed&&seen&&allowed&&!retreat&&!deliberateHold&&!a.impact.active&&(command?.attack??!command)&&(!command?.jump||!mobileStrikes||pounceReady)&&Math.abs(turn)<=(mobileStrikes&&!prone?SIDE_STRIKE_LIMIT:.65)&&distance<previewRange&&a.strike.ready(this.tick)&&(!!command||a.behavior.ready(this.tick))){
         checkedStrikeGeometry=true;
-        const pose=this.worldPose(this.actorPose(a,false,true,true),1/this.patientScale),victim=this.worldPose(this.actorPose(target),1/this.patientScale),eligible=(id:string)=>target.health.canDamage(id,this.tick);
+        const pose=this.worldPose(this.actorPose(a,false,true,true,true),1/this.patientScale),victim=this.worldPose(this.actorPose(target),1/this.patientScale),eligible=(id:string)=>target.health.canDamage(id,this.tick);
         const ground=this.gaitGround(a);
         const startAttack=(kind:StrikeKind,best:PunchChoice):boolean=>{
           let secondary:StrikeChannel|undefined;
@@ -708,7 +717,7 @@ export class LabSimulationCore implements SimulationCore {
           if(needsPlant&&mobileStrikes&&!manualMovingKick&&!(horror&&distance>1)&&mobility.mode!=='single-support')continue;
           if(needsPlant&&!horror&&!(this.authored?.stalk&&command?.attackKind==='leg')&&(!lowVictim||command))continue;
           const score=horror&&!prone?(c:PunchChoice)=>attackScore(kind,c,opportunity)+(kind==='leg'&&distance>1?.28:0)+a.variety.adjustment(kind,c)+(raiding?a.raid.strikePreference(kind):0)+(c.crouch?(lowVictim?.65:.12):0)+(c.pounce?.35:0):undefined;
-          let best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id,horror):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground,score,false,horror):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim,score,horror||mobileStrikes&&kind==='head'&&!command?.sprint);
+          let best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id,horror,this.authored):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground,score,false,horror):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim,score,horror||mobileStrikes&&kind==='head'&&!command?.sprint);
           if(a.crouchAmount>.01)best=null;
           if(kind==='arm'&&mobileStrikes&&mobility.mode==='biped'&&distance<1.15&&a.gait.hopPhase==='idle'){
             const crouched=choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground,score,true,horror);
@@ -959,7 +968,7 @@ export class LabSimulationCore implements SimulationCore {
     const hits:SegmentContact[] = [];
     const combatBalance=this.combat&&this.ringCombat&&!!this.authored?.stalk&&!this.fightEnded;
     const before=this.dynamicBalance||combatBalance?this.actors.map(a=>[a.x,a.z] as const):[];
-    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a),this.fracture?hits:undefined,this.combat,this.navigation instanceof PolygonNavigation||this.navigation.walls.length?(a,x,z)=>this.navigation.move(a,{x,z}):undefined);
+    this.collisionStats = resolveCollisions(this.actors.filter(a=>!a.terrainOnly),a=>this.actorPose(a).map(physicalCapsule),this.fracture?hits:undefined,this.combat,this.navigation instanceof PolygonNavigation||this.navigation.walls.length?(a,x,z)=>this.navigation.move(a,{x,z}):undefined);
     if(this.dynamicBalance||combatBalance)for(let i=0;i<this.actors.length;i++){
       const a=this.actors[i]!,old=before[i]!,displacement=Math.hypot(a.x-old[0],a.z-old[1]),mobility=mobilityFor(a.segments);
       if(a.fixed||displacement<KNOCKDOWN.softDisplacement||a.knockdown.blocked||mobility.prone||(a.gait.hopHeight>.025||a.gait.runningAirborne))continue;
@@ -975,7 +984,7 @@ export class LabSimulationCore implements SimulationCore {
        const parts=full.filter(p=>a.segments.includes(p.id));
       const world=this.worldPose(parts);
       const support=analyzeSupport(this.gradeContact?.(world,a.baseY)??world,(x,z)=>this.ground(a,x,z));
-      const onset=this.authored?.stalk&&this.patientScale!==1&&!mobility.prone?(parts.length===full.length?this.actorPose(a,true):full):null;
+      const onset=this.authored?.stalk&&this.patientScale!==1&&!mobility.prone?(parts.length===full.length?this.actorPose(a,true,false,false,true):full):null;
       if(combatBalance)this.startCombatFall(a,a.x-old[0],a.z-old[1],displacement,support.margin);
       else if(a.knockdown.observe(displacement,support.margin,true)){
         if(onset)a.gait.beginKnockdown(root,onset);
@@ -1024,7 +1033,7 @@ export class LabSimulationCore implements SimulationCore {
       const celebratory=victoryPose(this.worldPose(pose,1/this.patientScale),a.yaw,elapsed,this.gaitGround(a));
       return this.copyPose(this.worldPose(celebratory));
     });
-    const supports=rigSegments.map((parts,i)=>analyzeSupport(parts,(x,z)=>this.ground(this.actors[i]!,x,z)));
+    const supports=rigSegments.map((parts,i)=>analyzeSupport(parts.map(physicalCapsule),(x,z)=>this.ground(this.actors[i]!,x,z)));
     return {tick:this.tick,elapsedSeconds:this.tick*FIXED_DT,fighterIds,roots,
       segmentIds:this.actors.map(a=>Object.freeze([...a.segments])),
       mobilityModes:this.actors.map(a=>mobilityFor(a.segments).mode),

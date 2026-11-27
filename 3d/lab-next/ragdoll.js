@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../core/dist/rig/shared-anatomy.js';
 import {HANDOFF_LIMITS} from '../core/dist/animation/handoff-motion.js';
 import {LAB_SEGMENTS} from '../core/dist/rig/anatomy.js';
 import {createCompound,compoundPose} from './compound.js';
@@ -76,7 +77,8 @@ export function createRagdoll(R,world,pose,direction,slot=-1,motion=[]){
   let mass=0;const linear=[0,0,0],angular=[0,0,0];
   for(const p of node.parts){
    const m=inherited.get(p.id);if(!m)continue;
-   const w=p.radius*p.radius*Math.hypot(...sub(p.b,p.a))+4*p.radius**3/3;
+   const {a,b,radius}=physicalCapsule(p);
+   const w=radius*radius*Math.hypot(...sub(b,a))+4*radius**3/3;
    mass+=w;
    for(let i=0;i<3;i++){linear[i]+=m.linear[i]*w;angular[i]+=m.angular[i]*w;}
   }

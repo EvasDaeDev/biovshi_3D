@@ -1,3 +1,4 @@
+import {useSharedAnatomy} from '../core/dist/rig/shared-anatomy.js';
 import {poseJointAnchor} from '../core/dist/rig/pose-joints.js';
 import {createSegmentVisual} from './segment-visual.js';
 import {POSE_DRAFT_KEY,readPoseDraft} from './pose-draft.js';
@@ -39,7 +40,8 @@ const defaults=await loadDefaults().catch(error=>{
  status.textContent=error.message;
  throw error;
 });
-const current=()=>data.slots[poseSelect.value]??defaults[poseSelect.value];
+const source=()=>data.slots[poseSelect.value]??defaults[poseSelect.value];
+const current=()=>useSharedAnatomy(source(),data.slots.tPose??defaults.tPose);
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x101715);
@@ -211,12 +213,15 @@ function refresh(){
  const part=current().find(p=>p.id===segmentSelect.value);
  const {protected:mandatory,nominalLength}=LAB_SEGMENTS.find(p=>p.id===part.id);
  enabled.checked=part.enabled;enabled.disabled=mandatory;
- lengthInput.value=part.length;lengthInput.disabled=nominalLength===0;
- radius.value=part.radius;
+ const anatomyView=poseSelect.value==='tPose';
+ lengthInput.value=part.length;lengthInput.disabled=!anatomyView||nominalLength===0;
+ radius.value=part.radius;radius.disabled=!anatomyView;
  const r=part.collider?.radius??part.radius,l=part.collider?.length??part.length;
  colliderRadius.value=Number(r.toFixed(4));colliderLength.value=Number(l.toFixed(4));
- colliderLength.disabled=nominalLength===0;
- element('reset-collider').disabled=!part.collider;
+ colliderRadius.disabled=!anatomyView;
+ colliderLength.disabled=!anatomyView||nominalLength===0;
+ element('reset-collider').disabled=!anatomyView||!part.collider;
+ element('anatomy-hint').hidden=anatomyView;
  element('collider-span').value=(l+2*r).toLocaleString('ru-RU',{maximumFractionDigits:3})+' м';
  for(const {field,index,input} of coordinates){
   input.value=String(Number(part[field][index].toFixed(4)));
@@ -237,7 +242,7 @@ function edit(patch){
 function editParts(update){
  const slot=poseSelect.value;
  try{
-  const parts=update(current());
+  const parts=update(source());
   data=readPoseDocument({...data,slots:{...data.slots,[slot]:parts}});
   save('Черновик сохранён. Правки применятся при новом раунде или перезапуске стенда.');
  }catch(error){status.textContent=error.message;}

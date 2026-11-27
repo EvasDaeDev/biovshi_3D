@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../rig/shared-anatomy.js';
 import type {Vec3} from '../types.js';
 import type {RigPose} from '../rig/gait.js';
 import {solveTwoBone} from '../rig/two-bone.js';
@@ -19,11 +20,12 @@ export function braceFall(pose:readonly RigPose[],grounded:readonly RigPose[],br
  const weight=ease(amount/.35)*ease((1-amount)/.25);
  if(weight===0)return pose;
  const x=rest.a[0]+brace.direction[0]*.12,z=rest.a[2]+brace.direction[2]*.12;
- const target:Vec3=[x,ground(x,z)+hand.radius,z];
+ const handRadius=physicalCapsule(hand).radius,lowerRadius=physicalCapsule(lower).radius;
+ const target:Vec3=[x,ground(x,z)+handRadius,z];
  const reach=mix(hand.a,target,weight);
  const pole:Vec3=[-brace.direction[0],1,-brace.direction[2]];
- const solution=solveTwoBone(upper.a,reach,.36,.32,pole);
- if(solution.end[1]<ground(solution.end[0],solution.end[2])+hand.radius-.005||
-    solution.joint[1]<ground(solution.joint[0],solution.joint[2])+lower.radius-.005)return pose;
+ const solution=solveTwoBone(upper.a,reach,Math.hypot(...upper.b.map((v,i)=>v-upper.a[i]!)),Math.hypot(...lower.b.map((v,i)=>v-lower.a[i]!)),pole);
+ if(solution.end[1]<ground(solution.end[0],solution.end[2])+handRadius-.005||
+    solution.joint[1]<ground(solution.joint[0],solution.joint[2])+lowerRadius-.005)return pose;
  return pose.map(p=>p===upper?{...p,b:solution.joint}:p===lower?{...p,a:solution.joint,b:solution.end}:p===hand?{...p,a:solution.end,b:solution.end}:p);
 }

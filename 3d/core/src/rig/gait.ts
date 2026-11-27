@@ -1,3 +1,4 @@
+import {physicalCapsule} from './shared-anatomy.js';
 import {braceFall,type FallBrace} from '../animation/fall-brace.js';
 import {compensateHead} from '../animation/body-compensation.js';
 import {POUNCE} from './pounce-timing.js';
@@ -10,7 +11,7 @@ import type {AuthoredMotion} from './authored-motion.js';
 import {BASE_MOTION_PROFILE,type MotionProfile} from '../animation/motion-profile.js';
 import {LocomotionMotion,organicSwing} from '../animation/locomotion-motion.js';
 import {EXPRESSION_SLOTS,PoseTransition,type ExpressionSlot} from '../animation/pose-transition.js';
-import type { Vec3 } from '../types.js';
+import type { PhysicsSegmentPose,Vec3 } from '../types.js';
 import { solveTwoBone } from './two-bone.js';
 import { LAB_SEGMENTS } from './anatomy.js';
 import { mobilityFor, type Mobility } from './mobility.js';
@@ -29,7 +30,7 @@ const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 const dist=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 interface Foot { plant:Vec3; start:Vec3; target:Vec3; phase:number; moving:boolean; duration:number; lift:number; running?:boolean }
-export interface RigPose { readonly id:string; readonly a:Vec3; readonly b:Vec3; readonly radius:number }
+export type RigPose=PhysicsSegmentPose;
 export class PatientGait {
   private sprintCycle=false;private sprintBob=0;private sprintSlow=0;
   get running():boolean{return this.sprintCycle;}
@@ -364,8 +365,15 @@ export class PatientGait {
   }
   plantedBrace(pose:readonly RigPose[]):boolean{
     if(!this.fallBrace||this.proneAmount<.25||this.proneAmount>.85)return false;
-    const hand=pose.find(p=>p.id===this.fallBrace!.side+'.hand');
-    return !!hand&&Math.abs(hand.a[1]-hand.radius-this.ground(hand.a[0],hand.a[2]))<.018;
+    const part=pose.find(p=>p.id===this.fallBrace!.side+'.hand');
+    if(!part)return false;
+    const hand=physicalCapsule(part);
+    return Math.abs(hand.a[1]-hand.radius-this.ground(hand.a[0],hand.a[2]))<.018;
+  }
+  replantGroundPose(pose:readonly RigPose[],raw:readonly RigPose[],groundedCounter:boolean):readonly RigPose[]{
+    if(this.proneAmount===0)return pose;
+    const braced=this.knockdownMotion&&!this.knockdownRising?this.bracedFall(pose,raw):pose;
+    return groundedCounter?braced:this.anchors.apply(braced,this.mobility,this.ground,this.downAnchorWeight||undefined);
   }
   private bracedFall(pose:readonly RigPose[],grounded:readonly RigPose[]):readonly RigPose[]{
     const brace=this.fallBrace;
@@ -397,8 +405,10 @@ export class PatientGait {
     for(const [index,slot] of EXPRESSION_SLOTS.entries()){
       if(slot==='stance')continue;
       const edit=torsoEdits?.[slot];
-      spineEdit+=(edit?.spine??0)*weights[index]!;
-      thoraxEdit+=(edit?.thorax??0)*weights[index]!;
+      if(!edit)continue;
+      const weight=weights[index]!*.5;
+      spineEdit+=(edit.spine-(torsoEdits?.stance?.spine??0))*weight;
+      thoraxEdit+=(edit.thorax-(torsoEdits?.stance?.thorax??0))*weight;
     }
     const neckEdit=(edits?.stance?.neck??0)*(1-ready)+(edits?.aggressive?.neck??0)*ready;
     const spinePitch=(10+5*ready)*Math.PI/180;
@@ -431,7 +441,9 @@ export class PatientGait {
     // Apply the edited sagittal angle after blending authored slots with
     // the procedural pose. Standing, moving and airborne poses share it.
     const tiltDirection=(v:Vec3,amount:number):Vec3=>{
-      const angle=Math.max(-1.10,Math.min(1.10,Math.atan2(-v[2],v[1])+amount));
+      const raw=Math.atan2(-v[2],v[1])+amount;
+      const excess=Math.max(0,Math.abs(raw)-.75);
+      const angle=excess?Math.sign(raw)*(.75+.67*Math.tanh(excess/.67)):raw;
       const length=Math.hypot(v[1],v[2]);
       return [v[0],length*Math.cos(angle),-length*Math.sin(angle)];
     };

@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../core/dist/rig/shared-anatomy.js';
 import {createCompound,compoundPose,capsuleOrientation} from './compound.js';
 import {bodyTerrain} from '../core/dist/collision/body-terrain.js';
 import {IncapacitatedBodies} from './incapacitated.js';
@@ -104,20 +105,22 @@ export class DebrisWorld {
   const q=n>1e-8?{x:z/n,y:0,z:-x/n,w:(1+y)/n}:{x:1,y:0,z:0,w:0};
   const length=f.length>1e-8?f.length:0;
   const rb=this.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(...f.center).setRotation(q).setLinearDamping(.6).setAngularDamping(1.25));
-  const shape=length?R.ColliderDesc.capsule(length/2,p.radius):R.ColliderDesc.ball(p.radius);
-  this.world.createCollider(shape.setMass(clamp(.9+length*2.1,.9,2.8)).setFriction(.8).setRestitution(0).setCollisionGroups(0x00020005),rb);
+  const capsule=physicalCapsule(p),colliderLength=boneFrame(capsule.a,capsule.b).length,colliderRadius=capsule.radius;
+  const shape=colliderLength>1e-8?R.ColliderDesc.capsule(colliderLength/2,colliderRadius):R.ColliderDesc.ball(colliderRadius);
+  this.world.createCollider(shape.setMass(clamp(.9+colliderLength*2.1,.9,2.8)).setFriction(.8).setRestitution(0).setCollisionGroups(0x00020005),rb);
   const id=this.nextId++,angle=(id+event.fighterId*17+event.tick*.13)*2.399963;
   rb.setLinvel({x:Math.cos(angle)*.46,y:.20,z:Math.sin(angle)*.46},true);
   rb.setAngvel({x:Math.cos(angle),y:.4,z:Math.sin(angle)},true);
-  this.items.push({id,rb,length,radius:p.radius,segmentId:p.id,fighterId:event.fighterId,age:0,still:0});
+  this.items.push({id,rb,length,colliderLength,colliderRadius,radius:p.radius,segmentId:p.id,fighterId:event.fighterId,age:0,still:0});
  }
  /** Keep thrown capsules inside the convex footprint, including above low rails.
   * Preserve the branch geometry and remove only outward linear velocity. */
  containThrow(branch,parts){
   let dx=0,dz=0;const v=branch.rb.linvel();let vx=v.x,vz=v.z;
+  const capsules=parts.map(physicalCapsule);
   for(let pass=0;pass<3;pass++)for(const p of this.throwPlanes){
    let gap=Infinity;
-   for(const part of parts)for(const q of [part.a,part.b])gap=Math.min(gap,p.x*(q[0]+dx)+p.z*(q[2]+dz)-p.c-part.radius);
+   for(const part of capsules)for(const q of [part.a,part.b])gap=Math.min(gap,p.x*(q[0]+dx)+p.z*(q[2]+dz)-p.c-part.radius);
    if(gap>=.005)continue;
    const shift=.005-gap;dx+=p.x*shift;dz+=p.z*shift;
    const outward=p.x*vx+p.z*vz;if(outward<0){vx-=p.x*outward;vz-=p.z*outward;}
@@ -132,7 +135,7 @@ export class DebrisWorld {
   for(const b of this.branches){
    if(b.settled)continue;
    const raw=compoundPose(b),parts=b.thrown?this.containThrow(b,raw):raw,v=b.rb.linvel(),w=b.rb.angvel();
-   const near=parts.some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],this.moundSnapshot())+.06));
+   const near=parts.map(physicalCapsule).some(p=>[p.a,p.b].some(q=>q[1]-p.radius<=this.baseHeight(q[0],q[2])+terrainHeight(q[0],q[2],this.moundSnapshot())+.06));
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.4;
    b.age++;b.still=near&&(b.rb.isSleeping()||speed<.16)?b.still+1:0;
    if(b.still<60&&!(b.age>720&&near))continue;
@@ -146,11 +149,11 @@ export class DebrisWorld {
   for(let i=this.items.length-1;i>=0;i--){
    const d=this.items[i],t=d.rb.translation(),q=d.rb.rotation(),v=d.rb.linvel(),w=d.rb.angvel();
    const speed=Math.hypot(v.x,v.y,v.z)+Math.hypot(w.x,w.y,w.z)*.12;
-   const bottom=t.y-(capsuleVerticalHalfExtent(d.length,d.radius,q));
+   const bottom=t.y-(capsuleVerticalHalfExtent(d.colliderLength,d.colliderRadius,q));
    const nearGround=bottom<=this.baseHeight(t.x,t.z)+terrainHeight(t.x,t.z,this.moundSnapshot())+.045;
    d.age++;d.still=(speed<.20&&(nearGround||d.rb.isSleeping()))?d.still+1:0;
    if(d.still>=60||(d.age>720&&nearGround)){
-    const m=moundDimensions(t.x,t.z,d.length,d.radius,t.y-this.baseHeight(t.x,t.z),q),R=this.R;
+    const m=moundDimensions(t.x,t.z,d.colliderLength,d.colliderRadius,t.y-this.baseHeight(t.x,t.z),q),R=this.R;
     // Keep the exact visible segment pose independently of its collider.
     this.settledSingles.push({id:d.id,length:d.length,radius:d.radius,segmentId:d.segmentId,fighterId:d.fighterId,settled:true,position:{...t},rotation:{...q}});
     this.world.removeRigidBody(d.rb);

@@ -1,3 +1,4 @@
+import {physicalCapsule} from './shared-anatomy.js';
 import type { Vec3 } from '../types.js';
 import type { RigPose } from './gait.js';
 import type { Mobility } from './mobility.js';
@@ -8,7 +9,11 @@ type Side='L'|'R';
 export interface CrawlAnchor {readonly segmentId:string;readonly phase:'recover'|'plant';readonly point:Vec3;readonly valid:boolean}
 interface Arm {phase:'recover'|'plant';age:number;from:Vec3;target:Vec3;point:Vec3;count:number}
 const sides=['L','R'] as const;
-const radius=.083;
+const defaultRadius=.083;
+const supportRadius=(pose:readonly RigPose[],side:Side,count:number)=>{
+ const part=pose.find(p=>p.id===segmentId(side,count));
+ return part?physicalCapsule(part).radius:defaultRadius;
+};
 const distance=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 const endpoint=(pose:readonly RigPose[],side:Side)=>pose.find(p=>p.id===side+'.lowerArm')!.b;
 const segmentId=(side:Side,count:number)=>side+(count===3?'.hand':'.lowerArm');
@@ -28,6 +33,7 @@ export class CrawlAnchors {
   for(let i=0;i<2;i++){
    const side=sides[i]!,count=mobility.arms[i]??0;
    if(count<2){this.arms[i]=null;continue;}
+   const radius=supportRadius(pose,side,count);
    const current=endpoint(pose,side),shoulder=pose.find(p=>p.id===side+'.upperArm')!.a;
    const landing=():Vec3=>{
     const reach=this.timing.reach+Math.min(this.organic?.10:.07,Math.abs(speed)*MOVEMENT.stepLeadSeconds);
@@ -72,8 +78,9 @@ export class CrawlAnchors {
    const a=this.arms[i],side=sides[i]!;
    if(!a||a.count!==mobility.arms[i])continue;
    const u=index.get(side+'.upperArm')!,l=index.get(side+'.lowerArm')!,h=index.get(side+'.hand')!,upper=result[u]!,lower=result[l]!,hand=result[h]!;
-   const end=lower.b;
-   const target:Vec3=weight===1?a.point:[end[0]+(a.point[0]-end[0])*weight,end[1]+(a.point[1]-end[1])*weight,end[2]+(a.point[2]-end[2])*weight];
+   const end=lower.b,radius=supportRadius(pose,side,a.count);
+   const point:Vec3=a.phase==='plant'?[a.point[0],ground(a.point[0],a.point[2])+radius,a.point[2]]:a.point;
+   const target:Vec3=weight===1?point:[end[0]+(point[0]-end[0])*weight,end[1]+(point[1]-end[1])*weight,end[2]+(point[2]-end[2])*weight];
    // A hand can pass directly below its shoulder when reaching backward.
    // Keep the elbow outside the chest axis so the pole stays well-defined.
    const outward=(i===0?-1:1)*weight*.6;
@@ -82,11 +89,11 @@ export class CrawlAnchors {
     (lower.a[1]-upper.a[1])*(1-weight)+weight*.36,
     (lower.a[2]-upper.a[2])*(1-weight)+outward*(chest.b[2]-chest.a[2])
    ]:[0,1,0];
-   const ik=solveTwoBone(upper.a,target,.36,.32,bend);
+   const ik=solveTwoBone(upper.a,target,distance(upper.a,upper.b),distance(lower.a,lower.b),bend);
    const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end},ph={...hand,a:ik.end,b:ik.end};
    // Never gain a plant by penetrating terrain; keep the corrected base pose
    // if the candidate chain cannot fit. A later swing can replant it.
-   if(!clear(pu,ground)||!clear(pl,ground)||(a.count===3&&!clear(ph,ground)))continue;
+   if(!clear(physicalCapsule(pu),ground)||!clear(physicalCapsule(pl),ground)||(a.count===3&&!clear(physicalCapsule(ph),ground)))continue;
    result[u]=pu;result[l]=pl;result[h]=ph;
   }
   return result;
@@ -97,8 +104,10 @@ export class CrawlAnchors {
    const a=this.arms[i],side=sides[i]!;
    if(!a||a.count!==mobility.arms[i])continue;
    const lower=pose.find(p=>p.id===side+'.lowerArm');if(!lower||!pose.some(p=>p.id===segmentId(side,a.count)))continue;
-   const end=lower.b,valid=a.phase==='plant'&&distance(end,a.point)<.002&&Math.abs(end[1]-radius-ground(end[0],end[2]))<.002;
-   out.push({segmentId:segmentId(side,a.count),phase:a.phase,point:[...a.point],valid});
+   const end=lower.b,radius=supportRadius(pose,side,a.count);
+   const point:Vec3=a.phase==='plant'?[a.point[0],ground(a.point[0],a.point[2])+radius,a.point[2]]:a.point;
+   const valid=a.phase==='plant'&&distance(end,point)<.002;
+   out.push({segmentId:segmentId(side,a.count),phase:a.phase,point:[...point],valid});
   }
   return out;
  }

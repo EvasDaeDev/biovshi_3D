@@ -1,3 +1,4 @@
+import {physicalCapsule} from '../rig/shared-anatomy.js';
 import type {PhysicsSegmentPose,Vec3} from '../types.js';
 import {FIXED_DT} from '../fixed-clock.js';
 import {DAMAGE,type HealthSnapshot} from './damage.js';
@@ -53,11 +54,12 @@ export class LimbFlight{
   * accuracy roll, only from the first physical interception. */
  advance(targets:readonly {id:number;previous:readonly PhysicsSegmentPose[];current:readonly PhysicsSegmentPose[]}[],clear:(a:Vec3,b:Vec3,pad?:number)=>boolean,ground:(x:number,z:number)=>number){
   const from=this.age,to=from+FIXED_DT,old=this.pose(from),next=this.pose(to);
+  const previousCapsules=old.map(physicalCapsule),capsules=next.map(physicalCapsule);
   let stop=1,ended=false,hit:{fighterId:number;segmentId:string;point:Vec3}|null=null;
   // Check full swept capsule clearance before handing off to physical debris.
-  const blocked=!clear(this.center(from),this.center(to))||next.some((p,i)=>!clear(old[i]!.a,p.a,p.radius)||!clear(old[i]!.b,p.b,p.radius)||!clear(p.a,p.b,p.radius));
+  const blocked=!clear(this.center(from),this.center(to))||capsules.some((p,i)=>!clear(previousCapsules[i]!.a,p.a,p.radius)||!clear(previousCapsules[i]!.b,p.b,p.radius)||!clear(p.a,p.b,p.radius));
   if(blocked){stop=0;ended=true;}
-  if(!ended&&next.some(p=>[p.a,p.b].some(v=>v[1]-p.radius<=ground(v[0],v[2])))){ended=true;stop=1;}
+  if(!ended&&capsules.some(p=>[p.a,p.b].some(v=>v[1]-p.radius<=ground(v[0],v[2])))){ended=true;stop=1;}
   if(stop>0){
    for(const b of targets){
     if(b.id===this.owner)continue;
