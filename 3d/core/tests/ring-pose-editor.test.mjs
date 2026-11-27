@@ -71,9 +71,20 @@ test('published legacy arena outlines and obstacles have 25% more area',async()=
   assert.ok(Math.abs(area(arena.boundary)/area(original.boundary)-1.25)<1e-10,id);
   const freeArea=location=>area(location.boundary)-location.objects.reduce((sum,object)=>sum+area(object.points),0);
   assert.ok(Math.abs(freeArea(arena)/freeArea(original)-1.25)<1e-10,id);
-  for(const [i,[x,y,z]] of arena.spawnSlots.entries()){
-   assert.deepEqual([x,y,z],original.spawnSlots[i].map((n,axis)=>axis===1?n:n*Math.sqrt(1.25)));
-   assert.ok(nav.clear({x,z},{x,z},.5),id);
+  assert.deepEqual(arena.spawns,original.spawns.map(point=>point.map((n,axis)=>axis===1?n:n*Math.sqrt(1.25))));
+  assert.equal(arena.spawnSlots.length,arena.capacity,id);
+  const corners=[[1,1],[-1,-1],[-1,1],[1,-1]];
+  for(const [i,[x,,z]] of arena.spawnSlots.entries()){
+   assert.ok(nav.clear({x,z},{x,z},.65),id);
+   assert.ok(arena.spawnSlots.slice(0,i).every(([a,,b])=>Math.hypot(x-a,z-b)>=1),id);
+   if(i<4){
+    assert.deepEqual([Math.sign(x),Math.sign(z)],corners[i],id);
+    assert.ok(Math.abs(x)>arena.width/5&&Math.abs(z)>arena.depth/5,id);
+   }
   }
+  const config=createAuthoredCombatConfig(7,arena,2);
+  assert.equal(config.patientScale,createAuthoredCombatConfig(7,published.ring,2).patientScale);
+  for(const {origin:[x,,z],yawRad} of config.fighters)
+   assert.ok(x*Math.sin(yawRad)-z*Math.cos(yawRad)>0,id);
  }
 });

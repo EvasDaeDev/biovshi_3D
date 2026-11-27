@@ -36,7 +36,7 @@ export interface NativeLocation{
  readonly walls:readonly ArenaWall[];
  readonly terrain?:{readonly revision:string;readonly triangles:GradeSurface};
  readonly spawns:readonly Vec3[];
- /** All original validator slots, up to authored capacity (including 10). */
+ /** Validated round starts in participant order, up to arena capacity. */
  readonly spawnSlots:readonly Vec3[];
  readonly patrol:readonly NativePoint[];
 }

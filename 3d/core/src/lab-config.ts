@@ -22,7 +22,7 @@ export function createNavigationCombatConfig(seed:number):WorldConfig{
  return {...createArenaCombatConfig(seed,true,true),walls:[{minX:-.28,maxX:.28,minZ:-.65,maxZ:.65,height:2.8}]};
 }
 
-/** Reuses P3 profiles/anatomy and the *original* v1 safe spawn slots.
+/** Reuses P3 profiles/anatomy and catalog-validated metric spawn slots.
  * A tenth patient is a new ID sharing a profile template, not a new fighting
  * AI or invented skeletal prototype. No 8-fighter cap leaks into authored maps. */
 export function createAuthoredCombatConfig(seed:number,location:NativeLocation,participants=location.capacity):WorldConfig{
@@ -34,11 +34,9 @@ export function createAuthoredCombatConfig(seed:number,location:NativeLocation,p
  const slots=ring?ringSpawnSlots(participants):location.spawnSlots.slice(0,participants);
  const fighters=slots.map((origin,id)=>{
   const exemplar=base.fighters[id%base.fighters.length]!;
-  // On the ring, each patient starts facing outward along their radius.
-  const sign=ring?1:-1;
-  return {...exemplar,id,origin,yawRad:Math.atan2(sign*origin[0],-sign*origin[2])};
+  return {...exemplar,id,origin,yawRad:Math.atan2(origin[0],-origin[2])};
  });
  return {...base,location,walls:location.walls,fighters,
-  ...(location.shape==='circle'?{patientScale:PATIENT_SCALE}:{}),
+  patientScale:PATIENT_SCALE,
   ...(location.terrain?{gradedSurface:location.terrain.triangles}:{})};
 }

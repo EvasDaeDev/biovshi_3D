@@ -28,3 +28,26 @@ test('ring AI can land a punch and a kick while retaining striking distance',asy
   assert.ok(contacts.leg.some(c=>c.gap>.95&&c.closing<.28),JSON.stringify(contacts));
  }finally{core.dispose();}
 });
+
+test('an imported arena keeps the same reach-based fight spacing as the ring',async()=>{
+ const {ring,ward}=await buildLocationCatalog();
+ const core=new LabSimulationCore();
+ const config=createAuthoredCombatConfig(19,ward,2);
+ core.initialize({...config,patientPoses:ring.patientPoses});
+ try{
+  let distantPunch=false,distantKick=false;
+  for(let tick=0;tick<1800&&!(distantPunch&&distantKick);tick++){
+   core.step(FIXED_DT,{commands:[]});
+   const contacts=core.drainEvents().filter(event=>event.type==='strike-contact');
+   if(!contacts.length)continue;
+   const {roots}=core.getSnapshot();
+   for(const {strikeKind,attackerId,fighterId} of contacts){
+    const gap=Math.hypot(roots[attackerId*4]-roots[fighterId*4],roots[attackerId*4+2]-roots[fighterId*4+2]);
+    if(strikeKind==='arm'&&gap>.9)distantPunch=true;
+    if(strikeKind==='leg'&&gap>.8)distantKick=true;
+   }
+  }
+  assert.ok(distantPunch,'punch must connect before the roots close to point-blank range');
+  assert.ok(distantKick,'kick must connect before the roots close to point-blank range');
+ }finally{core.dispose();}
+});

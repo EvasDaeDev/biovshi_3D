@@ -286,8 +286,8 @@ try{
  }
  await page.goto(base+'/');
  await page.getByRole('link',{name:'Быстрый бой'}).click();
- await page.locator('#arena').selectOption('location-annulus');
- assert.equal(await page.locator('#participants option').count(),3);
+ await page.locator('#arena').selectOption('location-throat');
+ assert.equal(await page.locator('#participants option').count(),5);
  await page.locator('#participants').selectOption('2');
  await page.locator('form').evaluate(form=>{
   const seed=document.createElement('input');seed.type='hidden';seed.name='seed';seed.value='19';form.append(seed);
@@ -296,7 +296,7 @@ try{
  await page.locator('#match-preparation').waitFor({state:'visible'});
  await page.waitForFunction(()=>document.getElementById('stats').dataset.state==='running');
  assert.equal(await page.locator('#stats').getAttribute('data-tick'),'0');
- assert.equal(await page.locator('#stats').getAttribute('data-location'),'annulus');
+ assert.equal(await page.locator('#stats').getAttribute('data-location'),'throat');
  assert.equal(await page.locator('#stats').getAttribute('data-patients'),'2');
  assert.equal(await page.locator('#scenario').isVisible(),false);
  assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');

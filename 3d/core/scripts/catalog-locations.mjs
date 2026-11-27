@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {parseLocation,convexParts,locationBoundary,locationSpawnSlots} from '../../../src/game/location-geometry.js';
 import {applyLocationTerrain} from './location-terrain.mjs';
 import {readPoseDocument} from '../dist/rig/pose-editor.js';
+import {cornerStartSlots} from '../dist/arena/corner-starts.js';
 import {createRingLocation} from '../dist/arena/ring.js';
 import {adaptLegacyLocation,ARENA_WALL_HEIGHT} from '../dist/arena/location-adapter.js';
 
@@ -47,7 +48,11 @@ export async function buildLocationCatalog(){
  const patientPoses=readPoseDocument(JSON.parse(await readFile(resolve(root,'3d/lab-next/patient-poses.json'),'utf8')));
  const fixtures=await buildLegacyLocationFixtures();
  const result={ring:{...createRingLocation(),patientPoses}};
- for(const [id,location] of Object.entries(fixtures))if(id!=='ring')result[id]=expandLegacyArena(location);
+ for(const [id,location] of Object.entries(fixtures)){
+  if(id==='ring')continue;
+  const arena=expandLegacyArena(location);
+  result[id]={...arena,spawnSlots:cornerStartSlots(arena)};
+ }
  const terrain=JSON.parse(await readFile(resolve(root,'3d/locations/terrain.json'),'utf8'));
  return applyLocationTerrain(result,terrain);
 }
