@@ -7,7 +7,7 @@ test('follow camera rotates toward the selected patient without leaving the clos
  const camera=new THREE.PerspectiveCamera(65,16/9,.05,60);
  const mode={value:'close'},patient={value:'2'},fov={value:'90'};
  const controller=new LabCamera(THREE,camera,mode,patient,fov);
- controller.setArena(true);
+ controller.setArena({shape:'circle',width:9,depth:9});
  const position=camera.position.clone(),initial=camera.quaternion.clone();
  const target=new THREE.Vector3(-2,1,0);
  const meshes=new Map([['2:chest',{visible:true,position:target}]]);

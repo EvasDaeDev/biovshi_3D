@@ -26,7 +26,9 @@ export async function buildLegacyLocationFixtures(){
 
 export async function buildLocationCatalog(){
  const patientPoses=readPoseDocument(JSON.parse(await readFile(resolve(root,'3d/lab-next/patient-poses.json'),'utf8')));
+ const fixtures=await buildLegacyLocationFixtures();
  const result={ring:{...createRingLocation(),patientPoses}};
+ for(const [id,location] of Object.entries(fixtures))if(id!=='ring')result[id]=location;
  const terrain=JSON.parse(await readFile(resolve(root,'3d/locations/terrain.json'),'utf8'));
  return applyLocationTerrain(result,terrain);
 }

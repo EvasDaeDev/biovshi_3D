@@ -36,9 +36,11 @@ await cp(resolve(site,'3d/core/dist'),resolve(releaseDir,'core/dist'),{recursive
 const prefix='../../releases/'+release+'/3d/lab-next/';
 const rig=await readFile(resolve(lab,'rig.html'),'utf8');
 const editor=await readFile(resolve(lab,'pose-editor.html'),'utf8');
+const play=await readFile(resolve(lab,'play.html'),'utf8');
 const map=await readFile(resolve(lab,'index.html'),'utf8');
 await writeFile(resolve(lab,'rig.html'),rig.replaceAll('./vendor/',prefix+'vendor/').replace("import('./rig.js')","import('"+prefix+"rig.js')").replace('data-build="dev"','data-build="'+release+'"'));
 await writeFile(resolve(lab,'pose-editor.html'),editor.replaceAll('./vendor/',prefix+'vendor/').replace('src="./pose-editor.js"','src="'+prefix+'pose-editor.js"'));
+await writeFile(resolve(lab,'play.html'),play.replace('src="./play.js"','src="'+prefix+'play.js"'));
 await writeFile(resolve(lab,'index.html'),map.replace('src="./main.js"','src="'+prefix+'main.js"'));
 await writeFile(resolve(site,'release.json'),JSON.stringify({release}));
 console.log('Lab Next content release:',release);

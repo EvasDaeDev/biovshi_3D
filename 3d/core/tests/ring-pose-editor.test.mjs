@@ -4,9 +4,9 @@ import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 import {LabSimulationCore,PolygonNavigation,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {buildEditedPose,readPoseDocument,referencePose} from '../dist/rig/pose-editor.js';
 
-test('the active catalog has one 9 m circular arena and protects its perimeter in movement',async()=>{
+test('the active catalog restores the original arenas alongside the 9 m ring and protects its perimeter in movement',async()=>{
  const catalog=await buildLocationCatalog();
- assert.deepEqual(Object.keys(catalog),['ring']);
+ assert.deepEqual(Object.keys(catalog),['ring','ward','annulus','sluice','zigzag','columns','maze','throat']);
  const {ring}=catalog;
  assert.equal(ring.shape,'circle');
  assert.equal(ring.capacity,8);

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import RAPIER from '../node_modules/@dimforge/rapier3d-compat/rapier.es.js';
 import {buildLocationCatalog} from './catalog-locations.mjs';
 import {LabSimulationCore,createAuthoredCombatConfig,PolygonNavigation,FIXED_DT} from '../dist/index.js';
+import {PATIENT_SCALE} from '../dist/rig/patient-scale.js';
 import {DebrisWorld} from '../../lab-next/debris.js';
 import {advanceCombatStep} from '../../lab-next/combat-step.js';
 import {auditMotion} from './audit-motion.mjs';
@@ -25,7 +26,7 @@ const catalog=await buildLocationCatalog();
 await RAPIER.init();
 const reports=[],input={commands:[]};
 for(const location of Object.values(catalog)){
- const config=createAuthoredCombatConfig(19,location),core=new LabSimulationCore(),world=new DebrisWorld(RAPIER);
+ const config={...createAuthoredCombatConfig(19,location),patientScale:PATIENT_SCALE,patientPoses:catalog.ring.patientPoses},core=new LabSimulationCore(),world=new DebrisWorld(RAPIER);
  const nav=new PolygonNavigation(location),samples=[],start=performance.now();
  const expected=new Set(config.fighters.flatMap(f=>f.segmentIds.map(s=>segmentKey(f.id,s))));
  const detachedKeys=new Set(),incapacitated=new Set(),stationarySeconds=new Map(),lastPositions=new Map();

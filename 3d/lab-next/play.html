@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Быстрый бой · ЭКЦЕПРИ 3D</title>
+<style>
+body{margin:min(11vh,100px) auto;padding:24px;max-width:440px;background:#101715;color:#e3eeeb;font:16px/1.5 system-ui}
+form{display:grid;gap:16px;padding:24px;border:1px solid #46594a;border-radius:8px;background:#17251d}
+label{display:grid;gap:4px}
+select,button{width:100%;box-sizing:border-box;font:inherit;color:inherit;background:#20382b;border:1px solid #53695b;border-radius:4px;padding:8px}
+button{background:#b5eda0;color:#132117;font-weight:700;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}a{color:#b5eda0}
+</style>
+<script type="module" src="./play.js"></script>
+</head>
+<body>
+<main>
+<p><a href="../">ЭКЦЕПРИ 3D</a></p>
+<h1>Быстрый бой</h1>
+<form action="./rig.html" method="get">
+<input type="hidden" name="play" value="1">
+<label>Арена<select id="arena" name="scenario" required disabled></select></label>
+<label>Пациенты<select id="participants" name="patients" required disabled></select></label>
+<button id="start-match" disabled>Начать бой</button>
+</form>
+<p id="setup-status" role="status">Загружаем арены…</p>
+</main>
+</body>
+</html>

@@ -1,3 +1,5 @@
+import {loadArenaCatalog,populatePatientCounts} from './arena-options.js';
+import {MatchFlow} from './match-flow.js';
 import {DAMAGE} from '../core/dist/combat/damage.js';
 import {FrameMeter,RoundClock} from './round-telemetry.js';
 import {FisheyeView} from './fisheye-view.js';
@@ -25,9 +27,7 @@ import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
 window.labStartup.show('Импорт авторских 3D арен…');
-const catalogResponse=await fetch(new URL('./location-catalog.json',import.meta.url));
-if(!catalogResponse.ok)throw Error('Каталог локаций: HTTP '+catalogResponse.status);
-const authoredLocations=await catalogResponse.json();
+const authoredLocations=await loadArenaCatalog();
 window.labStartup.show('Создание физического мира…');
 const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
 const core=new LabSimulationCore(),clock=new FixedClock(),keys=new Set();
@@ -100,8 +100,14 @@ function tickFrame(t){
  }
 }
 const query=new URLSearchParams(location.search);
+const match=query.get('play')==='1'?new MatchFlow(document.getElementById('match-preparation'),document.getElementById('match-result')):null;
+if(match){
+ document.getElementById('match-again').href=location.href;
+ cameraControl.modeInput.value='overview';
+ cameraControl.sync();
+}
 const requestedSession=query.get('session');
-const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:'lab-preview';
+const floorSession=requestedSession?.trim()&&requestedSession.length<=128?requestedSession:match?'quick-match':'lab-preview';
 const stats=document.getElementById('stats'),floorStatus=document.getElementById('floor-status');
 function scheduleFrame(){if(!frameRequest)frameRequest=requestAnimationFrame(frame);}
 function assertSnapshot(s){
@@ -130,15 +136,19 @@ function roundSeed(){
  previousRingSeed=seed===previousRingSeed?(seed+1)>>>0:seed;
  return previousRingSeed;
 }
-const requestedPatients=Number(new URLSearchParams(location.search).get('patients'));
-if(Number.isInteger(requestedPatients)&&requestedPatients>=2&&requestedPatients<=authoredLocations.ring.capacity)patientCount.value=String(requestedPatients);
-function authoredPatients(loc){return Math.min(loc.capacity,Math.max(2,Number(patientCount.value)));}
+let preferredPatients=Number(query.get('patients'))||3;
+const authoredOptions=Object.values(authoredLocations).map(loc=>new Option(loc.name,'location-'+loc.id));
+scenario.options[0].replaceWith(...authoredOptions);
+scenario.value='location-ring';
 const damageControls=document.getElementById('damage-controls'),damageSegment=document.getElementById('damage-segment'),damageHP=document.getElementById('damage-hp');
 let pendingDamage=null;
 const queueDamage=amount=>{if(scenario.value==='damage'&&!paused)pendingDamage={fighterId:0,segmentId:damageSegment.value,amount};};
 document.getElementById('damage-hit').onclick=()=>queueDamage(1);document.getElementById('damage-crit').onclick=()=>queueDamage(DAMAGE.criticalDamage);
-const requestedScenario=new URLSearchParams(location.search).get('scenario');
-if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario))scenario.value=requestedScenario;
+const requestedScenario=query.get('scenario');
+if(match){
+ const id=requestedScenario?.startsWith('location-')?requestedScenario.slice(9):'ring';
+ scenario.value='location-'+(Object.hasOwn(authoredLocations,id)?id:'ring');
+}else if(requestedScenario&&[...scenario.options].some(o=>o.value===requestedScenario))scenario.value=requestedScenario;
 function selectedLocation(){return scenario.value==='motion-review'?authoredLocations.ring:scenario.value.startsWith('location-')?authoredLocations[scenario.value.slice(9)]??null:null;}
 function floorArenaId(){
  const location=selectedLocation();
@@ -158,10 +168,19 @@ function scenarioConfig(){
  }
  if(mode.startsWith('location-')){
   const location=selectedLocation();if(!location)throw Error('Неизвестная авторская 3D арена');
-  return createAuthoredCombatConfig(roundSeed(),location,authoredPatients(location));
+  return createAuthoredCombatConfig(roundSeed(),location,Number(patientCount.value));
  }
 if(mode==='normal')return {...cfg,labContactFracture:true,labDynamicBalance:true};const f=cfg.fighters[0];if(mode==='duel-traits')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.2],yawRad:0,profile:{movement:4,critical:2,turning:3,temperament:'impulsive'}},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI,profile:{movement:2,critical:4,turning:3,temperament:'hesitant'}}]};if(mode==='duel-prone')return {...cfg,combatEnabled:true,expandedStrikes:true,fighters:[{...f,origin:[0,0,1.05],yawRad:0,segmentIds:f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))},{...cfg.fighters[1],origin:[0,0,-1.05],yawRad:Math.PI,segmentIds:cfg.fighters[1].segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s))}]};if(mode==='duel'||mode==='duel-mixed')return {...cfg,combatEnabled:true,expandedStrikes:mode==='duel-mixed',fighters:[{...f,origin:[0,0,1.2],yawRad:0},{...cfg.fighters[1],origin:[0,0,-1.2],yawRad:Math.PI}]};if(mode==='corpse')return {...cfg,fighters:[{...f,origin:[0,0,2.4]},{...cfg.fighters[1],origin:[0,0,0],yawRad:0}],labContactFracture:false};if(mode==='fall')return {...cfg,labDynamicBalance:true,labContactFracture:false,fighters:[{...f,origin:[0,0,0],yawRad:0},{...cfg.fighters[1],origin:[.08,0,0],yawRad:0}]};let ids=mode==='walk'||mode==='damage'?f.segmentIds:mode==='one-leg'?f.segmentIds.filter(s=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(s)):f.segmentIds.filter(s=>!/\.(upperLeg|lowerLeg|foot)$/.test(s));if(mode==='one-arm')ids=ids.filter(s=>!s.startsWith('R.'));if(mode==='stump')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s)||s==='L.upperArm');if(mode==='head'||mode==='torso')ids=ids.filter(s=>!/\.(upperArm|lowerArm|hand)$/.test(s));if(mode==='torso')ids=ids.filter(s=>s!=='head'&&s!=='neck');return {...cfg,fighters:[{...f,segmentIds:ids}],labContactFracture:false};}
-function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');const config=scenarioConfig();
+function arenaShape(points){
+ const shape=new THREE.Shape();
+ points.forEach((point,index)=>index?shape.lineTo(point.x,-point.z):shape.moveTo(point.x,-point.z));
+ shape.closePath();
+ return shape;
+}
+function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRequest);frameRequest=0;window.labStartup.show('Сброс сценария…');
+ const selected=selectedLocation();
+ if(selected)populatePatientCounts(patientCount,selected.capacity,scenario.value==='motion-review'?2:preferredPatients);
+ const config=scenarioConfig();
  const defaults=config.location?.patientPoses??authoredLocations.ring.patientPoses;
  const patientPoses=scenario.value==='motion-review'?defaults:roundPatientPoses(defaults,{getItem:key=>window.localStorage.getItem(key)});
  debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
@@ -172,12 +191,16 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   scene.add(surface);wallMeshes.push(surface);
  }
  const location=config.location??null;
- patientCount.disabled=!selectedLocation();
- document.getElementById('scene-hint').textContent=location||scenario.value.startsWith('duel')
-  ?'Ринг ⌀ 9 м · деление 1 м · рост пациента 1,65 м · бой ИИ.':'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
- floor.visible=grid.visible=location?.shape!=='circle';
- cameraControl.setArena(location?.shape==='circle');
- 
+ patientCount.disabled=!selected||scenario.value==='motion-review';
+ document.getElementById('scene-hint').textContent=location
+  ?location.name+' · рост пациента 1,65 м'
+  :'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
+ floor.visible=grid.visible=!location;
+ cameraControl.setArena(location);
+ if(location&&location.shape!=='circle'){
+  const surface=new THREE.Mesh(new THREE.ShapeGeometry(arenaShape(location.boundary)),floor.material);
+  surface.rotation.x=-Math.PI/2;scene.add(surface);wallMeshes.push(surface);
+ }
  if(location?.shape==='circle'){
   const mat=floor.material;
   const surface=new THREE.Mesh(new THREE.CircleGeometry(location.width/2,location.boundary.length),mat);
@@ -192,10 +215,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  }
  if(location){
   for(const object of location.objects){
-   const shape=new THREE.Shape();
-   object.points.forEach((p,i)=>i?shape.lineTo(p.x,-p.z):shape.moveTo(p.x,-p.z));
-   shape.closePath();
-   const geometry=new THREE.ExtrudeGeometry(shape,{depth:object.height,bevelEnabled:false,steps:1});
+   const geometry=new THREE.ExtrudeGeometry(arenaShape(object.points),{depth:object.height,bevelEnabled:false,steps:1});
    geometry.rotateX(-Math.PI/2);
    const mesh=new THREE.Mesh(geometry,wallMaterial);scene.add(mesh);wallMeshes.push(mesh);
   }
@@ -207,7 +227,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -250,7 +270,7 @@ document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(p
   if(warning)floorStatus.textContent=warning;
  };
  scenario.onchange=()=>{scenario.blur();void restoreScenario();};
- patientCount.onchange=()=>{if(selectedLocation()&&scenario.value!=='motion-review')void restoreScenario();};
+ patientCount.onchange=()=>{preferredPatients=Number(patientCount.value);if(selectedLocation()&&scenario.value!=='motion-review')void restoreScenario();};
  document.getElementById('next-round').onclick=async()=>{
   // A premature click must not invalidate an in-flight load or clear.
   if(stats.dataset.state!=='running'){floorStatus.textContent='Дождитесь загрузки арены.';return;}
@@ -279,7 +299,7 @@ function segmentFrame(p,parts,yaw,head){
  if(p.id.endsWith('.hand')){const arm=parts.find(q=>q.id===p.id.replace('.hand','.lowerArm'));if(arm){const f=anatomicalBoneFrame(arm,parts,yaw);return {...f,center:p.a,length:0};}}
  return anatomicalBoneFrame(p,parts,yaw);
 }
-function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;patientHud.draw(s);const time=roundClock.sample(s);if(time!==clockOutput.textContent)clockOutput.textContent=time;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
+function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(match?match.advance(dt,document.hidden):dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;patientHud.draw(s);const time=roundClock.sample(s);match?.showResult(s,time);if(time!==clockOutput.textContent)clockOutput.textContent=time;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;
  const tinted=[],renderTick=prior.tick+(s.tick-prior.tick)*alpha;
  s.rigSegments.forEach((parts,i)=>{

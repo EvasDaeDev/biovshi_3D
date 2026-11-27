@@ -13,7 +13,11 @@ export class LabCamera {
   this.patientInput.disabled=!['head','fisheye','follow'].includes(this.mode);
   this.fovInput.disabled=this.mode!=='head';
  }
- setArena(circle){this.circle=circle;this.staticView();}
+ setArena(location){
+  this.circle=location?.shape==='circle';
+  this.arenaExtent=location?Math.max(location.width,location.depth):0;
+  this.staticView();
+ }
  reset(s){
   const old=this.patientInput.value;this.patientInput.replaceChildren();
   for(const id of s.fighterIds){const o=document.createElement('option');o.value=String(id);o.textContent='№ '+id;this.patientInput.append(o);}
@@ -31,7 +35,10 @@ export class LabCamera {
  }
  staticView(){
   const c=this.camera;c.up.copy(this.worldUp);
-  c.position.set(...(this.mode==='overview'?(this.circle?[6.4,8.2,9.5]:[8,6,9]):(this.circle?[3.9,2.75,4.6]:[5.8,3.6,6.6])));
+  if(this.mode==='overview'&&this.arenaExtent&&!this.circle){
+   const extent=this.arenaExtent;
+   c.position.set(extent*.60,extent*1.32,extent*.68);
+  }else c.position.set(...(this.mode==='overview'?(this.circle?[6.4,8.2,9.5]:[8,6,9]):(this.circle?[3.9,2.75,4.6]:[5.8,3.6,6.6])));
   c.lookAt(0,this.circle?.75:1,0);this.projection();
  }
  orientation(h,out){
