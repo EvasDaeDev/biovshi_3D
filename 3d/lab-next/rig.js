@@ -244,7 +244,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  patientCount.disabled=!selected||scenario.value==='motion-review';
  document.getElementById('scene-hint').textContent=location
   ?location.name+' · рост пациента 1,65 м'
-  :'W/S — движение, A/D — поворот.';
+  :'W/S — движение, A/D — стрейф.';
  floor.visible=grid.visible=!location;
  cameraControl.setArena(location);
  if(location&&location.shape!=='circle'){
@@ -309,6 +309,7 @@ addEventListener('keydown',e=>{
 });addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>clearPlayerInput(true));document.addEventListener('visibilitychange',()=>{clearPlayerInput(true);playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const view=renderer.domElement,freeHint=document.getElementById('free-camera-hint');
+const reticle=document.getElementById('player-reticle');
 let cameraPointer=null;
 view.addEventListener('contextmenu',event=>{if(manualActive())event.preventDefault();});
 view.addEventListener('mousedown',e=>{
@@ -430,7 +431,9 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  });
  cameraControl.move(has('KeyW')-has('KeyS'),has('KeyD')-has('KeyA'),dt);
  cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);
- const listenerId=manualActive()?Number(controlPatient.value):null;
+ const playerActive=manualActive();
+ reticle.hidden=!playerActive||cameraControl.mode!=='gopro'||cameraPatient.value!==controlPatient.value;
+ const listenerId=playerActive?Number(controlPatient.value):null;
  const listener=listenerId===null?null:s.headFrames[s.fighterIds.indexOf(listenerId)];
  if(listener)footsteps.update(listener.center,listener.forward,listener.up,listenerId,
   cameraControl.navigation?.sightClear.bind(cameraControl.navigation));
@@ -441,8 +444,8 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
    cameraControl.navigation?.sightClear.bind(cameraControl.navigation));
  }
  freeHint.hidden=cameraControl.mode!=='free';
- document.getElementById('manual-controls-hint').hidden=!manualActive();
- if(!manualActive()&&document.pointerLockElement===view)clearPlayerInput(true);
+ document.getElementById('manual-controls-hint').hidden=!playerActive;
+ if(!playerActive&&document.pointerLockElement===view)clearPlayerInput(true);
  cameraAngle.disabled=cameraControl.mode!=='gopro';
  const effectsProfile=effects.enabled&&cameraControl.mode!=='free'?(cameraControl.mode==='gopro'?'gopro':'corner'):null;
  updateCameraLighting(effectsProfile);

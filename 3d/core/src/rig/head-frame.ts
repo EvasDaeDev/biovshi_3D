@@ -32,3 +32,15 @@ export function headCameraPosition(h:HeadFrame):Vec3{
  const d=h.radius+HEAD_CAMERA_CLEARANCE;
  return [h.center[0]+h.up[0]*d,h.center[1]+h.up[1]*d,h.center[2]+h.up[2]*d];
 }
+
+/** Centre of the rectilinear GoPro view at the requested distance. The
+ * camera removes roll, so its up vector is the projected world vertical. */
+export function headAimPoint(frame:HeadFrame,distance:number,clearance=HEAD_CAMERA_CLEARANCE):Vec3{
+ const up=norm(project([0,1,0],frame.forward),frame.up);
+ const mount=frame.cameraCenter??frame.center;
+ return [
+  mount[0]+up[0]*(frame.radius+clearance)+frame.forward[0]*distance,
+  mount[1]+up[1]*(frame.radius+clearance)+frame.forward[1]*distance,
+  mount[2]+up[2]*(frame.radius+clearance)+frame.forward[2]*distance,
+ ];
+}

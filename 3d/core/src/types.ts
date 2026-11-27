@@ -32,7 +32,7 @@ export interface FighterCommand {
   readonly sprint: boolean;
   readonly jump?:boolean;
   /** Present only for direct player input. Mouse angles are radians. */
-  readonly player?:{readonly yawDelta:number;readonly pitch:number;readonly crouch:boolean};
+  readonly player?:{readonly yawDelta:number;readonly pitch:number;readonly crouch:boolean;readonly strafe?:number};
   readonly attack?: boolean;
   readonly attackKind?: StrikeKind;
 }

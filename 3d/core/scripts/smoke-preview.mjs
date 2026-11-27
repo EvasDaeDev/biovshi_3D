@@ -82,8 +82,14 @@ try{
  }finally{await page.keyboard.up('KeyW');}
  await page.locator('#control-patient').selectOption('1');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='gopro');
+ const reticle=page.locator('#player-reticle');
+ await reticle.waitFor({state:'visible'});
+ const box=await reticle.boundingBox();
+ const {width,height}=page.viewportSize();
+ assert.ok(Math.abs(box.x+box.width/2-width/2)<.5&&Math.abs(box.y+box.height/2-height/2)<.5);
  assert.equal(await page.locator('#camera-mode option[value="free"]').evaluate(option=>option.disabled),true);
  await page.locator('#control-patient').selectOption('');
+ await reticle.waitFor({state:'hidden'});
  await page.locator('#camera-mode').selectOption('corner-1');
  await page.locator('#pause').click();
  await page.waitForFunction(()=>document.getElementById('stats')?.textContent.includes('PAUSED'));

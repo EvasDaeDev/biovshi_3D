@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 import {LabSimulationCore,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
+import {headAimPoint,headFrame} from '../dist/rig/head-frame.js';
+import {manualInput} from '../../lab-next/manual-control.js';
 import {footContacts,stepDistanceGain} from '../../lab-next/footstep-audio.js';
 
 const {ring}=await buildLocationCatalog();
@@ -55,13 +57,13 @@ test('the same command can keep running, begin jumping and swing the head',()=>{
  }finally{core.dispose();}
 });
 
-test('crouch follows a held input, lowers the pelvis, and still allows turning',()=>{
+test('crouch follows a held input, lowers the pelvis, and still allows mouse turning',()=>{
  const core=setup();
  const pelvis=s=>s.rigSegments[0].find(x=>x.id==='pelvis').a[1];
  try{
   const standing=pelvis(tick(core));
   let sample;
-  for(let i=0;i<22;i++)sample=tick(core,{turn:.4,sprint:true,forward:.35},{crouch:true});
+  for(let i=0;i<22;i++)sample=tick(core,{sprint:true,forward:.35},{crouch:true,yawDelta:.02});
   assert.ok(pelvis(sample)<standing-.20);
   assert.ok(sample.roots[3]>.1);
   for(let i=0;i<24;i++)sample=tick(core);
@@ -79,4 +81,57 @@ test('step distance matches 2D and audio follows landings and planted intact fee
  assert.equal(footContacts(state,{...next,segmentIds:[['L.foot']]}).length,1);
  assert.equal(footContacts(state,{...next,hopPhases:['flight']}).length,0);
  assert.deepEqual(footContacts({...state,hopPhases:['flight']},next),[{id:3,point:[.5,0,1],landed:true,side:0,tick:2}]);
+});
+
+test('A/D strafes, and the diagonal has the requested bearing with no speed bonus',()=>{
+ const sample=(keys,yaw=0)=>{
+  const core=setup();
+  try{
+   for(let i=0;i<48;i++){
+    const commands=manualInput([0,1],['active','active'],'0',(...codes)=>Number(codes.some(k=>keys.includes(k))),false,{yawDelta:i===0?yaw:0,pitch:0}).commands;
+    core.step(FIXED_DT,{commands:[...commands,command(1)]});
+   }
+   const {roots,stepCounts}=core.getSnapshot();
+   assert.ok(stepCounts[0]>0);
+   return [roots[0],roots[2]-1.5,roots[3]];
+  }finally{core.dispose();}
+ };
+ const right=sample(['KeyD']),left=sample(['KeyA']),diagonal=sample(['KeyW','KeyD']);
+ assert.ok(right[0]>.35&&left[0]<-.35);
+ assert.ok(Math.abs(right[1])<1e-6&&Math.abs(left[1])<1e-6);
+ assert.equal(right[2],0);
+ assert.equal(left[2],0);
+ assert.ok(diagonal[0]>.25&&Math.abs(diagonal[0]+diagonal[1])<1e-6);
+ assert.ok(Math.hypot(diagonal[0],diagonal[1])<=Math.abs(right[0])*1.23);
+ const rotated=sample(['KeyD'],.7);
+ assert.ok(Math.abs(rotated[0]/rotated[1]-Math.cos(.7)/Math.sin(.7))<1e-5);
+ assert.ok(Math.abs(rotated[2]-.7)<1e-6);
+});
+
+test('manual attack aim follows the centre ray of the roll-stabilised head camera',()=>{
+ const raw=[{id:'head',a:[0,1.6,0],b:[0,1.6,0],radius:.15}];
+ for(const pitch of [-.55,0,.55]){
+  const frame=headFrame(raw,.4,pitch);
+  const from=headAimPoint(frame,0),aim=headAimPoint(frame,1);
+  for(let i=0;i<3;i++)assert.ok(Math.abs(aim[i]-from[i]-frame.forward[i])<1e-12);
+  assert.ok(Math.abs(aim[1]-from[1]-Math.sin(pitch))<1e-12);
+ }
+});
+
+test('playing the same swing at different crosshair heights changes physical contact',()=>{
+ const strikeAt=pitch=>{
+  const core=setup([0,0,.75]);
+  try{
+   const hits=[];
+   for(let i=0;i<48;i++){
+    tick(core,{attack:i===0,attackKind:'arm'},{pitch});
+    for(const event of core.drainEvents())
+     if(event.type==='strike-contact'&&event.attackerId===0)hits.push(event.segmentId);
+   }
+   return hits;
+  }finally{core.dispose();}
+ };
+ assert.deepEqual(strikeAt(-.45),['chest']);
+ assert.deepEqual(strikeAt(-.22),['head']);
+ assert.deepEqual(strikeAt(.5),[]);
 });

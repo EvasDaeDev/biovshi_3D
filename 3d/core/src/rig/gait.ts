@@ -109,7 +109,7 @@ export class PatientGait {
   private anchored(mobility:Mobility):boolean{return mobility.mode==='arm-crawl'&&mobility.arms.some(n=>n>=2);}
   crawlAnchors(pose:readonly RigPose[]):readonly CrawlAnchor[]{return this.proneAmount===1?this.anchors.snapshot(pose,this.mobility,this.ground):[];}
   residualSupport(pose:readonly RigPose[]):ResidualTraction|null{return this.proneAmount===1?residualTraction(pose,this.mobility,this.crawlPhase,this.ground):null;}
-  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R',pounce=false):number{
+  travel(dt:number,speed:number,mobility:Mobility,id:number,root:Vec3,yaw:number,t:number,ground:(x:number,z:number)=>number,jump=false,driveRequested=true,kickSupport?:'L'|'R',pounce=false,travelYaw=yaw):number{
     if(this.downAnchorWeight>0){this.downAnchorWeight=0;this.anchors.reset();}
     let groundedLeap=false;
     if(mobility.mode==='biped'&&this.groundedStride){
@@ -135,7 +135,7 @@ export class PatientGait {
     }else{this.leap.reset();this.attackLeap.reset();this.pouncing=false;this.leapHeld=jump;this.leapQueued=0;}
     if(this.anchored(mobility)&&this.proneAmount===1){
       const before=this.pose(id,root,yaw,t);
-      this.anchors.advance(dt,speed,yaw,before,mobility,ground);
+      this.anchors.advance(dt,speed,travelYaw,before,mobility,ground);
       const planted=this.anchors.snapshot(this.anchors.apply(before,mobility,ground),mobility,ground).some(a=>a.valid);
       return planted?speed*dt*(mobility.arms.filter(n=>n>=2).length===1?1.35:1):0;
     }
@@ -149,12 +149,12 @@ export class PatientGait {
       const direction=Math.sign(speed);
       const stance=this.feet.filter(foot=>!foot.moving);
       const reach=Math.min(...stance.map(({plant})=>{
-        const behind=((root[0]-plant[0])*Math.sin(yaw)-(root[2]-plant[2])*Math.cos(yaw))*direction;
+        const behind=((root[0]-plant[0])*Math.sin(travelYaw)-(root[2]-plant[2])*Math.cos(travelYaw))*direction;
         return (this.organic?HORROR_MOVEMENT.stanceReach:.48)-behind;
       }));
       const limit=this.organic&&this.sprintCycle&&!kickSupport&&speed>0?HORROR_MOVEMENT.maxRunSpeed:HORROR_MOVEMENT.maxStrideSpeed/Math.max(1,this.motionProfile.strideTempo);
       const requested=direction*Math.min((this.organic?Math.min(Math.abs(speed),limit):Math.abs(speed))*dt,Math.max(0,reach));
-      return this.organic&&kickSupport?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,yaw,requested):requested;
+      return this.organic&&kickSupport?kickTravelLimit(root,this.feet[kickSupport==='L'?0:1].plant,travelYaw,requested):requested;
     }
     if(this.proneAmount<1||!residualMode(mobility)||Math.abs(speed)<.0001)return 0;
     const traction=residualTraction(this.pose(id,root,yaw,t),mobility,this.crawlPhase,ground);
@@ -191,7 +191,7 @@ export class PatientGait {
       return {plant:p,start:p,target:p,phase:0,moving:false,duration:.32,lift:.085};};
     this.feet=[foot(-1),foot(1)];this.expressive=authored?.stance;
   }
-  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false,turnRate=0,driveSpeed=speed):void{
+  advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false,turnRate=0,driveSpeed=speed,travelYaw=yaw):void{
     this.mobility=mobility;this.active=active;this.ground=ground;
     this.recoveryCooldown=Math.max(0,this.recoveryCooldown-dt);
     const support=mobility.support;
@@ -276,7 +276,7 @@ export class PatientGait {
         const predicted=this.sprintCycle&&this.sprintSlow<.10?plannedSpeed:speed;
         const pace=Math.max(0,Math.min(predicted,plannedSpeed,HORROR_MOVEMENT.maxRunSpeed));
         const lead=pace*left+HORROR_MOVEMENT.runLandingLead*Math.min(1,pace/3.8),side=i===0?-1:1;
-        const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(yaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(yaw)*lead;
+        const x=root[0]+Math.cos(yaw)*side*.18+Math.sin(travelYaw)*lead,z=root[2]+Math.sin(yaw)*side*.18-Math.cos(travelYaw)*lead;
         const goal:Vec3=[x,ground(x,z)+FOOT_RADIUS,z],error=dist(f.target,goal);
         // Retarget gradually, especially when a sprint meets a wall.
         f.target=mix(f.target,goal,Math.min(1,.24/Math.max(1e-8,error)));
@@ -293,7 +293,13 @@ export class PatientGait {
     const resting=this.organic&&Math.abs(plannedSpeed)<=.055;
     const ideal=(side:number,lead:number,angle=yaw):Vec3=>{
       const [wide,stagger]=resting?this.restingFoot(side):[side*.18,0];
-      const x=root[0]+Math.cos(angle)*wide+Math.sin(angle)*(lead-stagger),z=root[2]+Math.sin(angle)*wide-Math.cos(angle)*(lead-stagger);
+      if(travelYaw===yaw){
+        const x=root[0]+Math.cos(angle)*wide+Math.sin(angle)*(lead-stagger),z=root[2]+Math.sin(angle)*wide-Math.cos(angle)*(lead-stagger);
+        return [x,ground(x,z)+FOOT_RADIUS,z];
+      }
+      const bearing=angle+(travelYaw-yaw);
+      const x=root[0]+Math.cos(angle)*wide-Math.sin(angle)*stagger+Math.sin(bearing)*lead;
+      const z=root[2]+Math.sin(angle)*wide+Math.cos(angle)*stagger-Math.cos(bearing)*lead;
       return [x,ground(x,z)+FOOT_RADIUS,z];
     };
     let weightSide:-1|0|1=0,preparing=false;
@@ -343,7 +349,7 @@ export class PatientGait {
     if(this.organic){
       const swing=this.feet.findIndex(f=>f.moving);
       if(swing!==-1)weightSide=swing===0?1:-1;
-      const forwardZ=(p:Vec3)=>-Math.sin(yaw)*(p[0]-root[0])+Math.cos(yaw)*(p[2]-root[2]);
+      const forwardZ=(p:Vec3)=>-Math.sin(travelYaw)*(p[0]-root[0])+Math.cos(travelYaw)*(p[2]-root[2]);
       const phase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
       this.motion.advance(dt,this.proneAmount===0?speed:0,phase,this.proneAmount===0?weightSide:0);
     }
