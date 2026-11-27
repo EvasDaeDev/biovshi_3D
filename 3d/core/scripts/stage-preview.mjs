@@ -14,6 +14,8 @@ await cp(resolve(core,'dist'),resolve(site,'3d/core/dist'),{recursive:true});
 const catalog=await buildLocationCatalog();
 await writeFile(resolve(lab,'location-catalog.json'),JSON.stringify(catalog));
 await mkdir(vendor,{recursive:true});
+await mkdir(resolve(lab,'audio'),{recursive:true});
+await cp(resolve(repo,'public/assets/sounds/effects/step_1.mp3'),resolve(lab,'audio/step_1.mp3'));
 for(const file of ['three.module.js','three.core.js'])await cp(resolve(core,'node_modules/three/build',file),resolve(vendor,file));
 await cp(resolve(core,'node_modules/@dimforge/rapier3d-compat/rapier.es.js'),resolve(vendor,'rapier.es.js'));
 await cp(resolve(core,'node_modules/three/examples/jsm/controls/TransformControls.js'),resolve(vendor,'TransformControls.js'));

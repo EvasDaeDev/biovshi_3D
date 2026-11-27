@@ -1,3 +1,4 @@
+import {FootstepAudio} from './footstep-audio.js';
 import {loadArenaCatalog,populatePatientCounts} from './arena-options.js';
 import {MatchFlow} from './match-flow.js';
 import {DAMAGE} from '../core/dist/combat/damage.js';
@@ -122,11 +123,17 @@ let paused=false,last=null,frameRequest=0,checkSnapshot=true,floorOperation=0;
 const playback=new Playback(clock),stepButton=document.getElementById('frame-step'),rateInput=document.getElementById('playback-rate');
 let motionPeak=null,motionLast=null;
 let previousFrame=null,currentFrame=null;
+const footsteps=new FootstepAudio();
+const audioForward=new THREE.Vector3(),audioUp=new THREE.Vector3();
+function unlockFootsteps(){if(!document.hidden)void footsteps.unlock();}
+addEventListener('pointerdown',unlockFootsteps,{capture:true});
+addEventListener('keydown',unlockFootsteps,{capture:true});
 const captureFrame=()=>({state:core.getSnapshot(),debris:debris.snapshot()});
-function resetFrameHistory(){previousFrame=currentFrame=captureFrame();}
+function resetFrameHistory(){footsteps.clear();previousFrame=currentFrame=captureFrame();}
 function tickFrame(t){
  previousFrame=currentFrame;const events=advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();
- if(currentFrame.state.fight.ended)roundClock.sample(currentFrame.state);
+ footsteps.record(previousFrame.state,currentFrame.state);
+ if(currentFrame.state.fight.ended){roundClock.sample(currentFrame.state);clearPlayerInput(true);}
  segmentTints.record(events,previousFrame.debris,currentFrame.debris,currentFrame.state.tick);
  cooling.record(currentFrame.state,currentFrame.debris);
  hitParticles.record(events,previousFrame.state,currentFrame.state);
@@ -160,7 +167,15 @@ function resetControl(s){
  controlPatient.disabled=scenario.value==='motion-review';
  cameraControl.allowFree(controlPatient.value==='');
 }
-controlPatient.onchange=()=>{keys.clear();controlPatient.blur();cameraControl.allowFree(controlPatient.value==='');if(controlPatient.value!==''&&cameraControl.mode==='gopro')cameraPatient.value=controlPatient.value;};
+controlPatient.onchange=()=>{
+ clearPlayerInput(true);
+ controlPatient.blur();
+ cameraControl.allowFree(controlPatient.value==='');
+ if(controlPatient.value!==''){
+  cameraPatient.value=controlPatient.value;
+  cameraControl.select('gopro');
+ }
+};
 // An explicit seed pins a replay. Ordinary ring resets start a fresh match.
 const requestedSeed=query.get('seed');
 const pinnedSeed=requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):null;
@@ -229,7 +244,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  patientCount.disabled=!selected||scenario.value==='motion-review';
  document.getElementById('scene-hint').textContent=location
   ?location.name+' · рост пациента 1,65 м'
-  :'W/S — движение, A/D — поворот, Shift — бег, пробел — прыжок.';
+  :'W/S — движение, A/D — поворот.';
  floor.visible=grid.visible=!location;
  cameraControl.setArena(location);
  if(location&&location.shape!=='circle'){
@@ -264,7 +279,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    mesh.rotation.y=-Math.atan2(dz,dx);
    scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.castShadow=m.receiveShadow=true;m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.castShadow=m.receiveShadow=true;m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;clearPlayerInput(true);last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -272,31 +287,70 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   stats.dataset.authoredObjects=String(location?.objects.length??0);
   floorStatus.textContent=savedFloor?'Пол сохранён: '+debris.archiveFloor.visuals.length+' сегментов, '+debris.archiveFloor.mounds.length+' конусов.':'Новый чистый пол.';
   scheduleFrame();}catch(e){window.labStartup.fail(e);}}
-const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyJ','KeyK','KeyL']);
+let mouseYaw=0,mousePitch=-.14,queuedAttack=null,jumpPressed=false;
+const heldButtons=new Set();
+const manualActive=()=>!controlPatient.disabled&&controlPatient.value!==''&&currentFrame?.state.lifeStates[currentFrame.state.fighterIds.indexOf(Number(controlPatient.value))]==='active'&&!currentFrame.state.fight.ended;
+function clearPlayerInput(release=false){
+ keys.clear();heldButtons.clear();mouseYaw=0;queuedAttack=null;jumpPressed=false;
+ if(release){mousePitch=-.14;if(document.pointerLockElement)document.exitPointerLock();}
+}
+const controls=new Set(['KeyW','KeyS','KeyA','KeyD','ShiftLeft','ShiftRight','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyJ','KeyK','KeyL','ControlLeft','ControlRight','AltLeft','AltRight']);
 addEventListener('keydown',e=>{
- if(capturesTextInput(document.activeElement))return;
+ if(capturesTextInput(document.activeElement)||document.activeElement?.tagName==='SELECT')return;
+ if((e.code.startsWith('Control')||e.code.startsWith('Alt'))&&!manualActive())return;
+ if(e.metaKey)return;
+ if(manualActive()&&!e.repeat){
+  if(e.code==='Space')jumpPressed=true;
+  if(e.code==='AltLeft'||e.code==='AltRight')queuedAttack='head';
+ }
  const number=/^(?:Digit|Numpad)([1-4])$/.exec(e.code);
  if(number&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();const mode='corner-'+number[1];if(!e.repeat&&cameraControl.mode!==mode)cameraControl.select(mode);return;}
  if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}
-});addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>{keys.clear();playback.reset();last=null;if(currentFrame)resetFrameHistory();});
+});addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>clearPlayerInput(true));document.addEventListener('visibilitychange',()=>{clearPlayerInput(true);playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const view=renderer.domElement,freeHint=document.getElementById('free-camera-hint');
 let cameraPointer=null;
+view.addEventListener('contextmenu',event=>{if(manualActive())event.preventDefault();});
+view.addEventListener('mousedown',e=>{
+ if(manualActive()&&(e.button===0||e.button===2)){
+  e.preventDefault();
+  heldButtons.add(e.button);
+  queuedAttack=e.button===0?'arm':'leg';
+  if(document.pointerLockElement!==view){
+   try{view.requestPointerLock?.()?.catch(()=>{});}catch{}
+  }
+ }
+});
 view.addEventListener('pointerdown',e=>{
  if(e.button!==0||cameraControl.mode!=='free')return;
  cameraPointer=e.pointerId;view.setPointerCapture(e.pointerId);
 });
+addEventListener('mouseup',event=>heldButtons.delete(event.button));
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)clearPlayerInput();});
 view.addEventListener('pointermove',e=>{
+ if(manualActive()){
+  mouseYaw+=e.movementX*.0025;
+  mousePitch=Math.max(-1.35,Math.min(1.35,mousePitch-e.movementY*.0025));
+ }
  if(e.pointerId===cameraPointer)cameraControl.look(e.movementX,e.movementY);
 });
 view.addEventListener('lostpointercapture',()=>{cameraPointer=null;});
-const input=()=>scenario.value==='motion-review'?reviewInput(currentFrame.state.tick).input:manualInput(currentFrame.state.fighterIds,currentFrame.state.lifeStates,controlPatient.value,has,scenario.value==='fall');
-document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);keys.clear();last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};
+function input(){
+ if(scenario.value==='motion-review')return reviewInput(currentFrame.state.tick).input;
+ const {fighterIds,lifeStates}=currentFrame.state;
+ const head=has('AltLeft','AltRight');
+ const attackKind=head?'head':queuedAttack??(heldButtons.has(2)?'leg':heldButtons.has(0)?'arm':null);
+ const player=manualActive()?{yawDelta:mouseYaw,pitch:mousePitch,attackKind,jump:jumpPressed}:null;
+ mouseYaw=0;queuedAttack=null;jumpPressed=false;
+ return manualInput(fighterIds,lifeStates,controlPatient.value,has,scenario.value==='fall',player);
+}
+document.getElementById('pause').onclick=e=>{paused=!paused;playback.setPaused(paused);clearPlayerInput(true);last=null;if(currentFrame)resetFrameHistory();stepButton.disabled=!paused;e.target.textContent=paused?'Продолжить':'Пауза';};
  rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
  stepButton.onclick=()=>{if(stats.dataset.state==='running'&&paused)playback.requestStep();};
  function suspendRound(message){
+  footsteps.clear();
   if(frameRequest)cancelAnimationFrame(frameRequest);
-  frameRequest=0;last=null;keys.clear();
+  frameRequest=0;last=null;clearPlayerInput(true);
   window.labStartup.show(message);
  }
  // Reuse v1's persisted-floor contract: load by session and arena; a plain
@@ -376,7 +430,19 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  });
  cameraControl.move(has('KeyW')-has('KeyS'),has('KeyD')-has('KeyA'),dt);
  cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);
+ const listenerId=manualActive()?Number(controlPatient.value):null;
+ const listener=listenerId===null?null:s.headFrames[s.fighterIds.indexOf(listenerId)];
+ if(listener)footsteps.update(listener.center,listener.forward,listener.up,listenerId,
+  cameraControl.navigation?.sightClear.bind(cameraControl.navigation));
+ else{
+  camera.getWorldDirection(audioForward);
+  audioUp.set(0,1,0).applyQuaternion(camera.quaternion);
+  footsteps.update(camera.position.toArray(),audioForward.toArray(),audioUp.toArray(),null,
+   cameraControl.navigation?.sightClear.bind(cameraControl.navigation));
+ }
  freeHint.hidden=cameraControl.mode!=='free';
+ document.getElementById('manual-controls-hint').hidden=!manualActive();
+ if(!manualActive()&&document.pointerLockElement===view)clearPlayerInput(true);
  cameraAngle.disabled=cameraControl.mode!=='gopro';
  const effectsProfile=effects.enabled&&cameraControl.mode!=='free'?(cameraControl.mode==='gopro'?'gopro':'corner'):null;
  updateCameraLighting(effectsProfile);

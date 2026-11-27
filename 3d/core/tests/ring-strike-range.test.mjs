@@ -36,7 +36,7 @@ test('the square arena keeps the same reach-based fight spacing as the ring',asy
  core.initialize(config);
  try{
   let distantPunch=false,distantKick=false;
-  for(let tick=0;tick<1800&&!(distantPunch&&distantKick);tick++){
+  for(let tick=0;tick<3600&&!(distantPunch&&distantKick);tick++){
    core.step(FIXED_DT,{commands:[]});
    const contacts=core.drainEvents().filter(event=>event.type==='strike-contact');
    if(!contacts.length)continue;

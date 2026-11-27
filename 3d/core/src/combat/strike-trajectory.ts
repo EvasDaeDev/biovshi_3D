@@ -20,6 +20,6 @@ export function strikeTrajectory(base:Vec3,back:Vec3,aim:Vec3,phase:StrikePhase,
  const p=recovering?mix(aim,base,t):mix(back,aim,t);
  const envelope=4*t*(1-t);
  const lift=recovering?(kind==='leg'?.055+.075*w:.035+.075*w):(kind==='leg'?.065*w:.045*w);
- const drift=recovering?(side==='L'?-1:1)*(.025+.035*w):0;
+ const drift=(side==='L'?-1:1)*(recovering?.025+.035*w:kind==='arm'?.12:0);
  return [p[0]+Math.cos(yaw)*drift*envelope,p[1]+lift*envelope,p[2]+Math.sin(yaw)*drift*envelope];
 }

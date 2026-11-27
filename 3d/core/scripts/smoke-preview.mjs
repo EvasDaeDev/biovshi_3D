@@ -81,7 +81,7 @@ try{
    return Math.hypot(Number(d.cameraX)-x,Number(d.cameraZ)-z)>.08&&d.controlled==='';},startCamera);
  }finally{await page.keyboard.up('KeyW');}
  await page.locator('#control-patient').selectOption('1');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='corner-4');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='gopro');
  assert.equal(await page.locator('#camera-mode option[value="free"]').evaluate(option=>option.disabled),true);
  await page.locator('#control-patient').selectOption('');
  await page.locator('#camera-mode').selectOption('corner-1');
