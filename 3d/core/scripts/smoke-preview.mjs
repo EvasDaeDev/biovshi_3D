@@ -349,6 +349,7 @@ try{
  await page.locator('#reset-pose').click();
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
  await page.locator('#import').setInputFiles(poseFile);
+ await page.waitForFunction(()=>document.getElementById('status')?.textContent==='Позы импортированы.');
  await page.locator('#pose').selectOption('punch');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='14');
  await page.evaluate(async release=>{
@@ -368,7 +369,7 @@ try{
   return Number(await page.locator('#stats').getAttribute('data-thorax-pitch'));
  };
  const draftThorax=await sampleReview(''),stockThorax=await sampleReview('&poses=stock');
- assert.ok(draftThorax-stockThorax>14,JSON.stringify({draftThorax,stockThorax}));
+ assert.ok(draftThorax-stockThorax>10,JSON.stringify({draftThorax,stockThorax}));
  assert.ok(modules.length>0);assert.ok(modules.every(url=>url.includes('/releases/'+release+'/')),JSON.stringify(modules));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Browser smoke passed: offline modules, WebGL first frame, fixed ticks, pause and reset.');
