@@ -23,7 +23,7 @@ export class CrawlAnchors {
  constructor(private readonly organic=false){}
  private get timing(){return this.organic?HORROR_CRAWL_TIMING:CRAWL_TIMING;}
  reset():void{this.arms=[null,null];}
- advance(dt:number,speed:number,yaw:number,pose:readonly RigPose[],mobility:Mobility,ground:Ground):void{
+ advance(dt:number,speed:number,yaw:number,pose:readonly RigPose[],mobility:Mobility,ground:Ground,bracingSide:Side|null=null):void{
   const moving=Math.abs(speed)>.005,dir=speed<0?-1:1,plantSeconds=this.timing.plant;
   for(let i=0;i<2;i++){
    const side=sides[i]!,count=mobility.arms[i]??0;
@@ -45,7 +45,8 @@ export class CrawlAnchors {
    let a=this.arms[i];
    if(!a||a.count!==count){
     const start:Vec3=[current[0],ground(current[0],current[2])+radius,current[2]];
-    a={phase:'plant',age:i===0?plantSeconds:plantSeconds*.5,from:start,target:start,point:start,count};
+    const age=bracingSide?(side===bracingSide?0:plantSeconds):i===0?plantSeconds:plantSeconds*.5;
+    a={phase:'plant',age,from:start,target:start,point:start,count};
     this.arms[i]=a;
    }
    if(a.phase==='plant'){
@@ -62,14 +63,21 @@ export class CrawlAnchors {
    }
   }
  }
- apply(pose:readonly RigPose[],mobility:Mobility,ground:Ground):readonly RigPose[]{
-  if(!this.arms.some(Boolean))return pose;
+ apply(pose:readonly RigPose[],mobility:Mobility,ground:Ground,weight=1):readonly RigPose[]{
+  if(weight===0||!this.arms.some(Boolean))return pose;
   const result=[...pose],index=new Map(result.map((p,i)=>[p.id,i]));
   for(let i=0;i<2;i++){
    const a=this.arms[i],side=sides[i]!;
    if(!a||a.count!==mobility.arms[i])continue;
    const u=index.get(side+'.upperArm')!,l=index.get(side+'.lowerArm')!,h=index.get(side+'.hand')!,upper=result[u]!,lower=result[l]!,hand=result[h]!;
-   const ik=solveTwoBone(upper.a,a.point,.36,.32,[0,1,0]);
+   const end=lower.b;
+   const target:Vec3=weight===1?a.point:[end[0]+(a.point[0]-end[0])*weight,end[1]+(a.point[1]-end[1])*weight,end[2]+(a.point[2]-end[2])*weight];
+   const bend:Vec3=weight===1?[0,1,0]:[
+    (lower.a[0]-upper.a[0])*(1-weight),
+    (lower.a[1]-upper.a[1])*(1-weight)+weight*.36,
+    (lower.a[2]-upper.a[2])*(1-weight)
+   ];
+   const ik=solveTwoBone(upper.a,target,.36,.32,bend);
    const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end},ph={...hand,a:ik.end,b:ik.end};
    // Never gain a plant by penetrating terrain; keep the corrected base pose
    // if the candidate chain cannot fit. A later swing can replant it.

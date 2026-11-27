@@ -863,22 +863,27 @@ export class LabSimulationCore implements SimulationCore {
       const mobility=mobilityFor(a.segments);
       const previousPhase=a.knockdown.phase;
       const strikePhase=a.strike.phase(this.tick);
-      a.knockdown.advance(dt,!mobility.prone,!!a.strike.punch?.prone&&(strikePhase==='windup'||strikePhase==='thrust'));
+      const forward=c?.forward??0,side=c?.turn??0;
+      const crawling=previousPhase==='down'&&this.combatFloor(a)&&Math.abs(forward)+Math.abs(side)>.01&&!a.strike.punch&&mobility.arms.some(n=>n>=2)&&!this.fightEnded;
+      a.knockdown.advance(dt,!mobility.prone,!!a.strike.punch?.prone&&(strikePhase==='windup'||strikePhase==='thrust'),crawling);
       if(previousPhase!=='standing'&&a.knockdown.phase==='standing'&&!mobility.prone)this.events.push({tick:this.tick+1,type:'fighter-recovered',fighterId:a.id});
       const flinch=a.impact.slow,recoil=a.impact.advance(dt);
       if(a.knockdown.blocked||previousPhase!=='standing'&&a.gait.hasKnockdownMotion&&!mobility.prone){
         a.speed=0;a.crouchAmount=0;a.crouchUntil=0;
         const ground=(x:number,z:number)=>this.ground(a,x,z);
-        let crawl=0;
-        if(this.combatFloor(a)&&a.knockdown.phase==='down'&&!a.strike.punch&&mobility.arms.some(n=>n>0)&&!this.fightEnded){
-          const forward=c?.forward??0,side=c?.turn??0,scale=.55*dt/Math.max(1,Math.hypot(forward,side));
-          const next=this.navigation.move(a,{x:a.x+(Math.sin(a.yaw)*forward+Math.cos(a.yaw)*side)*scale,z:a.z+(-Math.cos(a.yaw)*forward+Math.sin(a.yaw)*side)*scale});
-          crawl=Math.hypot(next.x-a.x,next.z-a.z)/(.55*dt);
+        const dx=Math.sin(a.yaw)*forward+Math.cos(a.yaw)*side;
+        const dz=-Math.cos(a.yaw)*forward+Math.sin(a.yaw)*side;
+        const crawlInput=crawling&&a.knockdown.phase==='down'?Math.hypot(dx,dz):0;
+        const crawlSpeed=.55*Math.min(1,crawlInput);
+        const planted=a.gait.crawlWhileDown(dt,crawlSpeed/this.patientScale,Math.atan2(dx,-dz),a.yaw,mobility,
+          ()=>this.worldPose(this.actorPose(a,false,true),1/this.patientScale));
+        if(planted){
+          const scale=crawlSpeed*dt/crawlInput;
+          const next=this.navigation.move(a,{x:a.x+dx*scale,z:a.z+dz*scale});
           a.x=next.x;a.z=next.z;
         }
         a.y+=clamp(ground(a.x,a.z)-a.y,-.9*dt,.9*dt);
         a.gait.advance(this.gaitPoint([a.x,a.y,a.z]),a.yaw,0,dt,this.gaitGround(a),mobility,a.segments,a.knockdown.amount??0);
-        a.gait.crawlWhileDown(dt,crawl);
         if(a.knockdown.phase==='falling'&&this.ringCombat&&a.gait.plantedBrace(this.actorPose(a,true))&&a.knockdown.brace()){
           this.events.push({tick:this.tick+1,type:'fighter-braced',fighterId:a.id});
         }

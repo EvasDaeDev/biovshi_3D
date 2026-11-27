@@ -9,10 +9,10 @@ const commands=(overrides={})=>({commands:[
  {fighterId:0,forward:0,turn:0,sprint:false,...overrides},
  {fighterId:1,forward:0,turn:0,sprint:false}
 ]});
-function setupFall(opponentOrigin){
+function setupFall(opponentOrigin,missing=[]){
  const core=new LabSimulationCore();
  core.initialize({...base,fighters:[
-  {...base.fighters[0],origin:[0,0,0],yawRad:0},
+  {...base.fighters[0],origin:[0,0,0],yawRad:0,segmentIds:base.fighters[0].segmentIds.filter(id=>!missing.includes(id))},
   {...base.fighters[1],origin:opponentOrigin,yawRad:0}
  ]});
  assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:'chest',amount:DAMAGE.criticalDamage}));
@@ -47,14 +47,24 @@ for(const phase of ['falling','down'])test(`a patient can land one counter while
 test('a downed patient can crawl sideways before getting up',()=>{
  const still=setupFall([1.5,0,0]),moving=setupFall([1.5,0,0]);
  try{
-  let downTicks=0;
+  let downTicks=0,plantedSteps=0;
   for(let i=0;i<130;i++){
-   const down=moving.getSnapshot().balanceStates[0]==='down';
+   const before=moving.getSnapshot(),down=before.balanceStates[0]==='down';
    still.step(FIXED_DT,commands());
    moving.step(FIXED_DT,commands(down?{turn:-1}:{}));
-   if(down)downTicks++;
+   if(!down)continue;
+   downTicks++;
+   const after=moving.getSnapshot();
+   if(Math.abs(after.roots[0]-before.roots[0])<.001)continue;
+   const anchors=after.crawlAnchors[0].filter(a=>a.valid);
+   assert.ok(anchors.length,'commanded travel requires a reachable floor anchor');
+   for(const anchor of anchors){
+    const prior=before.crawlAnchors[0].find(a=>a.segmentId===anchor.segmentId&&a.valid);
+    if(prior)assert.deepEqual(anchor.point,prior.point,'planted endpoint stays fixed in world space');
+   }
+   plantedSteps++;
   }
-  assert.ok(downTicks>5);
+  assert.ok(downTicks>5&&plantedSteps>5);
   const a=still.getSnapshot(),b=moving.getSnapshot();
   assert.equal(b.balanceStates[0],'standing');
   assert.ok(b.roots[0]<a.roots[0]-.08,'crawling should move the patient away from the opponent');
@@ -74,4 +84,36 @@ test('the AI backs away from a nearby threat while down',()=>{
   assert.ok(automatic.getSnapshot().roots[2]>still.getSnapshot().roots[2]+.08);
   assert.equal(automatic.getSnapshot().balanceStates[0],'standing');
  }finally{still.dispose();automatic.dispose();}
+});
+
+test('a forearm stump can pull a patient along the floor',()=>{
+ const missing=['L.hand','R.upperArm','R.lowerArm','R.hand'];
+ const core=setupFall([1.5,0,0],missing);
+ try{
+  let moved=false;
+  for(let i=0;i<130;i++){
+   const before=core.getSnapshot(),down=before.balanceStates[0]==='down';
+   core.step(FIXED_DT,commands(down?{turn:-1}:{}));
+   const after=core.getSnapshot();
+   if(down&&after.roots[0]<before.roots[0]-.001){
+    assert.deepEqual(after.crawlAnchors[0].filter(a=>a.valid).map(a=>a.segmentId),['L.lowerArm']);
+    moved=true;
+   }
+  }
+  assert.ok(moved,'the remaining forearm should support at least one pull');
+  assert.equal(core.getSnapshot().balanceStates[0],'standing');
+ }finally{core.dispose();}
+});
+
+test('ground input cannot slide a body with no forearm support',()=>{
+ const missing=['L.lowerArm','L.hand','R.lowerArm','R.hand'];
+ const still=setupFall([1.5,0,0],missing),moving=setupFall([1.5,0,0],missing);
+ try{
+  for(let i=0;i<130;i++){
+   const down=moving.getSnapshot().balanceStates[0]==='down';
+   still.step(FIXED_DT,commands());
+   moving.step(FIXED_DT,commands(down?{turn:-1}:{}));
+   assert.deepEqual(moving.getSnapshot().roots,still.getSnapshot().roots);
+  }
+ }finally{still.dispose();moving.dispose();}
 });
