@@ -63,20 +63,25 @@ export class CrawlAnchors {
    }
   }
  }
- apply(pose:readonly RigPose[],mobility:Mobility,ground:Ground,weight=1):readonly RigPose[]{
+ apply(pose:readonly RigPose[],mobility:Mobility,ground:Ground,retreatWeight?:number):readonly RigPose[]{
+  const weight=retreatWeight??1;
   if(weight===0||!this.arms.some(Boolean))return pose;
   const result=[...pose],index=new Map(result.map((p,i)=>[p.id,i]));
+  const chest=retreatWeight===undefined?undefined:pose.find(p=>p.id==='chest');
   for(let i=0;i<2;i++){
    const a=this.arms[i],side=sides[i]!;
    if(!a||a.count!==mobility.arms[i])continue;
    const u=index.get(side+'.upperArm')!,l=index.get(side+'.lowerArm')!,h=index.get(side+'.hand')!,upper=result[u]!,lower=result[l]!,hand=result[h]!;
    const end=lower.b;
    const target:Vec3=weight===1?a.point:[end[0]+(a.point[0]-end[0])*weight,end[1]+(a.point[1]-end[1])*weight,end[2]+(a.point[2]-end[2])*weight];
-   const bend:Vec3=weight===1?[0,1,0]:[
-    (lower.a[0]-upper.a[0])*(1-weight),
+   // A hand can pass directly below its shoulder when reaching backward.
+   // Keep the elbow outside the chest axis so the pole stays well-defined.
+   const outward=(i===0?-1:1)*weight*.6;
+   const bend:Vec3=chest?[
+    (lower.a[0]-upper.a[0])*(1-weight)+outward*(chest.b[0]-chest.a[0]),
     (lower.a[1]-upper.a[1])*(1-weight)+weight*.36,
-    (lower.a[2]-upper.a[2])*(1-weight)
-   ];
+    (lower.a[2]-upper.a[2])*(1-weight)+outward*(chest.b[2]-chest.a[2])
+   ]:[0,1,0];
    const ik=solveTwoBone(upper.a,target,.36,.32,bend);
    const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end},ph={...hand,a:ik.end,b:ik.end};
    // Never gain a plant by penetrating terrain; keep the corrected base pose

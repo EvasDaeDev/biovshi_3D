@@ -357,7 +357,7 @@ export class PatientGait {
       this.crawlDirection=Math.cos(heading-yaw)<0?-1:1;
     }
     const planted=!!before&&this.downAnchorWeight===1&&
-      this.anchors.snapshot(this.anchors.apply(before,mobility,this.ground),mobility,this.ground).some(a=>a.valid);
+      this.anchors.snapshot(this.anchors.apply(before,mobility,this.ground,1),mobility,this.ground).some(a=>a.valid);
     this.crawlEffort+=((planted?1:0)-this.crawlEffort)*(1-Math.exp(-16*dt));
     this.crawlPhase+=dt*this.crawlEffort*8;
     return planted;
@@ -497,7 +497,7 @@ export class PatientGait {
       return this.anchors.apply(floorPose,this.mobility,this.ground,this.downAnchorWeight);
     }
     const prone=blendGroundPose(standing,grounded,this.proneAmount,this.active,this.ground);
-    const weight=this.proneAmount===1&&this.anchored(this.mobility)?1:this.downAnchorWeight;
+    const weight=this.proneAmount===1&&this.anchored(this.mobility)?undefined:this.downAnchorWeight;
     return this.anchors.apply(prone,this.mobility,this.ground,weight);
   }
 }

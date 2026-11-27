@@ -117,3 +117,21 @@ test('ground input cannot slide a body with no forearm support',()=>{
   }
  }finally{still.dispose();moving.dispose();}
 });
+
+for(const missing of [[],['L.hand','R.upperArm','R.lowerArm','R.hand']])test(`backward crawl keeps the elbow path continuous with ${missing.length?'one forearm':'both hands'}`,()=>{
+ const core=setupFall([1.5,0,0],missing);
+ try{
+  let before=core.getSnapshot(),peak=0;
+  for(let i=0;i<90;i++){
+   const down=before.balanceStates[0]==='down';
+   core.step(FIXED_DT,commands(down?{forward:-1}:{}));
+   const after=core.getSnapshot();
+   if(down&&after.balanceStates[0]==='down')for(const part of before.rigSegments[0].filter(p=>p.id.endsWith('.upperArm'))){
+    const end=after.rigSegments[0].find(p=>p.id===part.id).b;
+    peak=Math.max(peak,Math.hypot(...end.map((value,axis)=>value-part.b[axis])));
+   }
+   before=after;
+  }
+  assert.ok(peak>.01&&peak<.12,`elbow moved ${peak} m in one tick`);
+ }finally{core.dispose();}
+});
