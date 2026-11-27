@@ -8,6 +8,11 @@ const site=resolve(repo,'_site'),lab=resolve(site,'3d/lab-next'),vendor=resolve(
 await rm(site,{recursive:true,force:true});
 await mkdir(resolve(site,'3d/core'),{recursive:true});
 await cp(resolve(repo,'3d/lab-next'),lab,{recursive:true});
+const portraitDir=resolve(lab,'portraits');
+const portraitFiles=(await readdir(portraitDir,{withFileTypes:true}))
+ .filter(file=>file.isFile()&&!file.name.startsWith('.')&&/\.(webp|png|jpe?g|avif)$/i.test(file.name))
+ .map(file=>file.name).sort();
+await writeFile(resolve(portraitDir,'catalog.json'),JSON.stringify(portraitFiles));
 await cp(resolve(core,'dist'),resolve(site,'3d/core/dist'),{recursive:true});
 // v1 authored polygons, vetted spawns and patrols become a static native JSON
 // asset before computing the content-addressed release. Never ship v1 runtime.

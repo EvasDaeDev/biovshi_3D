@@ -6,6 +6,7 @@ import {FrameMeter,RoundClock} from './round-telemetry.js';
 import {CameraEffects,readCameraEffects,saveCameraEffects} from './camera-effects.js';
 import {configureGoProShadow,segmentShadow} from './gopro-shadow.js';
 import {createSegmentVisual} from './segment-visual.js';
+import {assignPatientPortraits,loadPatientPortraits} from './patient-portraits.js';
 import {roundPatientPoses} from './pose-draft.js';
 import {VISION} from '../core/dist/combat/perception.js';
 import {PATIENT_SCALE} from '../core/dist/rig/patient-scale.js';
@@ -29,7 +30,8 @@ import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
 window.labStartup.show('Импорт авторских 3D арен…');
-const authoredLocations=await loadArenaCatalog();
+const [authoredLocations,portraits]=await Promise.all([loadArenaCatalog(),loadPatientPortraits()]);
+let roundPortraits=new Map();
 window.labStartup.show('Создание физического мира…');
 const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
 const core=new LabSimulationCore(),clock=new FixedClock(),keys=new Set();
@@ -244,6 +246,10 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const selected=selectedLocation();
  if(selected)populatePatientCounts(patientCount,selected.capacity,scenario.value==='motion-review'?2:preferredPatients);
  const config=scenarioConfig();
+ roundPortraits=assignPatientPortraits(config.fighters,portraits);
+ for(const [key,mesh] of meshes)if(key.endsWith(':head')){
+  scene.remove(mesh);mesh.children[0].material.dispose();meshes.delete(key);
+ }
  const defaults=config.location?.patientPoses??authoredLocations.ring.patientPoses;
  const patientPoses=query.get('poses')==='stock'?defaults:roundPatientPoses(defaults,{getItem:key=>window.localStorage.getItem(key)});
  debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
@@ -412,7 +418,7 @@ pauseButton.onclick=()=>{
   try{
    const state=core.getSnapshot();
    if(!state.fight.ended)throw new Error('Сначала необходимо завершить бой.');
-   const saved=debris.exportSettledFloor(arena,state.oilMarks);
+   const saved=debris.exportSettledFloor(arena,state.oilMarks,roundPortraits);
    const operation=++floorOperation;
    suspendRound('Сохранение пола перед следующим раундом…');
    let warning='';
@@ -445,7 +451,13 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
   const compatible=oldParts&&oldParts.length===parts.length&&prior.lifeStates[j]===s.lifeStates[i]&&parts.every(p=>oldParts.some(q=>q.id===p.id));
   for(const p of parts){
    const id=fighterId,key=id+':'+p.id,f=segmentFrame(p,parts,s.roots[i*4+3],s.headFrames?.[i]);
-   let m=meshes.get(key);if(!m){m=segmentShadow(createSegmentVisual(p.id,p.radius,f.length,materials[id===0?0:1].clone()));meshes.set(key,m);scene.add(m);}
+   let m=meshes.get(key);
+   if(!m){
+    const portrait=p.id==='head'?portraits.get(roundPortraits.get(id)):undefined;
+    m=segmentShadow(createSegmentVisual(p.id,p.radius,f.length,materials[id===0?0:1].clone(),portrait));
+    meshes.set(key,m);scene.add(m);
+   }
+   if(p.id==='head'&&m.children[1])m.children[1].visible=cameraControl.mode!=='gopro'||cameraPatient.value!==String(id);
    m.visible=true;m.position.copy(v(f.center));frameRotation(f,m.quaternion);
    const tint=segmentTints.sample(id,p.id,s.tick);
    const pulse=p.id==='chest'?chestCountdownTint(s.oil[i],s.lifeStates[i],s.fight,renderTick):0;
@@ -486,7 +498,12 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);m.children[0].material.dispose();debrisMeshes.delete(id);}
  for(const d of falling){
   let m=debrisMeshes.get(d.id);
-  if(!m){m=segmentShadow(createSegmentVisual(d.segmentId,d.radius,d.length,materials[d.fighterId===0?0:1].clone()));debrisMeshes.set(d.id,m);scene.add(m);}
+  if(!m){
+   const face=d.id.toString().startsWith('floor:')?d.portrait:roundPortraits.get(d.fighterId);
+   const portrait=d.segmentId==='head'?portraits.get(face):undefined;
+   m=segmentShadow(createSegmentVisual(d.segmentId,d.radius,d.length,materials[d.fighterId===0?0:1].clone(),portrait));
+   debrisMeshes.set(d.id,m);scene.add(m);
+  }
   const tint=segmentTints.sample(d.id,d.segmentId,s.tick,true);paintSegment(m,d.fighterId,tint,0,d.settled?cooling.part(d.id,renderTick):1);if(tint.strength)tinted.push('debris:'+d.id);
   m.position.set(d.position.x,d.position.y,d.position.z);m.quaternion.set(d.rotation.x,d.rotation.y,d.rotation.z,d.rotation.w);
   const old=oldDebris.get(d.id);

@@ -5,7 +5,7 @@ import {resolve,extname,dirname,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 const site=resolve(dirname(fileURLToPath(import.meta.url)),'../../../_site');
-const types={'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.css':'text/css'};
+const types={'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.css':'text/css','.webp':'image/webp'};
 const server=createServer(async(req,res)=>{
  try{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -318,11 +318,30 @@ try{
  },release);
  assert.deepEqual(ornaments,[
   [['clavicle','chest'],['clavicle','chest']],
-  [['ear','head'],['ear','head']],
+  [],
   [['elbow','R.upperArm']],
   [['knee','L.upperLeg']],
   [],[],
  ]);
+ const faces=await page.evaluate(async release=>{
+  const root='/releases/'+release+'/3d/lab-next/';
+  const {createSegmentVisual}=await import(root+'segment-visual.js');
+  const {assignPatientPortraits,loadPatientPortraits}=await import(root+'patient-portraits.js');
+  const portraits=await loadPatientPortraits(),material=portraits.values().next().value;
+  const group=createSegmentVisual('head',.1,0,undefined,material);
+  const panel=group.getObjectByName('portrait'),image=material.map.image;
+  const fighters=Array.from({length:8},(_,id)=>({id}));
+  const first=[...assignPatientPortraits(fighters,portraits,()=>0).values()];
+  const second=[...assignPatientPortraits(fighters,portraits,()=>.999).values()];
+  return {count:portraits.size,first,second,front:panel.position.z,radius:group.children[0].scale.z,
+   aspect:panel.scale.x/panel.scale.y,sourceAspect:image.width/image.height,side:material.side};
+ },release);
+ assert.ok(faces.count>=4);
+ assert.equal(new Set(faces.first.slice(0,faces.count)).size,Math.min(faces.count,8));
+ assert.notDeepEqual(faces.first,faces.second);
+ assert.ok(faces.front>faces.radius&&faces.front-faces.radius<.002);
+ assert.ok(Math.abs(faces.aspect-faces.sourceAspect)<1e-8);
+ assert.equal(faces.side,0,'portrait is rendered only from the front');
  assert.match(release,/^[a-f0-9]{20}$/);
  // Real IndexedDB persistence across reload, session and arena switches.
  // A synthetic settled remain avoids spending another 60 seconds waiting for

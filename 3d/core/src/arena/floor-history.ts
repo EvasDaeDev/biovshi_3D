@@ -7,7 +7,7 @@ export const FLOOR_OIL_LIMIT=2000;
 export interface FloorVec3 {readonly x:number;readonly y:number;readonly z:number}
 export interface FloorRotation extends FloorVec3 {readonly w:number}
 export interface FloorMound {readonly id:string;readonly source:'segment'|'branch'|'body';readonly x:number;readonly z:number;readonly radius:number;readonly height:number}
-export interface FloorVisual {readonly id:string;readonly fighterId:number;readonly segmentId:string;readonly settled:true;readonly length:number;readonly radius:number;readonly position:FloorVec3;readonly rotation:FloorRotation}
+export interface FloorVisual {readonly id:string;readonly fighterId:number;readonly segmentId:string;readonly settled:true;readonly length:number;readonly radius:number;readonly position:FloorVec3;readonly rotation:FloorRotation;readonly portrait?:string}
 export interface FloorOilMark {readonly id:string;readonly fighterId:number;readonly tick:number;readonly point:readonly [number,number,number];readonly radius?:number}
 export interface FloorHistory {readonly schemaVersion:1;readonly arenaId:string;readonly mounds:readonly FloorMound[];readonly visuals:readonly FloorVisual[];readonly oilMarks:readonly FloorOilMark[]}
 type RecordValue=Record<string,unknown>;
@@ -46,7 +46,9 @@ export function readFloorHistory(input:unknown,arenaId:string):FloorHistory{
      raw.settled!==true||!number(raw.length)||raw.length<0||raw.length>4||
      !positive(raw.radius)||raw.radius>1)throw new RangeError('Invalid archived visual anatomy');
   return {id:'floor:v:'+i,fighterId:raw.fighterId as number,segmentId:raw.segmentId,
-    settled:true,length:raw.length,radius:raw.radius,position:vec(raw.position),rotation:quat(raw.rotation)};
+    settled:true,length:raw.length,radius:raw.radius,position:vec(raw.position),rotation:quat(raw.rotation),
+    ...(raw.segmentId==='head'&&typeof raw.portrait==='string'&&raw.portrait.length<=255&&
+     /^[^/\\]+\.(webp|png|jpe?g|avif)$/i.test(raw.portrait)?{portrait:raw.portrait}:{})};
  });
  const oilMarks:FloorOilMark[]=input.oilMarks.map((raw:unknown,i:number)=>{
   if(!object(raw)||!Number.isSafeInteger(raw.fighterId)||Number(raw.fighterId)<0||

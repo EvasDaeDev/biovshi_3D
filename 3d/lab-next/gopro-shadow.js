@@ -10,7 +10,7 @@ export function configureGoProShadow(THREE,renderer,light){
 
 export function segmentShadow(group,cast=true){
  for(const mesh of group.children){
-  mesh.castShadow=cast;
+  mesh.castShadow=cast&&mesh.name!=='portrait';
   mesh.receiveShadow=true;
  }
  return group;

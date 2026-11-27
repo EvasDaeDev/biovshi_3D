@@ -74,11 +74,12 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
   assert.ok(w.snapshot().every(d=>d.settled));
   const expectedVisualCount=w.snapshot().length+body.parts.length;
   const originalMounds=w.moundSnapshot();
-  const saved=w.exportSettledFloor('ward',[{id:0,fighterId:0,tick:12,point:[.3,.01,.4]}]);
+  const saved=w.exportSettledFloor('ward',[{id:0,fighterId:0,tick:12,point:[.3,.01,.4]}],new Map([[0,'01.webp']]));
   assert.equal(saved.visuals.length,expectedVisualCount);
   assert.equal(saved.mounds.length,originalMounds.length);
   assert.ok(saved.visuals.some(d=>d.segmentId==='L.hand'));
   assert.ok(saved.visuals.some(d=>d.segmentId==='chest'));
+  assert.equal(saved.visuals.find(d=>d.segmentId==='head').portrait,'01.webp');
   assert.ok(saved.visuals.some(d=>d.segmentId==='R.lowerLeg'));
   assert.ok(saved.mounds.every(m=>m.height<=.300001));
   const json=JSON.parse(JSON.stringify(saved));
@@ -104,8 +105,9 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
    for(let i=0;i<950;i++)next.step(FIXED_DT);
    assert.equal(next.snapshot().length,initial,'archived geometry is never deleted by later rounds');
    assert.ok(next.snapshot().every(d=>d.settled));
-   const later=next.exportSettledFloor('ward',[{id:0,fighterId:0,tick:5,point:[1,.01,0]}]);
+   const later=next.exportSettledFloor('ward',[{id:0,fighterId:0,tick:5,point:[1,.01,0]}],new Map([[0,'02.webp']]));
    assert.equal(later.visuals.length,expectedVisualCount+1);
+   assert.equal(later.visuals.find(d=>d.segmentId==='head').portrait,'01.webp');
    assert.equal(later.oilMarks.length,3);assert.equal(later.oilMarks.filter(o=>o.radius!==undefined).length,1);
    next.reset([],later,'ward');
    assert.equal(next.snapshot().length,expectedVisualCount+1);

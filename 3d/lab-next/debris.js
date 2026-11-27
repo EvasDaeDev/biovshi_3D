@@ -169,7 +169,7 @@ export class DebrisWorld {
  archivedOilSnapshot(){return this.archiveFloor?.oilMarks.map(o=>({...o,point:[...o.point]}))??[];}
  /** Never flatten a falling ragdoll into saved scenery. Fully settled visual
   * geometry and hidden cone colliders are serialized independently. */
- exportSettledFloor(arenaId,oilMarks=[]){
+ exportSettledFloor(arenaId,oilMarks=[],portraits=new Map()){
   const bodies=this.bodySnapshot();
   if(this.flights.size||this.items.length||this.branches.some(b=>!b.settled)||bodies.some(b=>!b.settled))
    throw new Error('Cannot archive an arena while physics bodies are falling');
@@ -179,7 +179,12 @@ export class DebrisWorld {
    return {fighterId:b.fighterId,segmentId:p.id,settled:true,length:frame.length,radius:p.radius,
     position:{x:frame.center[0],y:frame.center[1],z:frame.center[2]},rotation};
   }));
-  return createFloorHistory(arenaId,this.moundSnapshot(),[...this.snapshot(),...remains],
+  const visuals=[...this.snapshot(),...remains].map(part=>{
+   if(part.segmentId!=='head'||String(part.id).startsWith('floor:'))return part;
+   const portrait=portraits.get(part.fighterId);
+   return portrait?{...part,portrait}:part;
+  });
+  return createFloorHistory(arenaId,this.moundSnapshot(),visuals,
    [...this.archivedOilSnapshot(),...oilMarks,...this.bodyPoolSnapshot()]);
  }
  branchSnapshot(){return [...this.branches.map(b=>({id:b.id,fighterId:b.fighterId,settled:!!b.settled,parts:(b.settled??compoundPose(b)).map(p=>({...p,a:[...p.a],b:[...p.b]}))})),...[...this.flights.values()].map(b=>({...b,parts:b.parts.map(p=>({...p,a:[...p.a],b:[...p.b]}))}))];}

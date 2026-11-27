@@ -2,6 +2,7 @@ import {CameraEffects,EFFECT_DEFAULTS,readCameraEffects,saveCameraEffects} from 
 import {useSharedAnatomy} from '../core/dist/rig/shared-anatomy.js';
 import {poseJointAnchor} from '../core/dist/rig/pose-joints.js';
 import {createSegmentVisual} from './segment-visual.js';
+import {loadPatientPortraits} from './patient-portraits.js';
 import {POSE_DRAFT_KEY,readPoseDraft} from './pose-draft.js';
 import {anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
 import {solveTwoBone} from '../core/dist/rig/two-bone.js';
@@ -37,10 +38,11 @@ async function loadDefaults(){
   throw new Error('Неполный набор исходных поз.');
  return {...slots,tPose:slots.tPose??referencePose('tPose')};
 }
-const defaults=await loadDefaults().catch(error=>{
+const [defaults,portraits]=await Promise.all([loadDefaults().catch(error=>{
  status.textContent=error.message;
  throw error;
-});
+}),loadPatientPortraits()]);
+const previewPortrait=portraits.values().next().value;
 const source=()=>data.slots[poseSelect.value]??defaults[poseSelect.value];
 const current=()=>useSharedAnatomy(source(),data.slots.tPose??defaults.tPose);
 
@@ -195,7 +197,7 @@ function renderPose(){
   joint.rotation.set(...(params.rotation??[0,0,0]));
   (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
   const frame=anatomicalBoneFrame(part,pose,0);
-  const visual=createSegmentVisual(part.id,part.radius,frame.length,part.id===segmentSelect.value?selected:primary);
+  const visual=createSegmentVisual(part.id,part.radius,frame.length,part.id===segmentSelect.value?selected:primary,previewPortrait);
   visual.position.copy(a).lerp(b,.5).sub(anchor).add(bind);
   const vector=values=>new THREE.Vector3(...values);
   visual.quaternion.setFromRotationMatrix(basis.makeBasis(vector(frame.x),vector(frame.y),vector(frame.z)));

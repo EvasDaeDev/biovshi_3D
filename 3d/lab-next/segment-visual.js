@@ -1,10 +1,10 @@
-import {Group,Mesh,SphereGeometry} from 'three';
+import {Group,Mesh,PlaneGeometry,SphereGeometry} from 'three';
 
-const unitSphere=new SphereGeometry(1,24,16);
+const unitSphere=new SphereGeometry(1,24,16),unitPortrait=new PlaneGeometry(1,1);
 
 /** Local Y follows the segment axis. For the chest and pelvis that axis
  * runs across the body. The group moves with the owning segment. */
-export function createSegmentVisual(id,radius,length,material){
+export function createSegmentVisual(id,radius,length,material,portrait){
  const group=new Group();
  const add=(name,scale,position=[0,0,0])=>{
   const mesh=new Mesh(unitSphere,material);
@@ -32,8 +32,16 @@ export function createSegmentVisual(id,radius,length,material){
  if(type==='chest')for(const side of [-1,1]){
   add('clavicle',[.515*radius,.51*radius,.44*radius],[.56*radius,side*.42*length,0]);
  }
- if(type==='head')for(const side of [-1,1]){
-  add('ear',[.31*radius,.43*radius,.37*radius],[side*.82*radius,0,0]);
+ if(type==='head'&&portrait){
+  const face=new Mesh(unitPortrait,portrait);
+  const image=portrait.map.image,height=1.68*radius;
+  face.name='portrait';
+  face.userData.segment=id;
+  face.scale.set(height*image.width/image.height,height,1);
+  // The head frame points local +Z along the gaze. Keep the plane just
+  // outside the sphere so the nose of the sphere never clips the texture.
+  face.position.z=radii.head[2]+.001;
+  group.add(face);
  }
  if(type==='upperArm'||type==='upperLeg'){
   add(type==='upperArm'?'elbow':'knee',[.78*radius,.73*radius,.76*radius],[0,length/2,0]);
