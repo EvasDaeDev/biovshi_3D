@@ -22,7 +22,7 @@ export function compensateHead(pose:readonly PhysicsSegmentPose[],reference:Vec3
 }
 /** The free arm follows an opposing arc, rigidly rotating about the actual
  * shoulder. A strike's attacking chain is not moved by this helper. */
-export function counterArms(pose:readonly PhysicsSegmentPose[],kind:'arm'|'leg'|'head',side:'L'|'R',yaw:number,amount:number):readonly PhysicsSegmentPose[]{
+export function counterArms(pose:readonly PhysicsSegmentPose[],kind:'arm'|'leg'|'head',side:'L'|'R',yaw:number,amount:number,pull=false):readonly PhysicsSegmentPose[]{
  if(Math.abs(amount)<1e-8)return pose;
  const pivots=new Map<string,Vec3>();
  for(const s of ['L','R'] as const){
@@ -37,13 +37,23 @@ export function counterArms(pose:readonly PhysicsSegmentPose[],kind:'arm'|'leg'|
   const sign=s==='L'?-1:1;
   // Rotation around the transverse shoulder axis produces a small backward
   // swing, with more opening on the free side of a kick.
-  const a=amount*(kind==='leg'?.24:kind==='head'?.18:.17),c=Math.cos(a),sn=Math.sin(a);
+  const a=amount*(kind==='leg'?.34:kind==='head'?.27:pull?-.48:.17),c=Math.cos(a),sn=Math.sin(a);
   const roll=amount*sign*(kind==='leg'?.17:.08),cr=Math.cos(roll),sr=Math.sin(roll);
   const point=(v:Vec3):Vec3=>{
    const d=sub(v,origin),x=Math.cos(yaw)*d[0]+Math.sin(yaw)*d[2],z=-Math.sin(yaw)*d[0]+Math.cos(yaw)*d[2];
    const yy=d[1]*c-z*sn,zz=d[1]*sn+z*c,xx=x*cr-yy*sr,y=x*sr+yy*cr;
    return add(origin,[Math.cos(yaw)*xx-Math.sin(yaw)*zz,y,Math.sin(yaw)*xx+Math.cos(yaw)*zz]);
   };
+  if(pull&&p.id!==s+'.upperArm'){
+   const elbow=pose.find(part=>part.id===s+'.upperArm')!.b;
+   const fold=(v:Vec3):Vec3=>{
+    const d=sub(v,elbow),sn=Math.sin(amount*.31),c=Math.cos(amount*.31);
+    const x=Math.cos(yaw)*d[0]+Math.sin(yaw)*d[2],z=-Math.sin(yaw)*d[0]+Math.cos(yaw)*d[2];
+    const zz=d[1]*sn+z*c;
+    return point(add(elbow,[Math.cos(yaw)*x-Math.sin(yaw)*zz,d[1]*c-z*sn,Math.sin(yaw)*x+Math.cos(yaw)*zz]));
+   };
+   return {...p,a:fold(p.a),b:fold(p.b)};
+  }
   return {...p,a:point(p.a),b:point(p.b)};
  });
 }

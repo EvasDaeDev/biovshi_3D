@@ -401,6 +401,9 @@ export class PatientGait {
     const gaitPhase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
     const lean=(secondary?secondary.drive*(.045+this.runAmount*.055)+secondary.inertia*.025:Math.sign(this.signedSpeed)*moving*(.045+this.runAmount*.055))+Math.sin(t*.72+id)*.012,bob=moving*.012*(1-Math.abs(gaitPhase))+breathing*.006+this.sprintBob;
     const preload=this.hopSample.crouch??0;
+    const suspended=this.organic?clamp(this.hopSample.lift/.24):0;
+    const launchSwing=this.organic?suspended-preload*5:0;
+    const recoilHip:Vec3=[torsoHit[0]*.32,0,torsoHit[2]*.30];
     const stanceDrop=preload+(reactive?.compression??0)+(this.groundedStride?moving*(.012+.018*this.runAmount+(this.organic?.008:0)):this.mobility.mode==='biped'?moving*(.065+.035*this.runAmount):0);
     const base=this.authored?.stance;
     const expressive=this.expressive??base;
@@ -408,15 +411,15 @@ export class PatientGait {
     const baseHip=base?.get('pelvis'),baseChest=expressive?.get('chest'),poseHip=expressive?.get('pelvis');
     const spineX=baseChest&&poseHip?Math.max(-.12,Math.min(.12,center(baseChest)[0]-center(poseHip)[0]))*.55:0;
     const spineZ=baseChest&&poseHip?Math.max(-.24,Math.min(.24,center(baseChest)[2]-center(poseHip)[2]))*.55:0;
-    const weightShift=secondary?secondary.weight*.035:0;
+    const weightShift=secondary?secondary.weight*.048:0;
     // Less permanent crouch in intact authored bipeds. Keep the original
     // stance scale and leave support reach/landing compression to IK.
     const rise=this.organic&&this.mobility.mode==='biped'?.03:0;
     const runLean=this.organic?this.carriage.runLean:0;
-    const hip:Vec3=[lateral+weightShift+(baseHip?center(baseHip)[0]*.3:0),1.02+rise+bob-this.supportDrop-stanceDrop,0],chest:Vec3=[-lateral*.35+weightShift*.4,1.51+rise+bob-this.supportDrop-stanceDrop,-.035-lean*.5-runLean];
-    const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id),1.89+rise+bob-this.supportDrop-stanceDrop,-.045-lean*.24-runLean*.72];
+    const hip:Vec3=[lateral+weightShift+recoilHip[0]+(baseHip?center(baseHip)[0]*.3:0),1.02+rise+bob-this.supportDrop-stanceDrop,recoilHip[2]],chest:Vec3=[-lateral*.35+weightShift*.4,1.51+rise+bob-this.supportDrop-stanceDrop,-.035-lean*.5-runLean-.058*suspended];
+    const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id)+(secondary?.arms??0)*.018,1.89+rise+bob-this.supportDrop-stanceDrop,-.045-lean*.24-runLean*.72-.023*suspended];
     const spineSway=secondary?secondary.chest:this.groundedStride?moving*gaitPhase:0;
-    const naturalChest=add(add(chest,torsoHit),[-roll*.12*upperSway-spineSway*.075+spineX,spineSway*.025,lean*.18-.055*spineSway+spineZ-preload*.8]);
+    const naturalChest=add(add(chest,torsoHit),[-roll*.12*upperSway-spineSway*.075+spineX,spineSway*.036,lean*.18-.068*spineSway+spineZ-preload*.8]);
     const chestPose=mix(naturalChest,[naturalChest[0]-lateral*.35*idle,naturalChest[1],hip[2]-Math.tan(spinePitch)*(naturalChest[1]-hip[1]+.105)],postureWeight);
     const tilt=(part:RigPose|undefined)=>part?Math.atan2(part.b[2]-part.a[2],part.b[0]-part.a[0]):0;
     const hipTwist=(this.groundedStride?.24:.11)*(secondary?secondary.pelvis:moving*gaitPhase)*style.twist+.6*tilt(baseHip);
@@ -449,8 +452,8 @@ export class PatientGait {
       const armBias=arm?[arm.b[0]-arm.a[0],arm.b[1]-arm.a[1],arm.b[2]-arm.a[2]] as Vec3:null;
       const handBias=arm&&forearm?[forearm.b[0]-arm.a[0],forearm.b[1]-arm.a[1],forearm.b[2]-arm.a[2]] as Vec3:null;
       const armHit:Vec3=reactive?localImpact(i===0?reactive.leftArm:reactive.rightArm,yaw):[0,0,0];
-      const idleElbow=add(armBias??[side*.055,-.31,.035],[0,preload*.5,swing*.17]);
-      const idleHand=add(handBias??[side*.06,-.59,.015],[0,preload,swing*(.28+.07*this.runAmount)]);
+      const idleElbow=add(armBias??[side*.055,-.31,.035],[0,preload*.5+suspended*.055,swing*.17-launchSwing*.09]);
+      const idleHand=add(handBias??[side*.06,-.59,.015],[0,preload+suspended*.16,swing*(.28+.07*this.runAmount)-launchSwing*.23]);
       const carried=this.organic&&this.mobility.mode==='biped'?this.carriage.offsets(side,idleElbow,idleHand,swing,.8*idle):{elbow:idleElbow,hand:idleHand};
       const elbow=add(shoulder,add(carried.elbow,[armHit[0]*.45,0,armHit[2]*.45]));
       const hand=add(shoulder,add(carried.hand,[armHit[0],0,armHit[2]]));
@@ -485,7 +488,7 @@ export class PatientGait {
       const upright=single?steady(fixed):steady(balanceStandingPose(fixed,this.active,stance,this.ground,this.organic?{points:[this.feet[0].plant,this.feet[1].plant],weight:secondary?.weight??0,yaw}:undefined));
       if(rising&&this.proneAmount>0){
         const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
-        const floorPose=this.bracedFall(blendGroundPose(upright,grounded,this.proneAmount,this.active,this.ground,true,true),grounded);
+        const floorPose=this.bracedFall(blendGroundPose(upright,grounded,this.proneAmount,this.active,this.ground,true,true,'rise'),grounded);
         return this.anchors.apply(floorPose,this.mobility,this.ground,this.downAnchorWeight);
       }
       return upright;
@@ -493,7 +496,7 @@ export class PatientGait {
     const grounded=pronePose(root,yaw,this.crawlPhase,this.crawlEffort,this.crawlDirection,this.mobility,this.ground,this.organic);
     if(this.knockdownMotion){
       const source=this.knockdownMotion.source(root);
-      const floorPose=this.bracedFall(blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true),grounded);
+      const floorPose=this.bracedFall(blendGroundPose(source,grounded,this.proneAmount,this.active,this.ground,true,false,'fall'),grounded);
       return this.anchors.apply(floorPose,this.mobility,this.ground,this.downAnchorWeight);
     }
     const prone=blendGroundPose(standing,grounded,this.proneAmount,this.active,this.ground);

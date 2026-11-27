@@ -17,7 +17,7 @@ const smooth=(t:number)=>{const v=Math.max(0,Math.min(1,t));return v*v*(3-2*v);}
 const mix=(a:Vec3,b:Vec3,t:number):Vec3=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 export type StrikePhase='idle'|'windup'|'thrust'|'recover';
 export type StrikeKind='arm'|'leg'|'head';
-const CANCEL_TICKS=ticks(.24),FALL_WINDUP_TICKS=ticks(.16);
+const CANCEL_TICKS=ticks(.24),FALL_WINDUP_TICKS=ticks(.16),AUTHORED_KICK_WINDUP_TICKS=ticks(.23);
 export interface StrikeVisual {readonly punch:Punch;readonly tick:number;readonly weight:number}
 export interface StrikeChannel {readonly side:'L'|'R';readonly kind:'arm'|'leg';readonly targetId:number;readonly aim:Vec3;readonly targetSegment?:string}
 export interface Punch {readonly quickWindup?:boolean;readonly fastThrust?:boolean;readonly pounce?:boolean;readonly crouch?:boolean;readonly secondary?:StrikeChannel;readonly kind?:StrikeKind;readonly prone?:boolean;readonly side:'L'|'R';readonly targetId:number;readonly aim:Vec3;readonly start:number;readonly yaw:number;readonly targetSegment?:string;readonly tempo?:number}
@@ -53,7 +53,8 @@ export const AUTHORED_THRUST_SECONDS=.15;
  * preserving the full recovery and individual tempo. */
 export function strikeAge(p:Punch,tick:number):number{
  let age=(tick-p.start)/(p.tempo??1);
- if(p.quickWindup)age=age<FALL_WINDUP_TICKS?age*W/FALL_WINDUP_TICKS:age+W-FALL_WINDUP_TICKS;
+ const windup=p.quickWindup?FALL_WINDUP_TICKS:p.fastThrust&&p.kind==='leg'&&!p.pounce&&!p.secondary?AUTHORED_KICK_WINDUP_TICKS:W;
+ if(windup!==W)age=age<windup?age*W/windup:age+W-windup;
  if(!p.fastThrust||age<W)return age;
  const fast=ticks(AUTHORED_THRUST_SECONDS);
  return age<W+fast?W+(age-W)*T/fast:age+(T-fast);
@@ -126,13 +127,16 @@ export function punchPose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:nu
  }
  if(coordinated&&punch.kind!=='head')punch={...punch,aim:clampStrikeAim(pose,punch.aim,punch.yaw),...(punch.secondary?{secondary:{...punch.secondary,aim:clampStrikeAim(pose,punch.secondary.aim,punch.yaw)}}:{})};
  const headReference=coordinated&&!bodyAlreadyCoordinated&&punch.kind!=='head'?pose.find(p=>p.id==='head')?.a:undefined;
- const stabilized=(parts:readonly PhysicsSegmentPose[])=>headReference?compensateHead(parts,headReference,.78):parts;
+ const stabilized=(parts:readonly PhysicsSegmentPose[])=>headReference?compensateHead(parts,headReference,punch.kind==='leg'?.78:.48):parts;
  const phase=age<W?'windup':age<W+T?'thrust':'recover';
  const progress=age<W?smooth(age/W):age<W+T?smooth((age-W+1)/T):smooth((age-W-T)/R);
  const load=phase==='windup'?progress:phase==='recover'?1-progress:1;
  if(motion&&!bodyAlreadyCoordinated){
   const amount=age<W?-.32*smooth(age/W):age<W+T?-.32+1.32*smooth((age-W+1)/T):1-smooth((age-W-T)/R);
-  pose=coordinated?coordinatedStrikeBody(pose,punch,amount*weight,motion):strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
+  // The hips start driving before the fist reaches full extension.
+  // During recovery the arm folds first and the lower body settles last.
+  const drive=age<W?-.34*smooth(age/W):age<W+T?-.34+1.34*smooth((age-W+1)/(T*.80)):1-smooth(((age-W-T)/R)**1.35);
+  pose=coordinated?coordinatedStrikeBody(pose,punch,amount*weight,motion,drive*weight):strikeBody(pose,punch.kind==='leg'?'kick':punch.kind==='head'?'headbutt':'punch',punch.side,amount,motion);
  }
  // Both arm chains are solved against the same shared torso. For a
  // mixed attack, solve the arm before the kick's support/COM correction.

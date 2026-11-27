@@ -53,3 +53,19 @@ test('a straight single punch advances its striking shoulder with a pronounced c
   assert.ok(get(loaded,side+'.upperArm').a[2]-get(extended,side+'.upperArm').a[2]>.20);
  }
 });
+
+test('straight punch transfers weight through the knees and hips before the arm settles',()=>{
+ const punch={kind:'arm',side:'L',targetId:1,start:0,yaw:0,aim:[-.25,1.55,-1]};
+ const sample=tick=>punchPose(base,punch,tick,()=>0,motion);
+ const loaded=sample(19),extended=sample(31),recovering=sample(39);
+ const pelvis=pose=>center(get(pose,'pelvis'));
+ assert.ok(pelvis(loaded)[2]>pelvis(base)[2]+.02);
+ assert.ok(pelvis(extended)[2]<pelvis(base)[2]-.10);
+ assert.ok(pelvis(recovering)[2]<pelvis(base)[2]-.05);
+ for(const side of ['L','R']){
+  assert.deepEqual(get(extended,side+'.foot'),get(base,side+'.foot'));
+  assert.ok(dist(get(extended,side+'.upperLeg').b,get(loaded,side+'.upperLeg').b)>.05);
+ }
+ const relativeHand=pose=>get(pose,'R.hand').a[2]-get(pose,'R.upperArm').a[2];
+ assert.ok(relativeHand(extended)>relativeHand(loaded)+.08);
+});

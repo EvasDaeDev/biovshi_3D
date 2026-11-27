@@ -106,3 +106,21 @@ for(const [kind,key] of [['arm','KeyJ'],['head','KeyL'],['leg','KeyK']])for(cons
   }finally{core.dispose();}
  });
 }
+
+test('standing jump winds the arms back before swinging them through takeoff',()=>{
+ const core=start(0,0,[[0,0,0],[2.5,0,1.5]]);
+ try{
+  const reach=s=>{
+   const parts=s.rigSegments[0];
+   return ['L','R'].reduce((total,side)=>total+parts.find(p=>p.id===side+'.hand').a[2]-parts.find(p=>p.id===side+'.upperArm').a[2],0)/2;
+  };
+  let preparation=-Infinity,flight=Infinity;
+  for(let i=0;i<75;i++){
+   const state=step(core,command(0,{jump:i===1}));
+   if(state.hopPhases[0]==='prepare')preparation=Math.max(preparation,reach(state));
+   if(state.hopPhases[0]==='flight')flight=Math.min(flight,reach(state));
+  }
+  assert.ok(Number.isFinite(preparation)&&Number.isFinite(flight));
+  assert.ok(preparation-flight>.12,JSON.stringify({preparation,flight}));
+ }finally{core.dispose();}
+});

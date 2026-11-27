@@ -32,7 +32,10 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
  put('neck',chest,add(head,[0,0,.10]));put('head',head);
  for(let i=0;i<2;i++){
   const side=i===0?-1:1,key=i===0?'L.':'R.',h=hipAt(side),shoulder=shoulderAt(side);
-  const legX=h[0]+side*.10,legZ=h[2]+.83;
+  // The knee on the pulling side tucks under the pelvis while the other
+  // trails. The ground envelope and the same two-bone solve still apply.
+  const drag=organic?effort*Math.sin(phase+i*Math.PI-.48):0;
+  const legX=h[0]+side*(.10+.024*drag),legZ=h[2]+.83-.11*drag;
   const foot:Vec3=[legX,Math.max(.13,floorAt(legX,legZ)+.13),legZ];
   const leg=solveTwoBone(h,foot,.49,.50,[side*.3,1,0]);
   put(key+'upperLeg',h,leg.joint);put(key+'lowerLeg',leg.joint,leg.end);put(key+'foot',leg.end);
@@ -55,7 +58,7 @@ export function pronePose(root:Vec3,yaw:number,phase:number,effort:number,direct
 }
 /** Blend toward the ground pose and correct the active capsule envelope.
  * Sample endpoints and midpoint; this is approximate on steep terrain. */
-export function blendGroundPose(standing:readonly RigPose[],prone:readonly RigPose[],amount:number,active:readonly string[],ground:(x:number,z:number)=>number,continuous=false,preserveTorso=false):readonly RigPose[]{
+export function blendGroundPose(standing:readonly RigPose[],prone:readonly RigPose[],amount:number,active:readonly string[],ground:(x:number,z:number)=>number,continuous=false,preserveTorso=false,transition?:'fall'|'rise'):readonly RigPose[]{
  if(continuous&&amount===0)return standing;
  const t=amount*amount*(3-2*amount);
  // The raw prone pose places abdomen.b at the chest centre. It is not
@@ -64,7 +67,14 @@ export function blendGroundPose(standing:readonly RigPose[],prone:readonly RigPo
  // independent spine/thorax axes. Both endpoints then share the same
  // anatomy and the rise does not jump when its weight leaves one.
  const target=preserveTorso?constrainRig(prone):prone;
- const result=constrainRig(standing.map((p,i)=>{const q=target[i]!;return {...p,a:mix(p.a,q.a,t),b:mix(p.b,q.b,t)};}),undefined,1,false,0,undefined,preserveTorso);
+ const result=constrainRig(standing.map((p,i)=>{
+  const q=target[i]!;
+  // Delay the extremities so a falling or rising body unfolds in sequence.
+  // The stagger is zero at both endpoints of the blend.
+  const lead=p.id==='pelvis'||p.id==='abdomen'?.38:p.id==='head'||/hand$|foot$/.test(p.id)?-.38:0;
+  const w=transition?t+lead*t*(1-t)*(transition==='fall'?1:-1):t;
+  return {...p,a:mix(p.a,q.a,w),b:mix(p.b,q.b,w)};
+ }),undefined,1,false,0,undefined,preserveTorso);
  let correction=-Infinity;
  for(const p of result)if(active.includes(p.id))for(const point of [p.a,p.b,mix(p.a,p.b,.5)])correction=Math.max(correction,ground(point[0],point[2])+p.radius-point[1]);
  const lift=Number.isFinite(correction)?(continuous&&correction<0?correction*t:amount>=1?correction:Math.max(0,correction)):0;
