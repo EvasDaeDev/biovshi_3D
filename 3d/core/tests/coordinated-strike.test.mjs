@@ -69,3 +69,17 @@ test('straight punch transfers weight through the knees and hips before the arm 
  const relativeHand=pose=>get(pose,'R.hand').a[2]-get(pose,'R.upperArm').a[2];
  assert.ok(relativeHand(extended)>relativeHand(loaded)+.08);
 });
+
+test('the edited punch torso pitch reaches the shared attack pose',()=>{
+ const edit=compileAuthoredMotion({schemaVersion:1,stature:1.65,slots:{...slots,punch:slots.punch.map(part=>
+  part.id==='chest'?{...part,rotation:[(part.rotation?.[0]??0)-.40,part.rotation?.[1]??0,part.rotation?.[2]??0]}:part
+ )}});
+ const p={kind:'arm',side:'L',targetId:1,start:0,yaw:0,aim:[-.25,1.55,-1]};
+ const pitch=pose=>{
+  const chest=center(get(pose,'chest')),end=get(pose,'abdomen').b;
+  return Math.atan2(end[2]-chest[2],chest[1]-end[1]);
+ };
+ const stock=punchPose(base,p,31,()=>0,motion),adjusted=punchPose(base,p,31,()=>0,edit);
+ assert.ok(pitch(adjusted)-pitch(stock)>.25);
+ assert.deepEqual(get(adjusted,'L.foot'),get(stock,'L.foot'));
+});

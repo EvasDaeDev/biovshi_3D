@@ -17,14 +17,21 @@ function rotation([x,y,z]:Vec3):(p:Vec3)=>Vec3{
 type Joint={origin:Vec3;world:(p:Vec3)=>Vec3};
 interface StandingAdjustment {
  readonly spine:number;
+ readonly thorax:number;
  readonly neck:number;
  readonly feet:readonly [Vec3,Vec3];
 }
 export type AuthoredMotion=Readonly<Partial<Record<PoseSlot,ReadonlyMap<string,RigPose>>>> & {
+ readonly torso?:Readonly<Partial<Record<PoseSlot,Pick<StandingAdjustment,'spine'|'thorax'>>>>;
  readonly standing?:Readonly<Partial<Record<'stance'|'aggressive',StandingAdjustment>>>;
 };
 
-function compileSlot(parts:readonly PoseSegment[]):ReadonlyMap<string,RigPose>{
+interface CompiledSlot {
+ readonly pose:ReadonlyMap<string,RigPose>;
+ readonly spine:number;
+ readonly thorax:number;
+}
+function compileSlot(parts:readonly PoseSegment[]):CompiledSlot{
  const settings=new Map(parts.map(part=>[part.id,part]));
  const joints=new Map<string,Joint>(),pose=new Map<string,RigPose>();
  for(const part of buildEditedPose(parts)){
@@ -40,11 +47,16 @@ function compileSlot(parts:readonly PoseSegment[]):ReadonlyMap<string,RigPose>{
   joints.set(part.id,{origin,world});
   pose.set(part.id,{...part,a:times(world(minus(part.a,origin)),1/PATIENT_SCALE),b:times(world(minus(part.b,origin)),1/PATIENT_SCALE)});
  }
- return pose;
+ const abdomen=pose.get('abdomen');
+ const chest=joints.get('chest');
+ // A chest capsule spans the shoulders. Rotation around that axis leaves
+ // its endpoints unchanged, so recover its up axis from the editor joint.
+ const chestUp=chest?minus(chest.world([0,1,0]),chest.world([0,0,0])):null;
+ return {pose,spine:abdomen?pitch(abdomen):0,thorax:chestUp?Math.atan2(-chestUp[2],chestUp[1]):0};
 }
 
 const standingSlots=['stance','aggressive'] as const;
-const baseline=new Map<string,ReadonlyMap<string,RigPose>>();
+const baseline=new Map<PoseSlot,CompiledSlot>();
 const limit=(n:number,max:number)=>Math.max(-max,Math.min(max,n));
 const pitch=(part:RigPose)=>Math.atan2(part.a[2]-part.b[2],part.b[1]-part.a[1]);
 
@@ -52,25 +64,25 @@ const pitch=(part:RigPose)=>Math.atan2(part.a[2]-part.b[2],part.b[1]-part.a[1]);
  * Apply edits relative to the calibrated standing targets and retain IK. */
 export function compileAuthoredMotion(doc:PoseDocument):AuthoredMotion{
  const result:Partial<Record<PoseSlot,ReadonlyMap<string,RigPose>>>={};
- for(const [slot,parts] of Object.entries(doc.slots))result[slot as PoseSlot]=compileSlot(parts);
+ const torso:Partial<Record<PoseSlot,Pick<StandingAdjustment,'spine'|'thorax'>>>={};
  const standing:Partial<Record<typeof standingSlots[number],StandingAdjustment>>={};
- for(const slot of standingSlots){
-  const pose=result[slot];
-  if(!pose)continue;
+ const delta=(value:number,reference:number)=>Math.atan2(Math.sin(value-reference),Math.cos(value-reference));
+ for(const [name,parts] of Object.entries(doc.slots)){
+  const slot=name as PoseSlot,compiled=compileSlot(parts);
   const defaults=baseline.get(slot)??compileSlot(referencePose(slot));
   baseline.set(slot,defaults);
-  const angle=(id:string)=>{
-   const part=pose.get(id),reference=defaults.get(id);
-   return part&&reference?limit(pitch(part)-pitch(reference),Math.PI/12):0;
-  };
+  result[slot]=compiled.pose;
+  torso[slot]={spine:limit(delta(compiled.spine,defaults.spine),Math.PI/3),thorax:limit(delta(compiled.thorax,defaults.thorax),Math.PI/3)};
+  if(slot!=='stance'&&slot!=='aggressive')continue;
+  const neck=compiled.pose.get('neck'),referenceNeck=defaults.pose.get('neck');
   const foot=(id:string):Vec3=>{
-   const part=pose.get(id),reference=defaults.get(id);
+   const part=compiled.pose.get(id),reference=defaults.pose.get(id);
    const diff=part&&reference?minus(part.a,reference.a):[0,0,0];
    return [limit(diff[0],.14),0,limit(diff[2],.18)];
   };
-  standing[slot]={spine:angle('abdomen'),neck:angle('neck'),feet:[foot('L.foot'),foot('R.foot')]};
+  standing[slot]={...torso[slot],neck:neck&&referenceNeck?limit(delta(pitch(neck),pitch(referenceNeck)),Math.PI/3):0,feet:[foot('L.foot'),foot('R.foot')]};
  }
- return {...result,standing};
+ return {...result,standing,torso};
 }
 
 /** Body turn shared by strike preview and the live collision pose. The IK

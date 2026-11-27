@@ -327,6 +327,24 @@ try{
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
  await page.locator('#import').setInputFiles(poseFile);
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='14');
+ await page.evaluate(async release=>{
+  const {readPoseDraft,POSE_DRAFT_KEY}=await import('/releases/'+release+'/3d/lab-next/pose-draft.js');
+  const response=await fetch('/releases/'+release+'/3d/lab-next/patient-poses.json');
+  const baseline=await response.json();
+  const slots={...readPoseDraft(localStorage)?.slots,stance:baseline.slots.stance.map(segment=>
+   segment.id==='chest'?{...segment,rotation:[(segment.rotation?.[0]??0)-.45,segment.rotation?.[1]??0,segment.rotation?.[2]??0]}:segment)};
+  localStorage.setItem(POSE_DRAFT_KEY,JSON.stringify({...baseline,slots}));
+ },release);
+ const motionURL=base+'/3d/lab-next/rig.html?scenario=motion-review';
+ const sampleReview=async suffix=>{
+  await page.goto(motionURL+suffix);
+  await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;
+   return d.state==='running'&&d.reviewPhase==='idle'&&Number.isFinite(Number(d.thoraxPitch))&&d.thoraxPitch!=='';
+  });
+  return Number(await page.locator('#stats').getAttribute('data-thorax-pitch'));
+ };
+ const draftThorax=await sampleReview(''),stockThorax=await sampleReview('&poses=stock');
+ assert.ok(draftThorax-stockThorax>14,JSON.stringify({draftThorax,stockThorax}));
  assert.ok(modules.length>0);assert.ok(modules.every(url=>url.includes('/releases/'+release+'/')),JSON.stringify(modules));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Browser smoke passed: offline modules, WebGL first frame, fixed ticks, pause and reset.');

@@ -39,7 +39,8 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
  // extended kicking leg. No change to bone lengths or damage reach.
  const stump=kind==='arm'&&!pose.some(v=>v.id===p.side+'.hand');
  const armBend=-((planted?.30:.22)+low)*(stump?(pose.some(v=>v.id===p.side+'.lowerArm')?.72:.50):1);
- const bend=amount*(kind==='head'?-.26:kind==='arm'?armBend:.20);
+ const edit=motion.torso?.[slot];
+ const bend=amount*(kind==='head'?-.26:kind==='arm'?armBend:.20)-Math.max(0,amount)*(edit?.spine??0);
  const baseYaw=kind==='leg'?turn:kind==='head'?side*amount*.08:turn*(planted?.34:.45);
  const body=(point:Vec3):Vec3=>{
   const local=yaw(sub(point,pivot),p.yaw);
@@ -49,7 +50,7 @@ export function coordinatedStrikeBody(pose:readonly PhysicsSegmentPose[],p:Punch
  // lumbar pitch. Thorax adds a smaller local bend on top of the lower
  // spine angle. Rotate around the actual upper abdomen attachment.
  const upperPivot=body(abdomen.b),localYaw=p.yaw-baseYaw;
- const thorax=(point:Vec3):Vec3=>add(upperPivot,yaw(pitch(yaw(sub(body(point),upperPivot),localYaw),bend*.22),-localYaw));
+ const thorax=(point:Vec3):Vec3=>add(upperPivot,yaw(pitch(yaw(sub(body(point),upperPivot),localYaw),bend*.22-Math.max(0,amount)*((edit?.thorax??0)-(edit?.spine??0))),-localYaw));
  const chestCenter=thorax(mid(chest));
  const upper=(point:Vec3):Vec3=>add(chestCenter,yaw(sub(thorax(point),chestCenter),kind==='leg'?-turn*.55:kind==='arm'?turn*(planted?.42:.55):0));
  const moved=pose.map(v=>{

@@ -429,7 +429,7 @@ export class LabSimulationCore implements SimulationCore {
       a.pivotTarget=null;
       const mobileStrikes=!!this.authored?.stalk&&this.patientScale!==1;
       const horror=this.ringCombat&&!!this.authored?.stalk&&!command;
-      const distress=a.distress.snapshot().mode,defiant=horror&&(distress==='hysteria'||distress==='last-stand');
+      const distress=a.distress.snapshot().mode,defiant=horror&&distress==='hysteria';
       const raiding=horror&&(mobility.mode==='biped'||defiant)&&this.patientScale!==1;
       if(!horror)a.hunt.reset(this.tick);
       if(!raiding)a.raid.reset(this.tick);

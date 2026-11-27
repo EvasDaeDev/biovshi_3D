@@ -14,7 +14,7 @@ export class DistressState{
  constructor(seed:number,id:number){let h=(seed^Math.imul(id+1,0x9e3779b9)^0x739a20cf)>>>0;h=Math.imul(h^(h>>>16),0x85ebca6b);this.rng=(h^(h>>>13))>>>0;}
  private roll():number{this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;return this.rng/4294967296;}
  advance(tick:number,weak:boolean,critical:boolean,armed:boolean):DistressMode{
-  if(!this.checked&&critical&&armed){this.checked=true;if(this.roll()<DISTRESS.hysteriaChance){this.mode='hysteria';this.until=null;}}
+  if(this.mode==='normal'&&!this.checked&&critical&&armed){this.checked=true;if(this.roll()<DISTRESS.hysteriaChance){this.mode='hysteria';this.until=null;}}
   if(this.mode==='normal'&&weak){this.mode='prey';this.until=tick+Math.ceil((DISTRESS.minFlee+(DISTRESS.maxFlee-DISTRESS.minFlee)*this.roll())/FIXED_DT);}
   if(this.mode==='prey'&&this.until!==null&&tick>=this.until){this.mode='last-stand';this.until=null;}
   return this.mode;

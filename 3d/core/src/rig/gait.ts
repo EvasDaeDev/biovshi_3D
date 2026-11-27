@@ -392,10 +392,17 @@ export class PatientGait {
     const freeze=resting*weights[FREEZE_INDEX]!*(1-this.carriage.guardAmount);
     const postureWeight=clamp(idle+freeze+guard),upperSway=1+idle;
     const ready=this.carriage.guardAmount,edits=this.authored?.standing;
-    const spineEdit=(edits?.stance?.spine??0)*(1-ready)+(edits?.aggressive?.spine??0)*ready;
+    const torsoEdits=this.organic?this.authored?.torso:undefined;
+    let spineEdit=torsoEdits?.stance?.spine??0,thoraxEdit=torsoEdits?.stance?.thorax??0;
+    for(const [index,slot] of EXPRESSION_SLOTS.entries()){
+      if(slot==='stance')continue;
+      const edit=torsoEdits?.[slot];
+      spineEdit+=(edit?.spine??0)*weights[index]!;
+      thoraxEdit+=(edit?.thorax??0)*weights[index]!;
+    }
     const neckEdit=(edits?.stance?.neck??0)*(1-ready)+(edits?.aggressive?.neck??0)*ready;
-    const spinePitch=(10+5*ready)*Math.PI/180+spineEdit;
-    const thoraxPitch=Math.PI/18+spineEdit;
+    const spinePitch=(10+5*ready)*Math.PI/180;
+    const thoraxPitch=Math.PI/18;
     const lateral=(.018*sway+.009*sway2)*(1-moving*.42)*style.sway,roll=(.045*Math.sin(t*.88+id*.9)+.019*sway2)*(1-moving*.35)*style.sway;
     const forwardZ=(p:Vec3)=>-Math.sin(yaw)*(p[0]-root[0])+Math.cos(yaw)*(p[2]-root[2]);
     const gaitPhase=Math.max(-1,Math.min(1,(forwardZ(this.feet[0].plant)-forwardZ(this.feet[1].plant))/.55));
@@ -420,7 +427,17 @@ export class PatientGait {
     const head:Vec3=[-lateral*.65+.012*Math.sin(t*.62+id)+(secondary?.arms??0)*.018,1.89+rise+bob-this.supportDrop-stanceDrop,-.045-lean*.24-runLean*.72-.023*suspended];
     const spineSway=secondary?secondary.chest:this.groundedStride?moving*gaitPhase:0;
     const naturalChest=add(add(chest,torsoHit),[-roll*.12*upperSway-spineSway*.075+spineX,spineSway*.036,lean*.18-.068*spineSway+spineZ-preload*.8]);
-    const chestPose=mix(naturalChest,[naturalChest[0]-lateral*.35*idle,naturalChest[1],hip[2]-Math.tan(spinePitch)*(naturalChest[1]-hip[1]+.105)],postureWeight);
+    const blendedChest=mix(naturalChest,[naturalChest[0]-lateral*.35*idle,naturalChest[1],hip[2]-Math.tan(spinePitch)*(naturalChest[1]-hip[1]+.105)],postureWeight);
+    // Apply the edited sagittal angle after blending authored slots with
+    // the procedural pose. Standing, moving and airborne poses share it.
+    const tiltDirection=(v:Vec3,amount:number):Vec3=>{
+      const angle=Math.max(-1.10,Math.min(1.10,Math.atan2(-v[2],v[1])+amount));
+      const length=Math.hypot(v[1],v[2]);
+      return [v[0],length*Math.cos(angle),-length*Math.sin(angle)];
+    };
+    const spineVector:Vec3=[blendedChest[0]-hip[0],blendedChest[1]+.105-hip[1],blendedChest[2]-hip[2]];
+    const tiltedSpine=tiltDirection(spineVector,spineEdit);
+    const chestPose=spineEdit===0?blendedChest:add(hip,[tiltedSpine[0],tiltedSpine[1]-.105,tiltedSpine[2]]);
     const tilt=(part:RigPose|undefined)=>part?Math.atan2(part.b[2]-part.a[2],part.b[0]-part.a[0]):0;
     const hipTwist=(this.groundedStride?.24:.11)*(secondary?secondary.pelvis:moving*gaitPhase)*style.twist+.6*tilt(baseHip);
     const chestTwist=-(this.groundedStride?.37:.16)*(secondary?secondary.chest:moving*gaitPhase)*style.twist+.65*tilt(baseChest);
@@ -462,7 +479,14 @@ export class PatientGait {
     const standing=LAB_SEGMENTS.map(def=>{const [a,b]=points.get(def.id)!;return {id:def.id,a,b,radius:def.radius};});
     if(this.proneAmount===0||rising){
       const neckFollow=this.organic?clamp(moving/.35):0;
-      const thoraxTarget=postureWeight>0?{direction:[s*Math.sin(thoraxPitch),Math.cos(thoraxPitch),-c*Math.sin(thoraxPitch)] as Vec3,weight:postureWeight}:undefined;
+      const localSpine:Vec3=[tiltedSpine[0],tiltedSpine[1],tiltedSpine[2]];
+      const procedural:Vec3=[localSpine[0]*1.22,localSpine[1],localSpine[2]*1.22];
+      const thoraxOffset=thoraxEdit-spineEdit;
+      const direction=tiltDirection(procedural,thoraxOffset);
+      const authoredAngle=thoraxPitch+thoraxEdit;
+      const organicThorax=mix(direction,[0,Math.cos(authoredAngle)*.60,-Math.sin(authoredAngle)*.60],postureWeight);
+      const thoraxTarget=thoraxOffset!==0?{direction:[c*organicThorax[0]-s*organicThorax[2],organicThorax[1],s*organicThorax[0]+c*organicThorax[2]] as Vec3,weight:1}
+        :postureWeight>0?{direction:[s*Math.sin(authoredAngle),Math.cos(authoredAngle),-c*Math.sin(authoredAngle)] as Vec3,weight:postureWeight}:undefined;
       let fixed=constrainRig(standing,undefined,1,this.organic,neckFollow,thoraxTarget);const lift=this.hopSample.lift;
       // Anticipatory reference relative to the locomoting root. Retain
       // deliberate lean/look and impacts; compensate the alternating sway.
@@ -481,7 +505,7 @@ export class PatientGait {
         const weight=Math.min(.8,lift*12);
         return {...part,a:mix(part.a,position(target.a),weight),b:mix(part.b,position(target.b),weight)};
        });
-       fixed=constrainRig(flying,undefined,1,this.organic,neckFollow);
+       fixed=constrainRig(flying,undefined,1,this.organic,neckFollow,thoraxTarget);
       }
       if(lift>0)return steady(fixed.map(p=>({...p,a:add(p.a,[0,lift,0]),b:add(p.b,[0,lift,0])})),lift);
       const stance=['L.foot','R.foot'].filter((id,i)=>this.active.includes(id)&&!this.feet[i]!.moving);

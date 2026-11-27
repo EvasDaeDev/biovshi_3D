@@ -114,3 +114,13 @@ test('authored AI can sacrifice a real arm to throw at a visible low-endurance p
   for(const h of hits){const damage=events.find(e=>e.type==='fighter-damaged'&&e.tick===h.tick&&e.fighterId===h.fighterId&&e.segmentId===h.segmentId);assert.ok(damage&&damage.damage<=LIMB_THROW.damage);}
  }finally{core.dispose();}
 });
+
+test('later low endurance cannot turn a fleeing patient hysterical',()=>{
+ let seed=0;while(new DistressState(seed,0).advance(0,true,true,true)!=='hysteria')seed++;
+ const state=new DistressState(seed,0);
+ assert.equal(state.advance(0,true,false,true),'prey');
+ const deadline=state.snapshot().until;
+ assert.equal(state.advance(10,true,true,true),'prey');
+ assert.equal(state.advance(deadline,true,true,true),'last-stand');
+ assert.equal(state.advance(deadline+120,true,true,true),'last-stand');
+});

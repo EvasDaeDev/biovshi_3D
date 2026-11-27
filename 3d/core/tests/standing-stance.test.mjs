@@ -55,3 +55,32 @@ test('a stored editor stance changes the actual ring torso and feet on the next 
   assert.deepEqual(restored,stock);
  }finally{core.dispose();}
 });
+
+function torsoAngles(pose){
+ const abdomen=pose.find(part=>part.id==='abdomen'),chest=pose.find(part=>part.id==='chest');
+ const center=chest.a.map((x,i)=>(x+chest.b[i])/2);
+ const pitch=(a,b)=>Math.atan2(a[2]-b[2],b[1]-a[1]);
+ return {spine:pitch(abdomen.a,abdomen.b),thorax:pitch(abdomen.b,center)};
+}
+const rotated=(pose,id,pitch)=>pose.map(part=>part.id===id?
+ {...part,rotation:[(part.rotation?.[0]??0)+pitch,part.rotation?.[1]??0,part.rotation?.[2]??0]}:part);
+
+test('an isolated editor chest rotation changes thorax pitch during idle, running and injury',async()=>{
+ const {ring}=await buildLocationCatalog(),defaults=ring.patientPoses;
+ const draft=roundPatientPoses(defaults,{getItem:()=>JSON.stringify({
+  schemaVersion:1,stature:1.65,slots:{stance:rotated(defaults.slots.stance,'chest',-.45)}
+ })});
+ function sample(document,speed,hurt){
+  const gait=new PatientGait([0,0,0],0,true,compileAuthoredMotion(document));
+  for(let i=0;i<60;i++){
+   gait.advance([0,0,0],0,speed,dt);
+   gait.advanceExpression(dt,hurt,speed?'stalk':'stance');
+  }
+  return torsoAngles(gait.pose(0,[0,0,0],0,1));
+ }
+ for(const [speed,hurt] of [[0,false],[1.2,false],[0,true]]){
+  const stock=sample(defaults,speed,hurt),edited=sample(draft,speed,hurt);
+  assert.ok(edited.thorax-stock.thorax>.25,JSON.stringify({speed,hurt,stock,edited}));
+  assert.ok(Math.abs(stock.spine-edited.spine)<.03,JSON.stringify({stock,edited}));
+ }
+});

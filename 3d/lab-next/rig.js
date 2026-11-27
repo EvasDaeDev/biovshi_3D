@@ -181,7 +181,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  if(selected)populatePatientCounts(patientCount,selected.capacity,scenario.value==='motion-review'?2:preferredPatients);
  const config=scenarioConfig();
  const defaults=config.location?.patientPoses??authoredLocations.ring.patientPoses;
- const patientPoses=scenario.value==='motion-review'?defaults:roundPatientPoses(defaults,{getItem:key=>window.localStorage.getItem(key)});
+ const patientPoses=query.get('poses')==='stock'?defaults:roundPatientPoses(defaults,{getItem:key=>window.localStorage.getItem(key)});
  debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
  for(const tri of config.gradedSurface??[]){
   const geo=new THREE.BufferGeometry(),p=new Float32Array(tri.flatMap(v=>v));
@@ -398,6 +398,15 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
   stats.dataset.playback=String(playback.rate);stats.dataset.reviewPhase=scenario.value==='motion-review'?reviewInput(s.tick).phase:'';
   stats.dataset.motionPeak=motionPeak?motionPeak.max.toFixed(4):'';
   const motionStatus=document.getElementById('motion-status');motionStatus.hidden=scenario.value!=='motion-review';
+  if(!motionStatus.hidden){
+   const torso=s.rigSegments[0],abdomen=torso.find(part=>part.id==='abdomen'),chest=torso.find(part=>part.id==='chest');
+   if(abdomen&&chest){
+    const yaw=s.roots[3],center=chest.a.map((n,i)=>(n+chest.b[i])*.5);
+    const pitch=(a,b)=>Math.atan2(Math.sin(yaw)*(b[0]-a[0])-Math.cos(yaw)*(b[2]-a[2]),b[1]-a[1])*180/Math.PI;
+    stats.dataset.spinePitch=String(pitch(abdomen.a,abdomen.b));
+    stats.dataset.thoraxPitch=String(pitch(abdomen.b,center));
+   }
+  }
   if(!motionStatus.hidden)motionStatus.textContent='Фаза: '+stats.dataset.reviewPhase+' | Δ/тик: '+((motionLast?.max??0)*100).toFixed(2)+' см | пик: '+((motionPeak?.max??0)*100).toFixed(2)+' см'+(motionPeak?.segment?' (№'+motionPeak.fighterId+' '+motionPeak.segment+', тик '+motionPeak.tick+')':'');
   stats.dataset.traits=s.patientTraits.map(t=>t.temperament+':'+Math.round(t.criticalChance*100)+'%').join('/');stats.dataset.strike=s.strikes.map(v=>v.phase==='idle'?'idle':(v.prone?'prone:':'')+v.kind+':'+v.phase).join('/');stats.dataset.hits=String(s.damageStats.hits);stats.dataset.fight=s.fight.ended?'ended':'running';stats.dataset.winner=s.fight.winnerId===null?'':String(s.fight.winnerId);
  stats.dataset.settledSingles=String(falling.filter(d=>d.branchId===undefined&&d.settled).length);stats.dataset.visibleCones=String([...moundMeshes.values()].filter(m=>m.visible).length);stats.dataset.ragdollBodies=String(debris.bodySnapshot().reduce((n,b)=>n+b.dynamicBodies,0));stats.dataset.ragdollJoints=String(debris.bodySnapshot().reduce((n,b)=>n+b.joints,0));

@@ -19,7 +19,7 @@ export function segmentPresentation(part){
 export function patientPresentation(health,oil,life,fight,id,distress){
  const current=health?.endurance??0,max=health?.maxEndurance??0,base=health?.baseEndurance??DAMAGE.traumaThreshold,wounds=oil?.wounds?.length??0;
  const alive=life==='active',finished=!!fight?.ended;
- const state=!alive?'Выбыл':finished?(fight.winnerId===id?'Победитель':'Бой завершён'):distress?.mode==='prey'?'Жертва':distress?.mode==='hysteria'?'Истерика':distress?.mode==='last-stand'?'Последний бой':'В бою';
+ const state=!alive?'Выбыл':finished?(fight.winnerId===id?'Победитель':'Бой завершён'):distress?.mode==='prey'?'Жертва':distress?.mode==='hysteria'?'Истерика':distress?.mode==='last-stand'?'Вернулся в бой':'В бою';
  const bleeding=!alive?'Нет':finished?(wounds?'Остановлено':'Нет'):oil?.remainingTicks!=null?'Отказ через '+Math.ceil(oil.remainingTicks/60)+' с':wounds?'Истекание · '+wounds+' ран':'Нет истекания';
  return {state,bleeding,wounds,current,max,base,capacity:clamp(max/base),remaining:clamp(current/base),lost:health?.lostSegments??0,critical:alive&&!finished&&oil?.remainingTicks!=null,label:number(current)+' / '+number(max)};
 }
