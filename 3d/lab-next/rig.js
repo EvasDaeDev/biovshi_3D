@@ -49,7 +49,7 @@ const roundClock=new RoundClock(),clockOutput=document.getElementById('round-clo
 const frameMeter=new FrameMeter(renderer.getContext(),document.getElementById('frame-meter'));
 const ambient=new THREE.HemisphereLight(0xc5dacb,0x263229,2);
 const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);
-const headLamp=new THREE.SpotLight(0xffd1a0,26,9,Math.PI*.21,.65,2);
+const headLamp=new THREE.SpotLight(0xffd6ad,8,9,Math.PI*.21,.78,1);
 headLamp.visible=false;
 const headLampDirection=new THREE.Vector3();
 scene.add(ambient,lamp,headLamp,headLamp.target);
@@ -60,7 +60,7 @@ function updateCameraLighting(profile){
  headLamp.visible=profile==='gopro';
  if(headLamp.visible){
   camera.getWorldDirection(headLampDirection);
-  headLamp.position.copy(camera.position);
+  headLamp.position.copy(camera.position).addScaledVector(headLampDirection,-.48);
   headLamp.target.position.copy(camera.position).addScaledVector(headLampDirection,4);
  }
 }
