@@ -281,6 +281,7 @@ try{
  }
  await page.goto(base+'/');
  await page.getByRole('link',{name:'Быстрый бой'}).click();
+ await page.locator('#arena option[value="location-square"]').waitFor({state:'attached'});
  assert.deepEqual(await page.locator('#arena option').evaluateAll(options=>options.map(o=>o.value)),['location-ring','location-square']);
  await page.locator('#arena').selectOption('location-square');
  assert.equal(await page.locator('#participants option').count(),7);
