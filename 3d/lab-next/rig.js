@@ -47,7 +47,23 @@ syncEffectsButton();
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));document.body.append(renderer.domElement);
 const roundClock=new RoundClock(),clockOutput=document.getElementById('round-clock');
 const frameMeter=new FrameMeter(renderer.getContext(),document.getElementById('frame-meter'));
-scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);scene.add(lamp);
+const ambient=new THREE.HemisphereLight(0xc5dacb,0x263229,2);
+const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);
+const headLamp=new THREE.SpotLight(0xffd1a0,26,9,Math.PI*.21,.65,2);
+headLamp.visible=false;
+const headLampDirection=new THREE.Vector3();
+scene.add(ambient,lamp,headLamp,headLamp.target);
+function updateCameraLighting(profile){
+ ambient.intensity=profile==='gopro'?.85:profile==='corner'?1.25:2;
+ lamp.intensity=profile==='gopro'?1.55:profile==='corner'?3.6:3;
+ lamp.color.setHex(profile==='corner'?0xbacec2:0xe0c9af);
+ headLamp.visible=profile==='gopro';
+ if(headLamp.visible){
+  camera.getWorldDirection(headLampDirection);
+  headLamp.position.copy(camera.position);
+  headLamp.target.position.copy(camera.position).addScaledVector(headLampDirection,4);
+ }
+}
 const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,grid);
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
@@ -350,6 +366,7 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  freeHint.hidden=cameraControl.mode!=='free';
  cameraAngle.disabled=cameraControl.mode!=='gopro';
  const effectsProfile=effects.enabled&&cameraControl.mode!=='free'?(cameraControl.mode==='gopro'?'gopro':'corner'):null;
+ updateCameraLighting(effectsProfile);
  stats.dataset.cameraEffects=effectsProfile??'off';
  stats.dataset.cameraFov=String(camera.fov);
  stats.dataset.camera=cameraControl.mode;stats.dataset.cameraHeight=String(camera.position.y);
@@ -425,7 +442,7 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  stats.dataset.detachedBranches=String(debris.branchSnapshot().length);stats.dataset.branchSegments=String(debris.branchSnapshot().reduce((n,b)=>n+b.parts.length,0));
  stats.dataset.bodyCones=String(debris.moundSnapshot().filter(m=>m.source==='body').length);stats.dataset.settled=String(s.bodyTerrainStates.filter(Boolean).length);stats.dataset.incapacitated=String(s.lifeStates.filter(v=>v==='incapacitated').length);stats.dataset.fallReasons=s.health.map(h=>h.cause??'-').join('/');stats.dataset.lyingBodies=String(debris.bodySnapshot().filter(b=>{const p=b.parts.find(p=>p.id==='pelvis'),c=b.parts.find(p=>p.id==='chest');if(!p||!c)return b.settled;const v=c.a.map((x,i)=>(x+c.b[i]-p.a[i]-p.b[i])*.5);return Math.abs(v[1])<Math.hypot(...v)*.45;}).length);stats.dataset.bodySegments=String(debris.bodySnapshot().reduce((n,b)=>n+b.parts.length,0));stats.dataset.balance=s.balanceStates[0];stats.dataset.steps=String(s.stepCounts[0]);const support=s.supports[0],anchors=s.crawlAnchors[0],traction=s.residualTraction[0];stats.dataset.traction=String(traction?.scale??0);stats.dataset.tractionContacts=String(traction?.contacts.length??0);stats.dataset.planted=String(anchors.filter(a=>a.valid).length);drawSupport(support);stats.dataset.supportCount=String(support.contacts.length);
  document.getElementById('stats').textContent=`Build ${stats.dataset.build} | Tick ${s.tick} | ${s.rigSegments.flat().length} segments | ${paused?'PAUSED':'RUNNING'} | contacts ${s.collisionStats.contacts} | tests ${s.collisionStats.tests} | hits ${s.damageStats.hits} | ${scenario.value==='duel-traits'?'traits '+stats.dataset.traits+' | ':''}strike ${stats.dataset.strike} | ${(scenario.value.startsWith('arena')||scenario.value.startsWith('duel'))?(s.fight.ended?'winner '+(s.fight.winnerId??'draw'):'duel')+' | ':''} ${scenario.value.startsWith('arena')?'active '+stats.dataset.active+' | targets '+stats.dataset.targets+' | tactics '+stats.dataset.tactics+(scenario.value==='arena-vision'?' | seen '+stats.dataset.visible:'')+' | ':''}trauma ${health.trauma}/${health.traumaThreshold} | wounds ${stats.dataset.wounds} | oil ${stats.dataset.oil} | impact ${stats.dataset.impact} | detached ${s.damageStats.detached} | branches ${stats.dataset.detachedBranches} | incapacitated ${stats.dataset.incapacitated} (${stats.dataset.fallReasons}) | lying ${stats.dataset.lyingBodies} | ragdoll ${stats.dataset.ragdollBodies}/${stats.dataset.ragdollJoints} | body cones ${stats.dataset.bodyCones} | debris ${debrisMeshes.size} | mounds ${moundMeshes.size} | player ${s.mobilityModes[0]} / ${s.postures[0]} | balance ${stats.dataset.balance} | steps ${stats.dataset.steps} | hop ${s.hopPhases[0]} | support ${support.contacts.length} | planted ${stats.dataset.planted} | drive ${traction?traction.mode+'/'+traction.phase+' '+traction.scale.toFixed(2):'-'} | margin ${support.margin===null?'air':support.margin.toFixed(3)+' m'}`;const gpuQuery=frameMeter.begin();try{
- if(effectsProfile)(cameraEffects??=new CameraEffects(THREE,renderer)).draw(scene,camera,effects[effectsProfile],now);
+ if(effectsProfile)(cameraEffects??=new CameraEffects(THREE,renderer)).draw(scene,camera,effects[effectsProfile],now,effectsProfile);
  else renderer.render(scene,camera);
  }finally{frameMeter.end(gpuQuery);}
  frameMeter.frame(now,performance.now()-cpuStart);document.getElementById('stats').dataset.tick=String(s.tick);document.getElementById('stats').dataset.posture=s.postures[0];document.getElementById('stats').dataset.mode=s.mobilityModes[0];document.getElementById('stats').dataset.z=String(s.roots[2]);stats.dataset.y=String(s.roots[1]);stats.dataset.hop=String(s.hopHeights[0]);if(document.getElementById('stats').dataset.state!=='running')window.labStartup.ready();scheduleFrame();}catch(e){window.labStartup.fail(e);}}

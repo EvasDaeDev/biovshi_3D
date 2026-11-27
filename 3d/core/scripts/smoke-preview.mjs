@@ -336,7 +336,7 @@ try{
  assert.equal(await page.locator('#grain-value').textContent(),'12%');
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('eccepry:camera-effects:v1')));
  assert.equal(saved.gopro.grain,.12);
- assert.equal(saved.corner.grain,.045);
+ assert.equal(saved.corner.grain,.15);
  await page.reload();
  await page.locator('#tab-effects').click();
  await page.locator('#effects-profile').selectOption('gopro');

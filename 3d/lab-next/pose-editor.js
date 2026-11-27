@@ -96,7 +96,7 @@ function draw(){
   bones.geometry.setDrawRange(0,vertex);
  }
  if(previewEffects&&effects.enabled)
-  (cameraEffects??=new CameraEffects(THREE,renderer)).draw(scene,camera,effects[effectsProfile.value],0);
+  (cameraEffects??=new CameraEffects(THREE,renderer)).draw(scene,camera,effects[effectsProfile.value],0,effectsProfile.value);
  else renderer.render(scene,camera);
 }
 const controls=new TransformControls(camera,renderer.domElement),pickable=[],nodes=new Map();
