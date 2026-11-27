@@ -231,6 +231,59 @@ try{
  await page.goto(base+'/3d/lab-next/rig.html?scenario=one-arm',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.mode==='arm-crawl'&&d.posture==='prone';},{},{timeout:45000});
  const release=await page.locator('#stats').getAttribute('data-build');
+ const shadowPixels=await page.evaluate(async release=>{
+  const root='/releases/'+release+'/3d/lab-next/';
+  const T=await import(root+'vendor/three.module.js');
+  const {configureGoProShadow,segmentShadow}=await import(root+'gopro-shadow.js');
+  const {createSegmentVisual}=await import(root+'segment-visual.js');
+  const renderer=new T.WebGLRenderer();
+  const target=new T.WebGLRenderTarget(128,128);
+  const scene=new T.Scene();
+  const camera=new T.OrthographicCamera(-2,2,2,-2,.1,12);
+  camera.position.set(0,6,-1);
+  camera.up.set(0,0,-1);
+  camera.lookAt(0,0,-1);
+  const lamp=new T.SpotLight(0xffffff,9,9,Math.PI/4,.25,1);
+  lamp.position.set(0,2,4);
+  lamp.target.position.set(0,0,-2);
+  configureGoProShadow(T,renderer,lamp);
+  scene.add(lamp,lamp.target,new T.AmbientLight(0xffffff,.14));
+  const material=new T.MeshStandardMaterial({color:0xffffff});
+  const floor=new T.Mesh(new T.PlaneGeometry(12,12),material);
+  floor.rotation.x=-Math.PI/2;
+  floor.receiveShadow=true;
+  const column=new T.Mesh(new T.CylinderGeometry(.25,.25,1.6),material);
+  column.position.set(-.55,.8,0);
+  column.castShadow=true;
+  const patient=segmentShadow(createSegmentVisual('L.upperLeg',.35,1.25,material));
+  patient.position.set(.55,.75,0);
+  scene.add(floor,column,patient);
+  const points=[new T.Vector3(-.825,0,-2),new T.Vector3(.825,0,-2),new T.Vector3(0,0,-2)];
+  try{
+   camera.updateMatrixWorld();
+   renderer.setRenderTarget(target);
+   return [true,false].map(shadows=>{
+    lamp.castShadow=shadows;
+    renderer.render(scene,camera);
+    const pixel=new Uint8Array(4);
+    return points.map(p=>{
+     const {x,y}=p.clone().project(camera);
+     renderer.readRenderTargetPixels(target,Math.floor((x+1)*64),Math.floor((y+1)*64),1,1,pixel);
+     return pixel[0];
+    });
+   });
+  }finally{
+   renderer.setRenderTarget(null);
+   target.dispose();
+   lamp.shadow.dispose();
+   renderer.dispose();
+  }
+ },release);
+ const [withShadows,withoutShadows]=shadowPixels;
+ assert.ok(withShadows[0]+10<withoutShadows[0],JSON.stringify(shadowPixels));
+ assert.ok(withShadows[1]+10<withoutShadows[1],JSON.stringify(shadowPixels));
+ assert.equal(withShadows[2],withoutShadows[2]);
+
  const ornaments=await page.evaluate(async release=>{
   const {createSegmentVisual}=await import('/releases/'+release+'/3d/lab-next/segment-visual.js');
   return ['chest','head','R.upperArm','L.upperLeg','R.lowerArm','L.lowerLeg'].map(id=>

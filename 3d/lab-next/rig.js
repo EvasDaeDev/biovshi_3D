@@ -3,6 +3,7 @@ import {MatchFlow} from './match-flow.js';
 import {DAMAGE} from '../core/dist/combat/damage.js';
 import {FrameMeter,RoundClock} from './round-telemetry.js';
 import {CameraEffects,readCameraEffects,saveCameraEffects} from './camera-effects.js';
+import {configureGoProShadow,segmentShadow} from './gopro-shadow.js';
 import {createSegmentVisual} from './segment-visual.js';
 import {roundPatientPoses} from './pose-draft.js';
 import {VISION} from '../core/dist/combat/perception.js';
@@ -38,6 +39,7 @@ window.labStartup.show('Инициализация WebGL…');
 let cameraEffects;
 let effects=readCameraEffects();
 const toggleEffects=document.getElementById('toggle-camera-effects');
+const cameraPatient=document.getElementById('camera-patient');
 const cameraAngle=document.getElementById('gopro-angle');
 const syncEffectsButton=()=>toggleEffects.setAttribute('aria-pressed',String(effects.enabled));
 toggleEffects.onclick=()=>{effects.enabled=!effects.enabled;syncEffectsButton();saveCameraEffects(effects);};
@@ -51,6 +53,8 @@ const ambient=new THREE.HemisphereLight(0xc5dacb,0x263229,2);
 const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);
 const headLamp=new THREE.SpotLight(0xffd6ad,8,9,Math.PI*.21,.78,1);
 headLamp.visible=false;
+configureGoProShadow(THREE,renderer,headLamp);
+let lampOwnerHead;
 const headLampDirection=new THREE.Vector3();
 scene.add(ambient,lamp,headLamp,headLamp.target);
 function updateCameraLighting(profile){
@@ -58,6 +62,14 @@ function updateCameraLighting(profile){
  lamp.intensity=profile==='gopro'?1.55:profile==='corner'?3.6:3;
  lamp.color.setHex(profile==='corner'?0xbacec2:0xe0c9af);
  headLamp.visible=profile==='gopro';
+ // The camera's attached head cannot block its own lamp, including when it
+ // pitches downward. Restore the previous owner's shadow after switching.
+ const nextHead=headLamp.visible?meshes.get(cameraPatient.value+':head'):undefined;
+ if(nextHead!==lampOwnerHead){
+  if(lampOwnerHead)segmentShadow(lampOwnerHead);
+  if(nextHead)segmentShadow(nextHead,false);
+  lampOwnerHead=nextHead;
+ }
  if(headLamp.visible){
   camera.getWorldDirection(headLampDirection);
   headLamp.position.copy(camera.position).addScaledVector(headLampDirection,-.48);
@@ -65,7 +77,7 @@ function updateCameraLighting(profile){
  }
 }
 const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,grid);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor,grid);
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
 const scaleMaterial=new THREE.LineBasicMaterial({color:0x617368});
 const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
@@ -148,7 +160,7 @@ function resetControl(s){
  controlPatient.disabled=scenario.value==='motion-review';
  cameraControl.allowFree(controlPatient.value==='');
 }
-controlPatient.onchange=()=>{keys.clear();controlPatient.blur();cameraControl.allowFree(controlPatient.value==='');if(controlPatient.value!==''&&cameraControl.mode==='gopro')document.getElementById('camera-patient').value=controlPatient.value;};
+controlPatient.onchange=()=>{keys.clear();controlPatient.blur();cameraControl.allowFree(controlPatient.value==='');if(controlPatient.value!==''&&cameraControl.mode==='gopro')cameraPatient.value=controlPatient.value;};
 // An explicit seed pins a replay. Ordinary ring resets start a fresh match.
 const requestedSeed=query.get('seed');
 const pinnedSeed=requestedSeed!==null&&/^\d{1,10}$/.test(requestedSeed)&&Number(requestedSeed)<=0xffffffff?Number(requestedSeed):null;
@@ -222,12 +234,12 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  cameraControl.setArena(location);
  if(location&&location.shape!=='circle'){
   const surface=new THREE.Mesh(new THREE.ShapeGeometry(arenaShape(location.boundary)),floor.material);
-  surface.rotation.x=-Math.PI/2;scene.add(surface);wallMeshes.push(surface);
+  surface.rotation.x=-Math.PI/2;surface.receiveShadow=true;scene.add(surface);wallMeshes.push(surface);
  }
  if(location?.shape==='circle'){
   const mat=floor.material;
   const surface=new THREE.Mesh(new THREE.CircleGeometry(location.width/2,location.boundary.length),mat);
-  surface.rotation.x=-Math.PI/2;scene.add(surface);wallMeshes.push(surface);
+  surface.rotation.x=-Math.PI/2;surface.receiveShadow=true;scene.add(surface);wallMeshes.push(surface);
   const radius=location.width/2;
   const marks=[-radius,.003,0,radius,.003,0];
   for(let x=-radius;x<=radius;x+=1)marks.push(x,.003,-.09,x,.003,.09);
@@ -240,18 +252,19 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   for(const object of location.objects){
    const geometry=new THREE.ExtrudeGeometry(arenaShape(object.points),{depth:object.height,bevelEnabled:false,steps:1});
    geometry.rotateX(-Math.PI/2);
-   const mesh=new THREE.Mesh(geometry,wallMaterial);scene.add(mesh);wallMeshes.push(mesh);
+   const mesh=new THREE.Mesh(geometry,wallMaterial);mesh.castShadow=mesh.receiveShadow=true;scene.add(mesh);wallMeshes.push(mesh);
   }
   for(let i=0;i<location.boundary.length;i++){
    const a=location.boundary[i],b=location.boundary[(i+1)%location.boundary.length];
    const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
    const height=location.boundaryHeight??2.8,offset=location.shape==='circle'?.10:0;
    const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,height,.20),wallMaterial);
+   mesh.castShadow=mesh.receiveShadow=true;
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
    mesh.rotation.y=-Math.atan2(dz,dx);
    scene.add(mesh);wallMeshes.push(mesh);
   }
- }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
+ }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.castShadow=m.receiveShadow=true;m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
   stats.dataset.patients=String(config.fighters.length);
   stats.dataset.location=location?.id??'';
@@ -348,7 +361,7 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
   const compatible=oldParts&&oldParts.length===parts.length&&prior.lifeStates[j]===s.lifeStates[i]&&parts.every(p=>oldParts.some(q=>q.id===p.id));
   for(const p of parts){
    const id=fighterId,key=id+':'+p.id,f=segmentFrame(p,parts,s.roots[i*4+3],s.headFrames?.[i]);
-   let m=meshes.get(key);if(!m){m=createSegmentVisual(p.id,p.radius,f.length,materials[id===0?0:1].clone());meshes.set(key,m);scene.add(m);}
+   let m=meshes.get(key);if(!m){m=segmentShadow(createSegmentVisual(p.id,p.radius,f.length,materials[id===0?0:1].clone()));meshes.set(key,m);scene.add(m);}
    m.visible=true;m.position.copy(v(f.center));frameRotation(f,m.quaternion);
    const tint=segmentTints.sample(id,p.id,s.tick);
    const pulse=p.id==='chest'?chestCountdownTint(s.oil[i],s.lifeStates[i],s.fight,renderTick):0;
@@ -375,7 +388,7 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);m.children[0].material.dispose();debrisMeshes.delete(id);}
  for(const d of falling){
   let m=debrisMeshes.get(d.id);
-  if(!m){m=createSegmentVisual(d.segmentId,d.radius,d.length,materials[d.fighterId===0?0:1].clone());debrisMeshes.set(d.id,m);scene.add(m);}
+  if(!m){m=segmentShadow(createSegmentVisual(d.segmentId,d.radius,d.length,materials[d.fighterId===0?0:1].clone()));debrisMeshes.set(d.id,m);scene.add(m);}
   const tint=segmentTints.sample(d.id,d.segmentId,s.tick,true);paintSegment(m,d.fighterId,tint,0,d.settled?cooling.part(d.id,renderTick):1);if(tint.strength)tinted.push('debris:'+d.id);
   m.position.set(d.position.x,d.position.y,d.position.z);m.quaternion.set(d.rotation.x,d.rotation.y,d.rotation.z,d.rotation.w);
   const old=oldDebris.get(d.id);
