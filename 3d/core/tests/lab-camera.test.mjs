@@ -98,3 +98,21 @@ test('corners smoothly reframe around active patients and hold when nobody remai
   assert.equal(camera.fov,lastFov);
  }
 });
+
+test('GoPro keeps its chosen horizontal angle after resize and switching camera modes',()=>{
+ const {camera,controller}=setup(catalog.square);
+ const horizontal=()=>2*Math.atan(Math.tan(camera.fov*Math.PI/360)*camera.aspect)*180/Math.PI;
+ controller.select('gopro');
+ assert.ok(Math.abs(horizontal()-105)<1e-9);
+ for(const angle of [90,105,120]){
+  controller.setHeadAngle(angle);
+  for(const aspect of [16/9,1,9/16]){
+   controller.resize(aspect);
+   assert.ok(Math.abs(horizontal()-angle)<1e-9);
+  }
+ }
+ controller.select('corner-1');
+ assert.equal(camera.fov,65);
+ controller.select('gopro');
+ assert.ok(Math.abs(horizontal()-120)<1e-9);
+});

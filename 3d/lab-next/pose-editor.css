@@ -34,3 +34,9 @@ aside select,.size input{width:100%}
 .collider-settings legend{color:#7ddded}
 .collider-settings .hint{margin:9px 0}
 #collider-span{font-variant-numeric:tabular-nums}
+
+.settings-tabs{display:flex;gap:6px;margin-bottom:18px}
+.settings-tabs button[aria-selected=true]{border-color:var(--accent);color:var(--accent)}
+.effects-sliders{display:grid;gap:14px;margin:16px 0}
+.effects-sliders span{display:flex;justify-content:space-between}
+.effects-sliders input{width:100%;padding:0;accent-color:var(--accent)}

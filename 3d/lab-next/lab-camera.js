@@ -5,6 +5,8 @@ const DEG=Math.PI/180;
 const LIMIT=155;
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const wrap=value=>Math.atan2(Math.sin(value),Math.cos(value));
+export const HEAD_ANGLES=Object.freeze([90,105,120]);
+export const headVerticalFov=(angle,aspect)=>2*Math.atan(Math.tan(angle*DEG/2)/aspect)/DEG;
 const cornerModes=['corner-1','corner-2','corner-3','corner-4'];
 const damping=(dt,seconds)=>1-Math.exp(-clamp(dt,0,.1)/seconds);
 
@@ -16,6 +18,7 @@ export class LabCamera {
   this.mount=new T.Vector3();this.previousMount=new T.Vector3();
   this.matrix=new T.Matrix4();this.q=new T.Quaternion();this.oldQ=new T.Quaternion();
   this.worldUp=new T.Vector3(0,1,0);this.view=new T.Vector3();this.samples=[];
+  this.headAngle=105;
   this.modeInput.onchange=()=>this.select(this.modeInput.value);
   this.select(cornerModes[0]);
  }
@@ -34,18 +37,19 @@ export class LabCamera {
   if(mode==='free'&&!this.freeAllowed)return false;
   if(cornerModes.includes(mode))this.corner=cornerModes.indexOf(mode);
   this.mode=this.modeInput.value=mode;
-  this.patientInput.disabled=mode!=='fisheye';
+  this.patientInput.disabled=mode!=='gopro';
   const mount=this.mounts?.[this.corner];
   const camera=this.camera;
   camera.up.copy(this.worldUp);
-  if(mode!=='fisheye'){
+  if(mode!=='gopro'){
    camera.position.set(mount?.x??5.8,mount?CAMERA_HEIGHT:3.6,mount?.z??6.6);
    this.homeYaw=Math.atan2(-camera.position.x,-camera.position.z);
    this.yaw=this.homeYaw;this.pitch=Math.atan2(1-camera.position.y,Math.hypot(camera.position.x,camera.position.z));
    this.aimAt(this.yaw,this.pitch);
   }
   this.framed=false;
-  this.project(65,.05);
+  if(mode==='gopro')this.projectHead();
+  else this.project(65,.05);
   return true;
  }
  reset(s){
@@ -54,7 +58,16 @@ export class LabCamera {
   if(Array.from(s.fighterIds).includes(Number(old)))this.patientInput.value=old;
   if(!this.patientInput.value&&s.fighterIds.length)this.patientInput.value=String(s.fighterIds[0]);
  }
- resize(aspect){this.camera.aspect=aspect;this.framed=false;this.camera.updateProjectionMatrix();}
+ resize(aspect){
+  this.camera.aspect=aspect;this.framed=false;this.camera.updateProjectionMatrix();
+  if(this.mode==='gopro')this.projectHead();
+ }
+ setHeadAngle(angle){
+  if(!HEAD_ANGLES.includes(angle))return;
+  this.headAngle=angle;
+  if(this.mode==='gopro')this.projectHead();
+ }
+ projectHead(){this.project(headVerticalFov(this.headAngle,this.camera.aspect),.015);}
  project(fov,near){
   const c=this.camera;
   if(c.fov===fov&&c.near===near)return;
@@ -124,7 +137,7 @@ export class LabCamera {
  }
  update(s,prior,alpha,meshes,clearance,dt=0){
   if(this.mode==='free')return;
-  if(this.mode!=='fisheye'){
+  if(this.mode!=='gopro'){
    this.track(s.rigSegments.filter((_,i)=>s.lifeStates[i]==='active'),dt);
    return;
   }
@@ -140,6 +153,6 @@ export class LabCamera {
   if(compatible&&alpha<1)this.mount.lerp(this.previousMount.set(...(old.cameraCenter??old.center)),1-alpha);
   this.camera.position.copy(this.mount).addScaledVector(this.up,h.radius+clearance);
   this.camera.quaternion.copy(this.q);this.camera.up.copy(this.up);
-  this.project(2*Math.atan(Math.tan(72*DEG)/Math.hypot(this.camera.aspect,1))/DEG,.015);
+
  }
 }

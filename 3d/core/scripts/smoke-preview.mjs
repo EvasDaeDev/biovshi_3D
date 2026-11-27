@@ -50,9 +50,22 @@ try{
   mounts.push(await page.locator('#stats').evaluate(el=>el.dataset.cameraX+':'+el.dataset.cameraZ));
  }
  assert.equal(new Set(mounts).size,4);
- await page.locator('#camera-mode').selectOption('fisheye');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='fisheye');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.cameraEffects==='corner');
+ await page.locator('#toggle-camera-effects').click();
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.cameraEffects==='off');
+ assert.equal(await page.locator('#toggle-camera-effects').getAttribute('aria-pressed'),'false');
+ await page.locator('#toggle-camera-effects').click();
+ await page.locator('#camera-mode').selectOption('gopro');
+ await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='gopro'&&d.cameraEffects==='gopro';});
  assert.equal(await page.locator('#camera-patient').isEnabled(),true);
+ for(const angle of [90,120,105]){
+  await page.locator('#gopro-angle').selectOption(String(angle));
+  await page.waitForFunction(want=>{
+   const fov=Number(document.getElementById('stats').dataset.cameraFov);
+   const horizontal=2*Math.atan(Math.tan(fov*Math.PI/360)*innerWidth/innerHeight)*180/Math.PI;
+   return Math.abs(horizontal-want)<.01;
+  },angle);
+ }
  await page.locator('#camera-mode').selectOption('free');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='free');
  await page.locator('#camera-mode').evaluate(el=>el.blur());
@@ -316,6 +329,21 @@ try{
  await page.locator('#start-match').waitFor({state:'visible'});
  await page.goto(base+'/3d/lab-next/pose-editor.html');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
+ await page.locator('#tab-effects').click();
+ await page.locator('#effects-profile').selectOption('gopro');
+ const grain=page.locator('#effect-grain'),defaultGrain=await grain.inputValue();
+ await grain.evaluate(input=>{input.value='12';input.dispatchEvent(new Event('input',{bubbles:true}));});
+ assert.equal(await page.locator('#grain-value').textContent(),'12%');
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('eccepry:camera-effects:v1')));
+ assert.equal(saved.gopro.grain,.12);
+ assert.equal(saved.corner.grain,.045);
+ await page.reload();
+ await page.locator('#tab-effects').click();
+ await page.locator('#effects-profile').selectOption('gopro');
+ assert.equal(await grain.inputValue(),'12');
+ await page.locator('#reset-effects').click();
+ assert.equal(await grain.inputValue(),defaultGrain);
+ await page.locator('#tab-anatomy').click();
  await page.locator('#pose').selectOption('tPose');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
  await page.locator('[data-view="front"]').click();

@@ -28,7 +28,12 @@
    <div id="viewport"></div>
    <p class="hint">Перетаскивание вращает камеру. Колесо меняет масштаб.</p>
   </section>
-  <aside aria-label="Параметры сегментов">
+  <aside aria-label="Настройки редактора">
+   <div class="settings-tabs" role="tablist" aria-label="Разделы редактора">
+    <button id="tab-anatomy" role="tab" aria-selected="true" aria-controls="panel-anatomy">Анатомия</button>
+    <button id="tab-effects" role="tab" aria-selected="false" aria-controls="panel-effects" tabindex="-1">Постэффекты</button>
+   </div>
+   <section id="panel-anatomy" role="tabpanel" aria-labelledby="tab-anatomy">
    <h2>Анатомия</h2>
    <p id="anatomy-hint" class="hint">Размеры костей и коллайдеров во всех позах задаются в Т-позе.</p>
    <label>Сегмент <select id="segment"></select></label>
@@ -47,6 +52,18 @@
    <p class="hint" id="coord-hint">Координаты в метрах. Направление задаёт ось капсулы, соединения восстанавливаются по скелету.</p>
    <div id="coords"></div>
    <div class="actions"><button id="reset-pose">Сбросить позу</button></div>
+   </section>
+   <section id="panel-effects" role="tabpanel" aria-labelledby="tab-effects" hidden>
+    <label>Камера <select id="effects-profile"><option value="corner">Угловые камеры</option><option value="gopro">GoPro</option></select></label>
+    <label class="check"><input type="checkbox" id="effects-enabled"> Постэффекты включены</label>
+    <div class="effects-sliders">
+     <label><span>Затемнение <output id="darkness-value"></output></span><input type="range" id="effect-darkness" min="0" max="100" step=".5"></label>
+     <label><span>Виньетка <output id="vignette-value"></output></span><input type="range" id="effect-vignette" min="0" max="100" step=".5"></label>
+     <label><span>Зерно <output id="grain-value"></output></span><input type="range" id="effect-grain" min="0" max="100" step=".5"></label>
+    </div>
+    <button id="reset-effects">Сбросить профиль</button>
+    <p class="hint" id="effects-status" role="status"></p>
+   </section>
    <p id="status" role="status" aria-live="polite">Загрузка редактора…</p>
   </aside>
  </main>

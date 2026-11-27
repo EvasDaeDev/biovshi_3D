@@ -1,3 +1,4 @@
+import {CameraEffects,EFFECT_DEFAULTS,readCameraEffects,saveCameraEffects} from './camera-effects.js';
 import {useSharedAnatomy} from '../core/dist/rig/shared-anatomy.js';
 import {poseJointAnchor} from '../core/dist/rig/pose-joints.js';
 import {createSegmentVisual} from './segment-visual.js';
@@ -52,6 +53,8 @@ const perspective=new THREE.PerspectiveCamera(39,1,.03,60),orthographic=new THRE
 let camera=perspective,flatView=false;
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));workspace.append(renderer.domElement);
+const effects=readCameraEffects(),effectsProfile=element('effects-profile');
+let previewEffects=false,cameraEffects;
 const actor=new THREE.Group();scene.add(actor);
 const colliderMaterial=new THREE.LineBasicMaterial({color:0x63d6ef,transparent:true,opacity:.38,depthTest:false});
 const selectedCollider=new THREE.LineBasicMaterial({color:0x79edff,transparent:true,opacity:.94,depthTest:false});
@@ -92,7 +95,9 @@ function draw(){
   bones.geometry.attributes.position.needsUpdate=true;
   bones.geometry.setDrawRange(0,vertex);
  }
- renderer.render(scene,camera);
+ if(previewEffects&&effects.enabled)
+  (cameraEffects??=new CameraEffects(THREE,renderer)).draw(scene,camera,effects[effectsProfile.value],0);
+ else renderer.render(scene,camera);
 }
 const controls=new TransformControls(camera,renderer.domElement),pickable=[],nodes=new Map();
 const ikTarget=new THREE.Object3D();scene.add(ikTarget);
@@ -333,6 +338,48 @@ workspace.onpointerup=e=>{
 };
 workspace.onpointercancel=()=>{pointer=null;};
 workspace.addEventListener('wheel',e=>{e.preventDefault();distance=Math.max(1.5,Math.min(10,distance*Math.exp(e.deltaY*.001)));draw();},{passive:false});
+const anatomyTab=element('tab-anatomy'),effectsTab=element('tab-effects'),effectsEnabled=element('effects-enabled');
+const sliders=Object.keys(EFFECT_DEFAULTS.corner).map(name=>({name,input:element('effect-'+name),value:element(name+'-value')}));
+const showEffectValues=()=>{
+ effectsEnabled.checked=effects.enabled;
+ for(const {name,input,value} of sliders){
+  input.value=effects[effectsProfile.value][name]*100;
+  value.value=Number(input.value).toLocaleString('ru-RU')+'%';
+ }
+};
+const applyEffects=()=>{
+ element('effects-status').textContent=saveCameraEffects(effects)?'Настройки сохранены.':'Настройки действуют до закрытия страницы.';
+ showEffectValues();
+ draw();
+};
+const selectTab=tab=>{
+ previewEffects=tab===effectsTab;
+ for(const item of [anatomyTab,effectsTab]){
+  item.setAttribute('aria-selected',String(item===tab));
+  item.tabIndex=item===tab?0:-1;
+  element(item.getAttribute('aria-controls')).hidden=item!==tab;
+ }
+ draw();
+};
+for(const tab of [anatomyTab,effectsTab]){
+ tab.onclick=()=>selectTab(tab);
+ tab.onkeydown=event=>{
+  const next=event.key==='Home'?anatomyTab:event.key==='End'?effectsTab:
+   ['ArrowLeft','ArrowRight'].includes(event.key)?(tab===anatomyTab?effectsTab:anatomyTab):null;
+  if(next){event.preventDefault();selectTab(next);next.focus();}
+ };
+}
+effectsProfile.onchange=()=>{showEffectValues();draw();};
+effectsEnabled.onchange=()=>{effects.enabled=effectsEnabled.checked;applyEffects();};
+for(const {name,input} of sliders)input.oninput=()=>{
+ effects[effectsProfile.value][name]=Number(input.value)/100;
+ applyEffects();
+};
+element('reset-effects').onclick=()=>{
+ effects[effectsProfile.value]={...EFFECT_DEFAULTS[effectsProfile.value]};
+ applyEffects();
+};
+showEffectValues();
 if(new URLSearchParams(location.search).get('pose')==='tPose'){poseSelect.value='tPose';views.find(view=>view.dataset.view==='front').click();}
 new ResizeObserver(()=>{
  renderer.setSize(workspace.clientWidth,workspace.clientHeight,false);draw();
