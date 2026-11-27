@@ -310,6 +310,10 @@ try{
  await page.locator('#start-match').waitFor({state:'visible'});
  await page.goto(base+'/3d/lab-next/pose-editor.html');
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
+ await page.locator('#pose').selectOption('tPose');
+ await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
+ await page.locator('[data-view="front"]').click();
+ assert.equal(await page.locator('[data-view="front"]').getAttribute('aria-pressed'),'true');
  await page.locator('#pose').selectOption('punch');
  await page.locator('#radius').fill('0.14');
  await page.locator('#radius').press('Tab');

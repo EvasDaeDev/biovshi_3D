@@ -1,3 +1,4 @@
+import {poseJointAnchor} from '../core/dist/rig/pose-joints.js';
 import {createSegmentVisual} from './segment-visual.js';
 import {POSE_DRAFT_KEY,readPoseDraft} from './pose-draft.js';
 import {anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
@@ -5,7 +6,7 @@ import {solveTwoBone} from '../core/dist/rig/two-bone.js';
 import {TransformControls} from './vendor/TransformControls.js';
 import * as THREE from 'three';
 import {LAB_SEGMENTS} from '../core/dist/rig/anatomy.js';
-import {buildEditedPose,POSE_SLOTS,readPoseDocument} from '../core/dist/rig/pose-editor.js';
+import {buildEditedPose,POSE_SLOTS,readPoseDocument,referencePose} from '../core/dist/rig/pose-editor.js';
 
 const element=id=>document.getElementById(id);
 const poseSelect=element('pose'),segmentSelect=element('segment'),status=element('status');
@@ -19,7 +20,7 @@ for(const {id} of LAB_SEGMENTS){
  segmentSelect.add(new Option(part?(side==='L'?'Л / ':'П / ')+labels[part]:labels[id],id));
 }
 segmentSelect.value='L.upperArm';
-let data={schemaVersion:1,stature:1.65,slots:{}};
+let data={schemaVersion:1,pivotVersion:2,stature:1.65,slots:{}};
 try{
  data=readPoseDraft(localStorage)??data;
  status.textContent='Правки сохраняются в этом браузере.';
@@ -28,9 +29,9 @@ async function loadDefaults(){
  const response=await fetch(new URL('./patient-poses.json',import.meta.url));
  if(!response.ok)throw new Error('Не удалось загрузить исходные позы.');
  const slots=readPoseDocument(await response.json()).slots;
- if(Object.keys(slots).length!==Object.keys(POSE_SLOTS).length)
+ if(Object.keys(POSE_SLOTS).some(slot=>slot!=='tPose'&&!slots[slot]))
   throw new Error('Неполный набор исходных поз.');
- return slots;
+ return {...slots,tPose:slots.tPose??referencePose('tPose')};
 }
 const defaults=await loadDefaults().catch(error=>{
  status.textContent=error.message;
@@ -43,7 +44,8 @@ scene.background=new THREE.Color(0x101715);
 scene.add(new THREE.HemisphereLight(0xd7f4df,0x334d53,2.8));
 const light=new THREE.DirectionalLight(0xffffff,2.6);light.position.set(-3,5,2);scene.add(light);
 scene.add(new THREE.GridHelper(7,28,0x55776b,0x283b35));
-const camera=new THREE.PerspectiveCamera(39,1,.03,60),target=new THREE.Vector3(0,.83,0);
+const perspective=new THREE.PerspectiveCamera(39,1,.03,60),orthographic=new THREE.OrthographicCamera(-1,1,1,-1,.03,60),target=new THREE.Vector3(0,.825,0);
+let camera=perspective,flatView=false;
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));workspace.append(renderer.domElement);
 const actor=new THREE.Group();scene.add(actor);
@@ -53,6 +55,14 @@ const basis=new THREE.Matrix4();
 const raycaster=new THREE.Raycaster();
 let azimuth=.95,elevation=.15,distance=4.6;
 function draw(){
+ camera=flatView?orthographic:perspective;
+ controls.camera=camera;
+ const aspect=workspace.clientWidth/Math.max(workspace.clientHeight,1)||1;
+ if(flatView){
+  const half=Math.max(1,1.02/aspect)*distance/4.6;
+  Object.assign(orthographic,{top:half,bottom:-half,left:-half*aspect,right:half*aspect});
+ }else perspective.aspect=aspect;
+ camera.updateProjectionMatrix();
  camera.position.set(
   target.x+distance*Math.cos(elevation)*Math.sin(azimuth),
   target.y+distance*Math.sin(elevation),
@@ -136,24 +146,26 @@ function renderPose(){
  const parts=current(),settings=new Map(parts.map(p=>[p.id,p]));
  nodes.clear();
  const anchors=new Map();
- const pose=buildEditedPose(parts);
+ const pose=buildEditedPose(parts),byId=new Map(pose.map(part=>[part.id,part]));
  for(const part of pose){
   const a=new THREE.Vector3(...part.a),b=new THREE.Vector3(...part.b),axis=b.clone().sub(a);
-  const anchor=['pelvis','chest'].includes(part.id)?a.clone().lerp(b,.5):a.clone();
+  const anchor=new THREE.Vector3(...poseJointAnchor(part,byId));
   const parent=LAB_SEGMENTS.find(def=>def.id===part.id).parent;
   const joint=new THREE.Group(),params=settings.get(part.id);
   joint.position.copy(anchor);
-  if(parent)joint.position.sub(anchors.get(parent));
+  if(parent)joint.position.sub(anchors.get(parent)).add(nodes.get(parent).userData.bind);
+  const bind=new THREE.Vector3(...(params.bindOffset??[0,0,0]));
+  joint.userData.bind=bind;
   joint.userData.origin=joint.position.clone();
   joint.userData.id=part.id;
-  joint.userData.tip=b.clone().sub(anchor);
+  joint.userData.tip=b.clone().sub(anchor).add(bind);
   joint.userData.length=axis.length();
   joint.position.add(new THREE.Vector3(...(params.offset??[0,0,0])));
   joint.rotation.set(...(params.rotation??[0,0,0]));
   (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
   const frame=anatomicalBoneFrame(part,pose,0);
   const visual=createSegmentVisual(part.id,part.radius,frame.length,part.id===segmentSelect.value?selected:primary);
-  visual.position.copy(a).lerp(b,.5).sub(anchor);
+  visual.position.copy(a).lerp(b,.5).sub(anchor).add(bind);
   const vector=values=>new THREE.Vector3(...values);
   visual.quaternion.setFromRotationMatrix(basis.makeBasis(vector(frame.x),vector(frame.y),vector(frame.z)));
   joint.add(visual);pickable.push(...visual.children);
@@ -238,7 +250,7 @@ element('import').onchange=async event=>{
 };
 const views=[...document.querySelectorAll('[data-view]')];
 for(const button of views)button.onclick=()=>{
- const angle=button.dataset.view;
+ const angle=button.dataset.view;flatView=angle!=='perspective';
  azimuth={front:Math.PI,side:Math.PI/2,perspective:.95}[angle];elevation=angle==='perspective'?.15:0;
  for(const item of views)item.setAttribute('aria-pressed',String(item===button));
  draw();
@@ -254,7 +266,7 @@ workspace.onpointermove=e=>{
  const dx=e.clientX-pointer.x,dy=e.clientY-pointer.y;
  pointer.travel+=Math.hypot(dx,dy);pointer.x=e.clientX;pointer.y=e.clientY;
  if(pointer.travel<4)return;
- azimuth-=dx*.008;elevation=Math.max(-1.3,Math.min(1.3,elevation+dy*.008));
+ flatView=false;azimuth-=dx*.008;elevation=Math.max(-1.3,Math.min(1.3,elevation+dy*.008));
  for(const button of views)button.setAttribute('aria-pressed','false');
  draw();
 };
@@ -270,8 +282,8 @@ workspace.onpointerup=e=>{
 };
 workspace.onpointercancel=()=>{pointer=null;};
 workspace.addEventListener('wheel',e=>{e.preventDefault();distance=Math.max(1.5,Math.min(10,distance*Math.exp(e.deltaY*.001)));draw();},{passive:false});
+if(new URLSearchParams(location.search).get('pose')==='tPose'){poseSelect.value='tPose';views.find(view=>view.dataset.view==='front').click();}
 new ResizeObserver(()=>{
- camera.aspect=workspace.clientWidth/workspace.clientHeight;camera.updateProjectionMatrix();
  renderer.setSize(workspace.clientWidth,workspace.clientHeight,false);draw();
 }).observe(workspace);
 refresh();

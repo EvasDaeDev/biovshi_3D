@@ -1,3 +1,4 @@
+import {poseJointAnchor,poseRotation} from './pose-joints.js';
 import type {Vec3} from '../types.js';
 import {LAB_SEGMENTS} from './anatomy.js';
 import {buildEditedPose,referencePose,type PoseDocument,type PoseSegment,type PoseSlot} from './pose-editor.js';
@@ -7,13 +8,6 @@ import type {RigPose} from './gait.js';
 const plus=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const minus=(a:Vec3,b:Vec3):Vec3=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 const times=(a:Vec3,k:number):Vec3=>[a[0]*k,a[1]*k,a[2]*k];
-function rotation([x,y,z]:Vec3):(p:Vec3)=>Vec3{
- const cx=Math.cos(x),sx=Math.sin(x),cy=Math.cos(y),sy=Math.sin(y),cz=Math.cos(z),sz=Math.sin(z);
- return ([a,b,c])=>{
-  const i=cz*a-sz*b,j=sz*a+cz*b,k=cy*c-sy*i;
-  return [cy*i+sy*c,cx*j-sx*k,sx*j+cx*k];
- };
-}
 type Joint={origin:Vec3;world:(p:Vec3)=>Vec3};
 interface StandingAdjustment {
  readonly spine:number;
@@ -34,15 +28,16 @@ interface CompiledSlot {
 function compileSlot(parts:readonly PoseSegment[]):CompiledSlot{
  const settings=new Map(parts.map(part=>[part.id,part]));
  const joints=new Map<string,Joint>(),pose=new Map<string,RigPose>();
- for(const part of buildEditedPose(parts)){
+ const rig=buildEditedPose(parts),byId=new Map(rig.map(part=>[part.id,part]));
+ for(const part of rig){
   const params=settings.get(part.id)!;
   const parentId=LAB_SEGMENTS.find(def=>def.id===part.id)!.parent;
   const parent=parentId?joints.get(parentId):null;
-  const origin=part.id==='pelvis'||part.id==='chest'?times(plus(part.a,part.b),.5):part.a;
+  const origin=poseJointAnchor(part,byId);
   const local=plus(minus(origin,parent?.origin??[0,0,0]),params.offset??[0,0,0]);
-  const rotate=rotation(params.rotation??[0,0,0]);
+  const rotate=poseRotation(params.rotation??[0,0,0]),bind=params.bindOffset??[0,0,0];
   const world=(point:Vec3):Vec3=>{
-   const moved=plus(local,rotate(point));return parent?parent.world(moved):moved;
+   const moved=plus(local,rotate(plus(point,bind)));return parent?parent.world(moved):moved;
   };
   joints.set(part.id,{origin,world});
   pose.set(part.id,{...part,a:times(world(minus(part.a,origin)),1/PATIENT_SCALE),b:times(world(minus(part.b,origin)),1/PATIENT_SCALE)});
@@ -95,15 +90,15 @@ export function strikeBody(pose:readonly RigPose[],slot:'punch'|'kick'|'headbutt
  const authoredAxis=reference?minus(reference.b,reference.a):null;
  const authoredTurn=authoredAxis?Math.abs(Math.atan2(authoredAxis[2],authoredAxis[0])):0;
  const yaw=(side==='L'?-1:1)*amount*(slot==='headbutt'?.1:Math.min(.65,.32+authoredTurn*.35));
- const twist=rotation([0,yaw,0]);
+ const twist=poseRotation([0,yaw,0]);
  const turn=(p:Vec3):Vec3=>{
   const offset=twist(minus(p,center));
   const torso=slot==='headbutt'?motion.headbutt?.get('abdomen'):undefined;
   if(!torso)return plus(center,offset);
   const bend=Math.atan2(torso.b[2]-torso.a[2],torso.b[1]-torso.a[1]);
   const bodyYaw=-Math.atan2(hinge.b[2]-hinge.a[2],hinge.b[0]-hinge.a[0]);
-  const local=rotation([0,-bodyYaw,0])(offset);
-  return plus(center,rotation([0,bodyYaw,0])(rotation([bend*amount*.55,0,0])(local)));
+  const local=poseRotation([0,-bodyYaw,0])(offset);
+  return plus(center,poseRotation([0,bodyYaw,0])(poseRotation([bend*amount*.55,0,0])(local)));
  };
  const displaced=new Map<string,RigPose>();
  for(const part of pose){
