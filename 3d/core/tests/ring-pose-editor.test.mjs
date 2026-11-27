@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
+import {buildLocationCatalog,buildLegacyLocationFixtures} from '../scripts/catalog-locations.mjs';
 import {LabSimulationCore,PolygonNavigation,createAuthoredCombatConfig,FIXED_DT} from '../dist/index.js';
 import {buildEditedPose,readPoseDocument,referencePose} from '../dist/rig/pose-editor.js';
 
@@ -55,4 +55,24 @@ test('pose files restore adjusted anatomy and connected bones and reject invalid
  assert.equal(buildEditedPose(removed).length,14);
  assert.throws(()=>readPoseDocument({schemaVersion:2,slots:{}}),RangeError);
  assert.throws(()=>readPoseDocument({schemaVersion:1,slots:{punch:parts.slice(1)}}),RangeError);
+});
+
+test('published legacy arena outlines and obstacles have 25% more area',async()=>{
+ const published=await buildLocationCatalog(),legacy=await buildLegacyLocationFixtures();
+ const area=points=>Math.abs(points.reduce((sum,p,i)=>{
+  const next=points[(i+1)%points.length];
+  return sum+p.x*next.z-p.z*next.x;
+ },0))/2;
+ for(const [id,original] of Object.entries(legacy)){
+  if(id==='ring')continue;
+  const arena=published[id],nav=new PolygonNavigation(arena);
+  assert.equal(arena.capacity,original.capacity);
+  assert.ok(Math.abs(area(arena.boundary)/area(original.boundary)-1.25)<1e-10,id);
+  const freeArea=location=>area(location.boundary)-location.objects.reduce((sum,object)=>sum+area(object.points),0);
+  assert.ok(Math.abs(freeArea(arena)/freeArea(original)-1.25)<1e-10,id);
+  for(const [i,[x,y,z]] of arena.spawnSlots.entries()){
+   assert.deepEqual([x,y,z],original.spawnSlots[i].map((n,axis)=>axis===1?n:n*Math.sqrt(1.25)));
+   assert.ok(nav.clear({x,z},{x,z},.5),id);
+  }
+ }
 });

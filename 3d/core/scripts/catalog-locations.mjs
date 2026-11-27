@@ -24,11 +24,30 @@ export async function buildLegacyLocationFixtures(){
  return result;
 }
 
+// An area gain of 25% scales each horizontal coordinate by √1.25.
+const LEGACY_ARENA_SCALE=Math.sqrt(1.25);
+const metres=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
+function expandLegacyArena(location){
+ const scale=LEGACY_ARENA_SCALE;
+ const point=({x,z})=>({x:x*scale,z:z*scale});
+ const spawn=([x,y,z])=>[x*scale,y,z*scale];
+ const width=location.width*scale,depth=location.depth*scale;
+ const title=location.id==='maze'?'Лабиринт':location.name.split(' · ')[0];
+ return {...location,width,depth,name:title+' · '+metres.format(width)+' × '+metres.format(depth)+' м',
+  floorRevision:'area125-v1',
+  boundary:location.boundary.map(point),patrol:location.patrol.map(point),
+  spawns:location.spawns.map(spawn),spawnSlots:location.spawnSlots.map(spawn),
+  objects:location.objects.map(object=>({...object,points:object.points.map(point),
+   convexParts:object.convexParts.map(part=>part.map(point))})),
+  walls:location.walls.map(wall=>({...wall,minX:wall.minX*scale,maxX:wall.maxX*scale,minZ:wall.minZ*scale,maxZ:wall.maxZ*scale}))
+ };
+}
+
 export async function buildLocationCatalog(){
  const patientPoses=readPoseDocument(JSON.parse(await readFile(resolve(root,'3d/lab-next/patient-poses.json'),'utf8')));
  const fixtures=await buildLegacyLocationFixtures();
  const result={ring:{...createRingLocation(),patientPoses}};
- for(const [id,location] of Object.entries(fixtures))if(id!=='ring')result[id]=location;
+ for(const [id,location] of Object.entries(fixtures))if(id!=='ring')result[id]=expandLegacyArena(location);
  const terrain=JSON.parse(await readFile(resolve(root,'3d/locations/terrain.json'),'utf8'));
  return applyLocationTerrain(result,terrain);
 }

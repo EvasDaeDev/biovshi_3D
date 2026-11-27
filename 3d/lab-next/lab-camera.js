@@ -1,7 +1,7 @@
 /** Presentation-only camera, independent of combat and input. */
 export class LabCamera {
  constructor(T,camera,mode,patient,fov){
-  this.camera=camera;this.modeInput=mode;this.patientInput=patient;this.fovInput=fov;this.circle=false;
+  this.camera=camera;this.modeInput=mode;this.patientInput=patient;this.fovInput=fov;this.arena=null;
   this.up=new T.Vector3();this.forward=new T.Vector3();this.right=new T.Vector3();this.back=new T.Vector3();
   this.target=new T.Vector3();this.targetMatrix=new T.Matrix4();
   this.mount=new T.Vector3();this.previousMount=new T.Vector3();
@@ -14,8 +14,7 @@ export class LabCamera {
   this.fovInput.disabled=this.mode!=='head';
  }
  setArena(location){
-  this.circle=location?.shape==='circle';
-  this.arenaExtent=location?Math.max(location.width,location.depth):0;
+  this.arena=location;
   this.staticView();
  }
  reset(s){
@@ -24,7 +23,7 @@ export class LabCamera {
   if(Array.from(s.fighterIds).includes(Number(old)))this.patientInput.value=old;
   if(!this.patientInput.value&&s.fighterIds.length)this.patientInput.value=String(s.fighterIds[0]);this.sync();
  }
- resize(aspect){this.camera.aspect=aspect;this.projection(true);}
+ resize(aspect){this.camera.aspect=aspect;this.staticView();this.projection(true);}
  projection(force=false){
   const c=this.camera,h=Number(this.fovInput.value)||90;
   const head=this.mode==='head'||this.mode==='fisheye';
@@ -35,12 +34,23 @@ export class LabCamera {
  }
  staticView(){
   const c=this.camera;c.up.copy(this.worldUp);
-  if(this.mode==='overview'&&this.arenaExtent&&!this.circle){
-   const extent=this.arenaExtent;
-   c.position.set(extent*.60,extent*1.32,extent*.68);
-  }else c.position.set(...(this.mode==='overview'?(this.circle?[6.4,8.2,9.5]:[8,6,9]):(this.circle?[3.9,2.75,4.6]:[5.8,3.6,6.6])));
-  c.lookAt(0,this.circle?.75:1,0);this.projection();
+  const overview=this.mode==='overview';
+  if(this.arena){
+   const {width,depth,boundaryHeight=2.8,shape}=this.arena;
+   const extent=Math.max(width,depth);
+   const fit=(shape==='circle'?extent/2:Math.hypot(width,depth)/2)/
+    (Math.tan(65*Math.PI/360)*Math.min(1,c.aspect));
+   const distance=overview?Math.max(extent*1.55,fit*1.2):Math.max(10.5,extent*1.12);
+   const height=overview?boundaryHeight:boundaryHeight*.86;
+   c.position.set(distance*.6,height,distance*.8);
+   c.lookAt(0,shape==='circle'?.75:1,0);
+  }else{
+   c.position.set(...(overview?[8,6,9]:[5.8,3.6,6.6]));
+   c.lookAt(0,1,0);
+  }
+  this.projection();
  }
+ get external(){return this.mode!=='head'&&this.mode!=='fisheye';}
  orientation(h,out){
   // A level horizon is independent of the neck's attack/impact roll.
   this.forward.set(...h.forward).normalize();this.right.crossVectors(this.forward,this.worldUp);

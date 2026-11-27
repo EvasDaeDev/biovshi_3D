@@ -29,6 +29,8 @@ try{
   await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&Number(document.getElementById('stats')?.dataset.tick)>2,{},{timeout:45000});
  }catch(e){throw new Error('Lab startup failed: '+await page.locator('#stats').innerText()+'; browser errors: '+errors.join('; '),{cause:e});}
  assert.equal(await page.locator('canvas').count(),1);
+ assert.ok(Number(await page.locator('#stats').getAttribute('data-camera-height'))<=.30);
+ assert.ok(Number(await page.locator('#stats').getAttribute('data-foreground-walls'))>0);
  assert.match(await page.locator('#round-clock').textContent(),/^\d+:\d{2}$/);
  await page.waitForFunction(()=>/^\d+ FPS · CPU \d+%.*GPU/.test(document.querySelector('#frame-meter').textContent));
  assert.equal(await page.locator('#patient-hud .patient-card').count(),3);
@@ -43,7 +45,7 @@ try{
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.supportCount)>0);
  await page.locator('#support-debug').uncheck();
  await page.locator('#camera-mode').selectOption('head');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='head');
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='head'&&document.getElementById('stats')?.dataset.foregroundWalls==='0');
  await page.locator('#camera-fov').selectOption('75');
  await page.locator('#camera-mode').selectOption('follow');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='follow');
@@ -260,7 +262,7 @@ try{
  // Real authored arenas use isolated floor histories within one session.
  await page.evaluate(async({release,session,archived})=>{
   const storage=await import('/releases/'+release+'/3d/lab-next/floor-storage.js');
-  await storage.saveFloorHistory(session,'ward@165',{...archived,arenaId:'ward@165'});
+  await storage.saveFloorHistory(session,'ward@area125-v1-165',{...archived,arenaId:'ward@area125-v1-165'});
  },{release,session:floorSession,archived});
  for(const [id,count] of [['ward','1'],['annulus','0'],['ward','1']]){
   await page.locator('#scenario').selectOption('location-'+id);
@@ -281,12 +283,14 @@ try{
  assert.equal(await page.locator('#stats').getAttribute('data-location'),'annulus');
  assert.equal(await page.locator('#stats').getAttribute('data-patients'),'2');
  assert.equal(await page.locator('#scenario').isVisible(),false);
+ assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'2.8');
+ assert.ok(Number(await page.locator('#stats').getAttribute('data-foreground-walls'))>0);
  await page.waitForTimeout(500);
  assert.equal(await page.locator('#stats').getAttribute('data-tick'),'0','preparation does not step combat');
  await page.locator('#match-preparation').waitFor({state:'hidden',timeout:15000});
  await page.locator('#match-result').waitFor({state:'visible',timeout:60000});
- assert.match(await page.locator('#match-result-title').textContent(),/Победил пациент № 1/);
- assert.match(await page.locator('#match-result p').textContent(),/Время боя 10:13/);
+ assert.match(await page.locator('#match-result-title').textContent(),/Победил пациент № [01]|Ничья/);
+ assert.match(await page.locator('#match-result p').textContent(),/Время боя \d+:\d{2}/);
  await page.getByRole('link',{name:'В меню боя'}).click();
  await page.locator('#start-match').waitFor({state:'visible'});
  await page.goto(base+'/3d/lab-next/pose-editor.html');

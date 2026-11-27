@@ -43,6 +43,25 @@ scene.add(new THREE.HemisphereLight(0xc5dacb,0x263229,2));const lamp=new THREE.D
 const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0x26362e}));floor.rotation.x=-Math.PI/2;scene.add(floor,grid);
 const wallMeshes=[],wallMaterial=new THREE.MeshStandardMaterial({color:0x62685e,roughness:1});
+const foregroundWall=wallMaterial.clone();
+foregroundWall.transparent=true;foregroundWall.opacity=.14;foregroundWall.depthWrite=false;
+const boundaryMeshes=[];
+let lastBoundaryView=null;
+function updateBoundaryView(){
+ const external=cameraControl.external;
+ const {x:cx,z:cz}=camera.position;
+ if(lastBoundaryView?.external===external&&(!external||(lastBoundaryView.x===cx&&lastBoundaryView.z===cz)))return;
+ lastBoundaryView={external,x:cx,z:cz};
+ let translucent=0;
+ for(const mesh of boundaryMeshes){
+  const {x,z,dx,dz}=mesh.userData.edge;
+  const facing=dz*(camera.position.x-x)-dx*(camera.position.z-z)>0;
+  const softened=external&&facing;
+  mesh.material=softened?foregroundWall:wallMaterial;
+  if(softened)translucent++;
+ }
+ stats.dataset.foregroundWalls=String(translucent);
+}
 const scaleMaterial=new THREE.LineBasicMaterial({color:0x617368});
 const gradedMaterial=new THREE.MeshStandardMaterial({color:0x7a8055,roughness:1,side:THREE.DoubleSide});
 const routeDebug=document.getElementById('route-debug'),routeLines=[];
@@ -183,7 +202,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
  const config=scenarioConfig();
  const defaults=config.location?.patientPoses??authoredLocations.ring.patientPoses;
  const patientPoses=scenario.value==='motion-review'?defaults:roundPatientPoses(defaults,{getItem:key=>window.localStorage.getItem(key)});
- debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;
+ debris.reset(config.walls??[],savedFloor,floorArenaId(),config.location??null,config.gradedSurface??[]);oilMarks.reset();for(const m of wallMeshes){scene.remove(m);m.geometry.dispose();}wallMeshes.length=0;boundaryMeshes.length=0;lastBoundaryView=null;
  for(const tri of config.gradedSurface??[]){
   const geo=new THREE.BufferGeometry(),p=new Float32Array(tri.flatMap(v=>v));
   geo.setAttribute('position',new THREE.BufferAttribute(p,3));geo.computeVertexNormals();
@@ -225,7 +244,8 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    const height=location.boundaryHeight??2.8,offset=location.shape==='circle'?.10:0;
    const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,height,.20),wallMaterial);
    mesh.position.set((a.x+b.x)/2+dz/len*offset,height/2,(a.z+b.z)/2-dx/len*offset);
-   mesh.rotation.y=-Math.atan2(dz,dx);scene.add(mesh);wallMeshes.push(mesh);
+   mesh.rotation.y=-Math.atan2(dz,dx);mesh.userData.edge={x:a.x,z:a.z,dx,dz};
+   scene.add(mesh);wallMeshes.push(mesh);boundaryMeshes.push(mesh);
   }
  }else for(const w of config.walls??[]){const m=new THREE.Mesh(new THREE.BoxGeometry(w.maxX-w.minX,w.height,w.maxZ-w.minZ),wallMaterial);m.position.set((w.minX+w.maxX)/2,w.height/2,(w.minZ+w.maxZ)/2);scene.add(m);wallMeshes.push(m);}for(const m of debrisMeshes.values()){scene.remove(m);m.children[0].material.dispose();}debrisMeshes.clear();segmentTints.reset();cooling.reset();hitParticles.reset();roundClock.reset();match?.reset();for(const m of moundMeshes.values())scene.remove(m);moundMeshes.clear();core.initialize({...config,patientPoses,patientScale:PATIENT_SCALE});pendingDamage=null;damageControls.hidden=scenario.value!=='damage';damageSegment.replaceChildren();if(!damageControls.hidden){for(const part of core.getSnapshot().health[0].segments){const o=document.createElement('option');o.value=part.id;o.textContent=part.id;damageSegment.append(o);}damageSegment.value='R.upperArm';}if(scenario.value==='corpse'){core.incapacitate(1);for(const e of core.drainEvents())debris.accept(e);}playback.reset();motionPeak=motionLast=null;keys.clear();last=null;checkSnapshot=true;resetFrameHistory();assertSnapshot(currentFrame.state);cameraControl.reset(currentFrame.state);resetControl(currentFrame.state);
   stats.dataset.graded=String(config.gradedSurface?.length??0);
@@ -322,7 +342,8 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
    }
   }
  });
- cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);stats.dataset.camera=cameraControl.mode;
+ cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);updateBoundaryView();
+ stats.dataset.camera=cameraControl.mode;stats.dataset.cameraHeight=String(camera.position.y);
  const falling=currentFrame.debris,oldDebris=new Map(previousFrame.debris.map(d=>[d.id,d])),active=new Set(falling.map(d=>d.id));
  for(const [id,m] of debrisMeshes)if(!active.has(id)){scene.remove(m);m.children[0].material.dispose();debrisMeshes.delete(id);}
  for(const d of falling){
