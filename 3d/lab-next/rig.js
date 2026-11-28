@@ -27,7 +27,7 @@ import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
 import {LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
 import {patientSegmentFrame} from './patient-frame.js';
-import {headCameraPosition} from '../core/dist/rig/head-frame.js';
+import {headAimPoint,headCameraPosition} from '../core/dist/rig/head-frame.js';
 import {applySceneLighting,createSceneLighting,readSceneLighting} from './scene-lighting.js';
 import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
@@ -47,6 +47,28 @@ let effects=readCameraEffects();
 const toggleEffects=document.getElementById('toggle-camera-effects');
 const cameraPatient=document.getElementById('camera-patient');
 const cameraAngle=document.getElementById('gopro-angle');
+const reticle=document.getElementById('player-reticle'),damageVignette=document.getElementById('player-damage-vignette');
+const aimScreen=new THREE.Vector3();
+let damageFlash;
+function updateReticle(playerActive,head){
+ const visible=playerActive&&cameraControl.mounted&&cameraPatient.value===controlPatient.value;
+ if(visible&&cameraControl.mode==='third-person'&&head){
+  camera.updateMatrixWorld();
+  aimScreen.set(...headAimPoint(head,1.1)).project(camera);
+  reticle.hidden=!(Math.abs(aimScreen.x)<1&&Math.abs(aimScreen.y)<1&&Math.abs(aimScreen.z)<1);
+  if(!reticle.hidden){
+   reticle.style.left=(50+50*aimScreen.x)+'%';
+   reticle.style.top=(50-50*aimScreen.y)+'%';
+  }
+  return;
+ }
+ reticle.hidden=!visible||cameraControl.mode!=='gopro';
+ if(reticle.style.left){reticle.style.left='';reticle.style.top='';}
+}
+function flashPlayerDamage(){
+ damageFlash?.cancel();
+ damageFlash=damageVignette.animate([{opacity:.74},{opacity:0}],{duration:480,easing:'ease-out'});
+}
 const syncEffectsButton=()=>toggleEffects.setAttribute('aria-pressed',String(effects.enabled));
 toggleEffects.onclick=()=>{effects.enabled=!effects.enabled;syncEffectsButton();saveCameraEffects(effects);};
 cameraAngle.onchange=()=>cameraControl.setHeadAngle(Number(cameraAngle.value));
@@ -148,7 +170,12 @@ addEventListener('keydown',unlockBattlefieldAudio,{capture:true});
 const captureFrame=()=>({state:core.getSnapshot(),debris:debris.snapshot()});
 function resetFrameHistory(){battlefieldAudio.clear();previousFrame=currentFrame=captureFrame();}
 function tickFrame(t){
- previousFrame=currentFrame;const events=advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();
+ previousFrame=currentFrame;
+ const events=advanceCombatStep(core,debris,t,input(),pendingDamage);
+ pendingDamage=null;
+ // The hit belongs to whoever was under player control when this step started.
+ if(events.length&&manualActive()&&events.some(e=>e.type==='fighter-damaged'&&e.fighterId===Number(controlPatient.value)))flashPlayerDamage();
+ currentFrame=captureFrame();
  battlefieldAudio.record(previousFrame.state,currentFrame.state,events);
  if(currentFrame.state.fight.ended){roundClock.sample(currentFrame.state);clearPlayerInput(true);}
  segmentTints.record(events,previousFrame.debris,currentFrame.debris,currentFrame.state.tick);
@@ -201,6 +228,7 @@ function syncPlayerCamera(){
  updateReplayLink();
 }
 controlPatient.onchange=()=>{
+ damageFlash?.cancel();
  clearPlayerInput(true);
  controlPatient.blur();
  if(controlPatient.value!==''&&!cameraControl.mounted)cameraControl.select('gopro');
@@ -368,7 +396,6 @@ document.addEventListener('fullscreenchange',()=>{
  clearPlayerInput();
  if((!document.fullscreenElement||document.fullscreenElement.contains(view))&&(manualActive()||cameraControl.mode==='free'))focusView();
 });
-const reticle=document.getElementById('player-reticle');
 let cameraPointer=null;
 view.addEventListener('contextmenu',event=>{if(manualActive())event.preventDefault();});
 view.addEventListener('mousedown',e=>{
@@ -419,6 +446,7 @@ pauseButton.onclick=()=>{
  rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
  stepButton.onclick=()=>{if(stats.dataset.state==='running'&&paused)playback.requestStep();};
  function suspendRound(message){
+  damageFlash?.cancel();
   battlefieldAudio.clear();
   if(frameRequest)cancelAnimationFrame(frameRequest);
   frameRequest=0;last=null;clearPlayerInput(true);
@@ -506,8 +534,8 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  const playerActive=manualActive();
  const listenerId=playerActive?Number(controlPatient.value):null;
  cameraControl.update(s,prior,alpha,meshes,dt,listenerId);
- reticle.hidden=!playerActive||cameraControl.mode!=='gopro'||cameraPatient.value!==controlPatient.value;
  const listener=listenerId===null?null:s.headFrames[s.fighterIds.indexOf(listenerId)];
+ updateReticle(playerActive,listener);
  if(listener&&cameraControl.mode!=='gopro')battlefieldAudio.update(listener.center,listener.forward,listener.up,listenerId,
   cameraControl.navigation?.sightClear.bind(cameraControl.navigation),paused||document.hidden);
  else{

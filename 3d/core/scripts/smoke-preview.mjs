@@ -251,8 +251,14 @@ try{
  });
  await page.locator('#scenario').selectOption('damage');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='4';});
+ const vignette=page.locator('#player-damage-vignette');
+ await page.locator('#toggle-camera-effects').click();
+ await page.waitForFunction(()=>document.getElementById('stats').dataset.cameraEffects==='off');
  await page.locator('#damage-crit').click();
+ await page.waitForFunction(()=>Number(getComputedStyle(document.getElementById('player-damage-vignette')).opacity)>.1);
  await page.waitForFunction(geometry=>{const d=document.getElementById('stats')?.dataset;return d?.health==='1'&&d.segmentGeometry===geometry&&d.hitTint==='0:R.upperArm';},expectedGeometry);
+ await page.waitForFunction(()=>getComputedStyle(document.getElementById('player-damage-vignette')).opacity==='0');
+ await page.locator('#toggle-camera-effects').click();
  const firstCard=page.locator('#patient-hud [data-patient-id="0"]');
  assert.equal(await firstCard.locator('[data-segment="R.upperArm"]').getAttribute('data-state'),'damaged');
  assert.equal(await firstCard.locator('[data-segment="L.upperArm"]').getAttribute('data-state'),'healthy');
@@ -266,8 +272,11 @@ try{
  assert.ok(Number(await page.locator('#stats').getAttribute('data-max-endurance'))<35);
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.oil)>0,{},{timeout:30000});
  await page.locator('#damage-segment').selectOption('L.hand');
+ await page.locator('#control-patient').selectOption('');
  await page.locator('#damage-crit').click();
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.health==='1');
+ assert.equal(await vignette.evaluate(el=>el.getAnimations().length),0,'damage in spectator mode does not flash');
+ await page.locator('#control-patient').selectOption('0');
  const singleHitTick=Number(await page.locator('#stats').getAttribute('data-tick'));
  await page.waitForFunction(t=>Number(document.getElementById('stats')?.dataset.tick)>=t+18,singleHitTick);
  await page.locator('#damage-hit').click();
@@ -315,6 +324,8 @@ try{
  await page.locator('#camera-mode').focus();
  await page.locator('#camera-mode').selectOption('third-person');
  await page.waitForFunction(()=>document.activeElement?.tagName==='CANVAS'&&document.getElementById('stats').dataset.camera==='third-person');
+ await reticle.waitFor({state:'visible'});
+ assert.ok(await reticle.evaluate(el=>parseFloat(el.style.top)<50),'chase reticle aims above the camera center');
  const walkStart=Number(await page.locator('#stats').getAttribute('data-z'));
  await page.keyboard.down('KeyW');
  try{
