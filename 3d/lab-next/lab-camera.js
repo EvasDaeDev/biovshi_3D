@@ -1,3 +1,4 @@
+import {headCameraPosition} from '../core/dist/rig/head-frame.js';
 import {PolygonNavigation} from '../core/dist/arena/polygon-navigation.js';
 import {CAMERA_CLEARANCE,CAMERA_HEIGHT,cornerMounts} from './arena-camera-layout.js';
 
@@ -17,12 +18,14 @@ export class LabCamera {
   this.up=new T.Vector3();this.forward=new T.Vector3();this.right=new T.Vector3();this.back=new T.Vector3();
   this.mount=new T.Vector3();this.previousMount=new T.Vector3();
   this.matrix=new T.Matrix4();this.q=new T.Quaternion();this.oldQ=new T.Quaternion();
+  this.chasePivot=new T.Vector3();this.chaseTarget=new T.Vector3();this.chaseOffset=new T.Vector3();
+  this.orbitYaw=0;this.orbitPitch=0;this.chaseOwner=null;
   this.worldUp=new T.Vector3(0,1,0);this.view=new T.Vector3();this.samples=[];
   this.headAngle=105;
   this.modeInput.onchange=()=>this.select(this.modeInput.value);
   this.select(cornerModes[0]);
  }
- get mounted(){return this.mode==='gopro'||this.mode==='gopro-chest';}
+ get mounted(){return this.mode==='gopro'||this.mode==='third-person';}
  setArena(arena,fixtureRadii=[]){
   this.navigation=arena?new PolygonNavigation(arena):null;
   this.mounts=arena?cornerMounts(arena,this.navigation,fixtureRadii):null;
@@ -37,6 +40,9 @@ export class LabCamera {
  select(mode){
   if(mode==='free'&&!this.freeAllowed)return false;
   if(cornerModes.includes(mode))this.corner=cornerModes.indexOf(mode);
+  if(this.mode!==mode){
+   this.chaseOwner=null;this.orbitYaw=0;this.orbitPitch=0;
+  }
   this.mode=this.modeInput.value=mode;
   this.patientInput.disabled=!this.mounted;
   const mount=this.mounts?.[this.corner];
@@ -49,11 +55,13 @@ export class LabCamera {
    this.aimAt(this.yaw,this.pitch);
   }
   this.framed=false;
-  if(this.mounted)this.projectHead();
+  if(mode==='gopro')this.projectHead();
+  else if(mode==='third-person')this.project(58,.035);
   else this.project(65,.05);
   return true;
  }
  reset(s){
+  this.chaseOwner=null;
   const old=this.patientInput.value;this.patientInput.replaceChildren();
   for(const id of s.fighterIds){const option=document.createElement('option');option.value=String(id);option.textContent='№ '+id;this.patientInput.append(option);}
   if(Array.from(s.fighterIds).includes(Number(old)))this.patientInput.value=old;
@@ -61,12 +69,12 @@ export class LabCamera {
  }
  resize(aspect){
   this.camera.aspect=aspect;this.framed=false;this.camera.updateProjectionMatrix();
-  if(this.mounted)this.projectHead();
+  if(this.mode==='gopro')this.projectHead();
  }
  setHeadAngle(angle){
   if(!HEAD_ANGLES.includes(angle))return;
   this.headAngle=angle;
-  if(this.mounted)this.projectHead();
+  if(this.mode==='gopro')this.projectHead();
  }
  projectHead(){this.project(headVerticalFov(this.headAngle,this.camera.aspect),.015);}
  project(fov,near){
@@ -79,6 +87,11 @@ export class LabCamera {
   this.camera.lookAt(p.x+Math.sin(yaw)*flat,p.y+Math.sin(pitch),p.z+Math.cos(yaw)*flat);
  }
  look(dx,dy){
+  if(this.mode==='third-person'){
+   this.orbitYaw=wrap(this.orbitYaw-dx*.003);
+   this.orbitPitch=clamp(this.orbitPitch-dy*.003,-.65,.62);
+   return;
+  }
   if(this.mode!=='free')return;
   this.yaw=wrap(this.yaw-dx*.003);
   this.pitch=clamp(this.pitch-dy*.003,-1.45,1.45);
@@ -136,25 +149,50 @@ export class LabCamera {
   this.right.normalize();this.up.crossVectors(this.right,this.forward).normalize();this.back.copy(this.forward).negate();
   return out.setFromRotationMatrix(this.matrix.makeBasis(this.right,this.up,this.back));
  }
- update(s,prior,alpha,meshes,clearance,dt=0){
+ chase(s,i,id,dt,manual){
+  const h=s.headFrames?.[i],k=i*4;
+  const rootYaw=s.roots[k+3],forward=h?.forward;
+  const facing=manual&&forward?Math.atan2(forward[0],-forward[2]):rootYaw;
+  const yaw=facing+this.orbitYaw;
+  const pitch=clamp((manual&&forward?Math.asin(clamp(forward[1],-1,1)):0)+this.orbitPitch,-.65,.62);
+  const immediate=this.chaseOwner!==id;
+  const t=immediate?1:damping(dt,.11);
+  const x=s.roots[k],y=s.roots[k+1],z=s.roots[k+2];
+  this.view.set(x,Math.max(y+.30,(h?.center[1]??y+1.60)-.28),z);
+  this.chasePivot.lerp(this.view,t);
+  this.chaseYaw=immediate?yaw:this.chaseYaw+wrap(yaw-this.chaseYaw)*t;
+  this.chasePitch=immediate?pitch:this.chasePitch+(pitch-this.chasePitch)*t;
+  this.chaseOwner=id;
+  const sin=Math.sin(this.chaseYaw),cos=Math.cos(this.chaseYaw),distance=3.15;
+  const reach=Math.cos(this.chasePitch)*distance;
+  this.chaseOffset.set(-sin*reach+.50*cos,.34-Math.sin(this.chasePitch)*distance,cos*reach+.50*sin);
+  this.chaseOffset.y=Math.max(y+.26-this.chasePivot.y,this.chaseOffset.y);
+  const p=this.chasePivot,nav=this.navigation;
+  if(nav&&!nav.clear(this.view,p,.16)){p.x=this.view.x;p.z=this.view.z;}
+  let available=1;
+  if(nav&&!nav.clear(this.view,this.chaseTarget.copy(p).add(this.chaseOffset),.16)){
+   let high=1;available=0;
+   for(let step=0;step<8;step++){
+    const fraction=(available+high)*.5;
+    if(nav.clear(this.view,this.chaseTarget.copy(p).addScaledVector(this.chaseOffset,fraction),.16))available=fraction;
+    else high=fraction;
+   }
+  }
+  this.chaseFraction=immediate?available:Math.min(available,this.chaseFraction+(available-this.chaseFraction)*damping(dt,.24));
+  this.camera.position.copy(p).addScaledVector(this.chaseOffset,this.chaseFraction);
+  this.camera.up.copy(this.worldUp);
+  this.camera.lookAt(this.chaseTarget.set(p.x+sin*3,p.y+Math.tan(this.chasePitch)*3,p.z-cos*3));
+ }
+ update(s,prior,alpha,meshes,dt=0,controlled=null){
   if(this.mode==='free')return;
   if(!this.mounted){
    this.track(s.rigSegments.filter((_,i)=>s.lifeStates[i]==='active'),dt);
    return;
   }
   const id=Number(this.patientInput.value),i=s.fighterIds.indexOf(id),j=prior.fighterIds.indexOf(id);
-  if(this.mode==='gopro-chest'){
-   const chest=i>=0?s.rigSegments[i].find(part=>part.id==='chest'):null;
-   const mesh=meshes.get(id+':chest');
-   if(!chest||!mesh?.visible){this.select(cornerModes[this.corner]);return;}
-   // The chest segment uses local Y across the shoulders and X toward
-   // the neck. Put the lens high on the sternum, ahead of the chest mesh.
-   this.up.set(1,0,0).applyQuaternion(mesh.quaternion);
-   this.forward.set(0,0,1).applyQuaternion(mesh.quaternion);
-   this.camera.position.copy(mesh.position).addScaledVector(this.up,.105)
-    .addScaledVector(this.forward,chest.radius+.085);
-   this.camera.up.copy(this.up);
-   this.camera.lookAt(this.mount.copy(this.camera.position).add(this.forward));
+  if(i<0){this.select(cornerModes[this.corner]);return;}
+  if(this.mode==='third-person'){
+   this.chase(s,i,id,dt,controlled===id);
    return;
   }
   const h=i>=0?s.headFrames?.[i]:null,m=meshes.get(id+':head');
@@ -164,9 +202,9 @@ export class LabCamera {
   this.orientation(h,this.q);
   if(compatible&&alpha<1){this.orientation(old,this.oldQ);this.q.slerp(this.oldQ,1-alpha);}
   this.up.copy(this.worldUp).applyQuaternion(this.q);
-  this.mount.set(...(h.cameraCenter??h.center));
-  if(compatible&&alpha<1)this.mount.lerp(this.previousMount.set(...(old.cameraCenter??old.center)),1-alpha);
-  this.camera.position.copy(this.mount).addScaledVector(this.up,h.radius+clearance);
+  this.mount.set(...headCameraPosition(h));
+  if(compatible&&alpha<1)this.mount.lerp(this.previousMount.set(...headCameraPosition(old)),1-alpha);
+  this.camera.position.copy(this.mount);
   this.camera.quaternion.copy(this.q);this.camera.up.copy(this.up);
 
  }

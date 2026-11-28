@@ -5,7 +5,7 @@ import {MatchFlow} from './match-flow.js';
 import {DAMAGE} from '../core/dist/combat/damage.js';
 import {FrameMeter,RoundClock} from './round-telemetry.js';
 import {CameraEffects,readCameraEffects,saveCameraEffects} from './camera-effects.js';
-import {configureGoProShadow,segmentShadow} from './gopro-shadow.js';
+import {segmentShadow} from './gopro-shadow.js';
 import {createSegmentVisual} from './segment-visual.js';
 import {loadPatientModel,disposePatientVisual,paintModel} from './patient-model.js';
 import {assignPatientPortraits,loadPatientPortraits} from './patient-portraits.js';
@@ -27,7 +27,8 @@ import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
 import {LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
 import {patientSegmentFrame} from './patient-frame.js';
-import {HEAD_CAMERA_CLEARANCE} from '../core/dist/rig/head-frame.js';
+import {headCameraPosition} from '../core/dist/rig/head-frame.js';
+import {applySceneLighting,createSceneLighting,readSceneLighting} from './scene-lighting.js';
 import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
@@ -54,31 +55,38 @@ syncEffectsButton();
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));document.body.append(renderer.domElement);
 const roundClock=new RoundClock(),clockOutput=document.getElementById('round-clock');
 const frameMeter=new FrameMeter(renderer.getContext(),document.getElementById('frame-meter'));
-const ambient=new THREE.HemisphereLight(0xc5dacb,0x263229,2);
-const lamp=new THREE.DirectionalLight(0xe0c9af,3);lamp.position.set(-3,6,4);
-const headLamp=new THREE.SpotLight(0xffd6ad,8,9,Math.PI*.21,.78,1);
-headLamp.visible=false;
-configureGoProShadow(THREE,renderer,headLamp);
-let lampOwnerHead;
-const headLampDirection=new THREE.Vector3();
-scene.add(ambient,lamp,headLamp,headLamp.target);
-function updateCameraLighting(profile){
- ambient.intensity=profile==='gopro'?.85:profile==='corner'?1.25:2;
- lamp.intensity=profile==='gopro'?1.55:profile==='corner'?3.6:3;
- lamp.color.setHex(profile==='corner'?0xbacec2:0xe0c9af);
- headLamp.visible=profile==='gopro';
- // The camera's attached head cannot block its own lamp, including when it
- // pitches downward. Restore the previous owner's shadow after switching.
- const nextHead=headLamp.visible?meshes.get(cameraPatient.value+(cameraControl.mode==='gopro-chest'?':chest':':head')):undefined;
+const sceneLighting=createSceneLighting(THREE,renderer,scene);
+const headLamp=sceneLighting.flashlight,headLampDirection=new THREE.Vector3();
+let lighting=readSceneLighting(),lampOwnerHead,hiddenHead;
+addEventListener('storage',()=>{lighting=readSceneLighting();});
+function updateCameraLighting(profile,state){
+ applySceneLighting(sceneLighting,lighting,profile,cameraControl.mounted);
+ const id=Number(cameraPatient.value),index=state.fighterIds.indexOf(id);
+ const head=meshes.get(id+':head');
+ const hidden=(cameraControl.mode==='gopro'||cameraControl.mode==='third-person'&&cameraControl.chaseFraction<.13)?head:undefined;
+ if(hidden!==hiddenHead){
+  hiddenHead?.traverse(node=>node.layers.set(0));
+  hidden?.traverse(node=>node.layers.set(1));
+  hiddenHead=hidden;
+ }
+ // The lamp is worn by the patient even when the camera is behind them.
+ const nextHead=headLamp.visible&&cameraControl.mode==='gopro'?head:undefined;
  if(nextHead!==lampOwnerHead){
   if(lampOwnerHead)segmentShadow(lampOwnerHead);
   if(nextHead)segmentShadow(nextHead,false);
   lampOwnerHead=nextHead;
  }
+ const frame=state.headFrames?.[index];
  if(headLamp.visible){
-  camera.getWorldDirection(headLampDirection);
-  headLamp.position.copy(camera.position).addScaledVector(headLampDirection,cameraControl.mode==='gopro-chest'?.02:-.48);
-  headLamp.target.position.copy(camera.position).addScaledVector(headLampDirection,4);
+  if(cameraControl.mode==='third-person'&&frame){
+   headLampDirection.set(...frame.forward);
+   headLamp.position.set(...headCameraPosition(frame));
+  }else{
+   camera.getWorldDirection(headLampDirection);
+   headLamp.position.copy(camera.position);
+  }
+  headLamp.position.addScaledVector(headLampDirection,.20);
+  headLamp.target.position.copy(headLamp.position).addScaledVector(headLampDirection,4);
  }
 }
 const grid=new THREE.GridHelper(14,28,0x5d7265,0x34483c);
@@ -359,7 +367,7 @@ view.addEventListener('mousedown',e=>{
  }
 });
 view.addEventListener('pointerdown',e=>{
- if(e.button!==0||cameraControl.mode!=='free')return;
+ if(e.button!==0||!(cameraControl.mode==='free'||cameraControl.mode==='third-person'&&!manualActive()))return;
  cameraPointer=e.pointerId;view.setPointerCapture(e.pointerId);
 });
 addEventListener('mouseup',event=>heldButtons.delete(event.button));
@@ -466,7 +474,6 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
     m=segmentShadow(makePatientVisual(p.id,p.radius,f.length,id,portrait));
     meshes.set(key,m);scene.add(m);
    }
-   if(p.id==='head'){const face=m.getObjectByName('portrait');if(face)face.visible=cameraControl.mode!=='gopro'||cameraPatient.value!==String(id);}
    m.visible=true;m.position.copy(v(f.center));frameRotation(f,m.quaternion);
    const tint=segmentTints.sample(id,p.id,s.tick);
    const pulse=p.id==='chest'?chestCountdownTint(s.oil[i],s.lifeStates[i],s.fight,renderTick):0;
@@ -480,12 +487,12 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
   }
  });
  cameraControl.move(has('KeyW')-has('KeyS'),has('KeyD')-has('KeyA'),dt);
- cameraControl.update(s,prior,alpha,meshes,HEAD_CAMERA_CLEARANCE,dt);
  const playerActive=manualActive();
- reticle.hidden=!playerActive||cameraControl.mode!=='gopro'||cameraPatient.value!==controlPatient.value;
  const listenerId=playerActive?Number(controlPatient.value):null;
+ cameraControl.update(s,prior,alpha,meshes,dt,listenerId);
+ reticle.hidden=!playerActive||cameraControl.mode!=='gopro'||cameraPatient.value!==controlPatient.value;
  const listener=listenerId===null?null:s.headFrames[s.fighterIds.indexOf(listenerId)];
- if(listener&&!cameraControl.mounted)battlefieldAudio.update(listener.center,listener.forward,listener.up,listenerId,
+ if(listener&&cameraControl.mode!=='gopro')battlefieldAudio.update(listener.center,listener.forward,listener.up,listenerId,
   cameraControl.navigation?.sightClear.bind(cameraControl.navigation),paused||document.hidden);
  else{
   camera.getWorldDirection(audioForward);
@@ -496,9 +503,9 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  freeHint.hidden=cameraControl.mode!=='free';
  document.getElementById('manual-controls-hint').hidden=!playerActive;
  if(!playerActive&&document.pointerLockElement===view)clearPlayerInput(true);
- cameraAngle.disabled=!cameraControl.mounted;
+ cameraAngle.disabled=cameraControl.mode!=='gopro';
  const effectsProfile=effects.enabled&&cameraControl.mode!=='free'?(cameraControl.mounted?'gopro':'corner'):null;
- updateCameraLighting(effectsProfile);
+ updateCameraLighting(effectsProfile,s);
  stats.dataset.cameraEffects=effectsProfile??'off';
  stats.dataset.cameraFov=String(camera.fov);
  stats.dataset.camera=cameraControl.mode;stats.dataset.cameraHeight=String(camera.position.y);

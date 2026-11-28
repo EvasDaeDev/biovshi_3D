@@ -1,3 +1,5 @@
+import {createLightingPreview} from './lighting-preview.js';
+import {LIGHTING_CONTROLS,LIGHTING_DEFAULTS,readSceneLighting,saveSceneLighting} from './scene-lighting.js';
 import {CameraEffects,EFFECT_DEFAULTS,readCameraEffects,saveCameraEffects} from './camera-effects.js';
 import {useSharedAnatomy} from '../core/dist/rig/shared-anatomy.js';
 import {poseJointAnchor} from '../core/dist/rig/pose-joints.js';
@@ -59,7 +61,8 @@ let camera=perspective,flatView=false;
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));workspace.append(renderer.domElement);
 const effects=readCameraEffects(),effectsProfile=element('effects-profile');
-let previewEffects=false,cameraEffects;
+let previewEffects=false,cameraEffects,previewLighting=false,lightingPreview;
+let lighting=readSceneLighting();
 const actor=new THREE.Group();scene.add(actor);
 const colliderMaterial=new THREE.LineBasicMaterial({color:0x63d6ef,transparent:true,opacity:.38,depthTest:false});
 const selectedCollider=new THREE.LineBasicMaterial({color:0x79edff,transparent:true,opacity:.94,depthTest:false});
@@ -86,6 +89,11 @@ function draw(){
  camera=flatView?orthographic:perspective;
  controls.camera=camera;
  const aspect=workspace.clientWidth/Math.max(workspace.clientHeight,1)||1;
+ if(previewLighting){
+  lightingPreview??=createLightingPreview(renderer,defaults,patientModel,previewPortrait);
+  lightingPreview(aspect,lighting,effects.gopro);
+  return;
+ }
  if(flatView){
   const half=Math.max(1,1.02/aspect)*distance/4.6;
   Object.assign(orthographic,{top:half,bottom:-half,left:-half*aspect,right:half*aspect});
@@ -349,7 +357,7 @@ for(const button of views)button.onclick=()=>{
 };
 let pointer=null;
 workspace.onpointerdown=e=>{
- if(e.button!==0||pointer||controls.dragging)return;
+ if(previewLighting||e.button!==0||pointer||controls.dragging)return;
  pointer={id:e.pointerId,x:e.clientX,y:e.clientY,travel:0};
  workspace.setPointerCapture(e.pointerId);
 };
@@ -373,7 +381,7 @@ workspace.onpointerup=e=>{
  pointer=null;
 };
 workspace.onpointercancel=()=>{pointer=null;};
-workspace.addEventListener('wheel',e=>{e.preventDefault();distance=Math.max(1.5,Math.min(10,distance*Math.exp(e.deltaY*.001)));draw();},{passive:false});
+workspace.addEventListener('wheel',e=>{e.preventDefault();if(previewLighting)return;distance=Math.max(1.5,Math.min(10,distance*Math.exp(e.deltaY*.001)));draw();},{passive:false});
 const anatomyTab=element('tab-anatomy'),effectsTab=element('tab-effects'),effectsEnabled=element('effects-enabled');
 const sliders=Object.keys(EFFECT_DEFAULTS.corner).map(name=>({name,input:element('effect-'+name),value:element(name+'-value')}));
 const showEffectValues=()=>{
@@ -388,20 +396,60 @@ const applyEffects=()=>{
  showEffectValues();
  draw();
 };
+const lightingTab=element('tab-lighting'),tabs=[anatomyTab,effectsTab,lightingTab];
+const lightingFields={...LIGHTING_CONTROLS,darkness:{label:'Затемнение, %',min:0,max:100,step:.5}};
+const lightingSliders=Object.entries(lightingFields).map(([name,field])=>{
+ const label=document.createElement('label'),caption=document.createElement('span');
+ const input=document.createElement('input'),value=document.createElement('output');
+ input.type='range';input.id='light-'+name;
+ for(const key of ['min','max','step'])input[key]=field[key];
+ caption.append(field.label,value);label.append(caption,input);
+ element('lighting-sliders').append(label);
+ return {name,input,value};
+});
+const colors=[['flashlightColor',element('flashlight-color')],['ambientColor',element('ambient-color')]];
+function showLighting(){
+ for(const {name,input,value} of lightingSliders){
+  input.value=name==='darkness'?effects.gopro.darkness*100:lighting[name];
+  value.value=Number(input.value).toLocaleString('ru-RU')+(name==='darkness'?'%':'');
+ }
+ for(const [name,input] of colors)input.value=lighting[name];
+}
+function applyLighting(){
+ element('lighting-status').textContent=saveSceneLighting(lighting)&&saveCameraEffects(effects)
+  ?'Настройки сохранены.':'Настройки действуют до закрытия страницы.';
+ showLighting();showEffectValues();draw();
+}
+for(const {name,input} of lightingSliders)input.oninput=()=>{
+ if(name==='darkness')effects.gopro.darkness=Number(input.value)/100;
+ else lighting[name]=Number(input.value);
+ applyLighting();
+};
+for(const [name,input] of colors)input.oninput=()=>{lighting[name]=input.value;applyLighting();};
+element('reset-lighting').onclick=()=>{
+ lighting={...LIGHTING_DEFAULTS};effects.gopro.darkness=EFFECT_DEFAULTS.gopro.darkness;
+ applyLighting();
+};
 const selectTab=tab=>{
  previewEffects=tab===effectsTab;
- for(const item of [anatomyTab,effectsTab]){
+ previewLighting=tab===lightingTab;
+ controls.enabled=!previewLighting;
+ for(const el of document.querySelectorAll('.viewport .toolbar,.viewport .layers,.viewport > .hint'))el.hidden=previewLighting;
+ workspace.dataset.preview=previewLighting?'lighting':'patient';
+ for(const item of tabs){
   item.setAttribute('aria-selected',String(item===tab));
   item.tabIndex=item===tab?0:-1;
   element(item.getAttribute('aria-controls')).hidden=item!==tab;
  }
+ if(previewLighting)showLighting();
  draw();
 };
-for(const tab of [anatomyTab,effectsTab]){
+for(const [index,tab] of tabs.entries()){
  tab.onclick=()=>selectTab(tab);
  tab.onkeydown=event=>{
-  const next=event.key==='Home'?anatomyTab:event.key==='End'?effectsTab:
-   ['ArrowLeft','ArrowRight'].includes(event.key)?(tab===anatomyTab?effectsTab:anatomyTab):null;
+  const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):
+   event.key==='ArrowLeft'?tabs[(index+tabs.length-1)%tabs.length]:
+   event.key==='ArrowRight'?tabs[(index+1)%tabs.length]:null;
   if(next){event.preventDefault();selectTab(next);next.focus();}
  };
 }

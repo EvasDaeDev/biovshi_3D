@@ -116,9 +116,9 @@ try{
   // WebGL frame, working simulation, camera height, HUD and round reset.
   await page.locator('#camera-mode').selectOption('gopro');
   await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='gopro'&&d.cameraEffects==='gopro';});
-  await page.locator('#camera-mode').selectOption('gopro-chest');
-  await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='gopro-chest'&&d.cameraEffects==='gopro';},{},{timeout:30000});
-  assert.equal(await page.locator('#gopro-angle').isEnabled(),true);
+  await page.locator('#camera-mode').selectOption('third-person');
+  await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='third-person'&&d.cameraEffects==='gopro';},{},{timeout:30000});
+  assert.equal(await page.locator('#gopro-angle').isEnabled(),false);
   for(const [id,geometry] of [['square','native'],['ring',expectedRingGeometry]]){
    await page.locator('#scenario').selectOption('location-'+id);
    await page.waitForFunction(([id,geometry])=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location===id&&d.arenaGeometry===geometry&&Number(d.tick)>3;},[id,geometry],{timeout:45000});
@@ -596,6 +596,11 @@ try{
  const editorViewport=page.locator('#viewport'),reference=page.locator('#reference-geometry');
  assert.equal(await editorViewport.getAttribute('data-geometry'),expectedGeometry);
  assert.equal(await reference.isVisible(),expectedGeometry==='glb');
+ await page.locator('#tab-lighting').click();
+ assert.equal(await page.locator('#viewport').getAttribute('data-preview'),'lighting');
+ await page.locator('#light-flashlight').evaluate(input=>{input.value='12';input.dispatchEvent(new Event('input',{bubbles:true}));});
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('eccepry:scene-lighting:v1')).flashlight),12);
+ await page.locator('#reset-lighting').click();
  await page.locator('#tab-effects').click();
  await page.locator('#effects-profile').selectOption('gopro');
  const grain=page.locator('#effect-grain'),defaultGrain=await grain.inputValue();

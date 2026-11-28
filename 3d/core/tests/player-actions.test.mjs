@@ -132,7 +132,7 @@ test('playing the same swing at different crosshair heights changes physical con
   }finally{core.dispose();}
  };
  assert.deepEqual(strikeAt(-.55),['chest']);
- assert.deepEqual(strikeAt(-.45),['head']);
+ assert.deepEqual(strikeAt(-.18),['head']);
  assert.deepEqual(strikeAt(.5),[]);
 });
 

@@ -11,7 +11,7 @@ import {attackScore,targetPriority,shouldBackstep,type FightOpportunity} from '.
 import type {PunchChoice} from './combat/punch-choice.js';
 import {horrorTurnRate} from './animation/turn-motion.js';
 import {victoryPose,VICTORY_TICKS} from './animation/victory.js';
-import {HEAD_CAMERA_CLEARANCE,headAimPoint,headFrame,withCameraMount} from './rig/head-frame.js';
+import {headAimPoint,headFrame,withCameraMount} from './rig/head-frame.js';
 import { PatientPerception,notices,gazeAwareRoute,type VisionBody } from './combat/perception.js';
 import { EscapeState,ESCAPE,type EscapeOpponent } from './combat/escape.js';
 import { usableStrike } from './combat/strike.js';
@@ -437,7 +437,7 @@ export class LabSimulationCore implements SimulationCore {
     const pitch=a.playerPitch??0;
     const reach=kind==='leg'?1.1:kind==='arm'?.8:.55;
     const frame=headFrame(fitSharedAnatomy(pose,this.authored?.anatomy),a.yaw,pitch);
-    if(frame)return headAimPoint(frame,reach,HEAD_CAMERA_CLEARANCE/this.patientScale);
+    if(frame)return headAimPoint(frame,reach);
     return [part.a[0]+Math.sin(a.yaw)*Math.cos(pitch)*reach,part.a[1]+Math.sin(pitch)*reach,part.a[2]-Math.cos(a.yaw)*Math.cos(pitch)*reach];
   }
 
