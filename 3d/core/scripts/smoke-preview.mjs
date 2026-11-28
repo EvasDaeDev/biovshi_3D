@@ -489,8 +489,42 @@ try{
  await page.locator('form').evaluate(form=>{
   const seed=document.createElement('input');seed.type='hidden';seed.name='seed';seed.value='19';form.append(seed);
  });
+ // Rendering a full textured arena on SwiftShader is not a real-time clock.
+ // Keep the real renderer and all simulation rules, but reduce pixel cost
+ // during this long functional check. Earlier camera/asset assertions ran
+ // at 1000x720. Bound BOTH simulation ticks and host wall time.
+ const resultViewport=page.viewportSize();
  await page.locator('#start-match').click();
- await page.locator('#match-result').waitFor({state:'visible',timeout:100000});
+ const duelDiagnostic=()=>page.evaluate(()=>{
+  const d=document.getElementById('stats')?.dataset??{};
+  return {state:d.state,seed:d.seed,tick:Number(d.tick)||0,fight:d.fight,
+   active:d.active,hits:d.hits,location:d.location,patients:d.patients,
+   arenaGeometry:d.arenaGeometry,meshes:d.arenaVisualMeshes,triangles:d.arenaVisualTriangles,
+   fps:document.getElementById('frame-meter')?.textContent,
+   clock:document.getElementById('round-clock')?.textContent,
+   preparation:document.getElementById('match-preparation')?.textContent,
+   resultHidden:document.getElementById('match-result')?.hidden,
+   stats:document.getElementById('stats')?.textContent};
+ });
+ try{
+  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='ring'&&d.seed==='19'&&d.patients==='2';},{},{timeout:45000});
+  assert.equal(await page.locator('#stats').getAttribute('data-arena-geometry'),expectedRingGeometry);
+  await page.setViewportSize({width:640,height:480});
+  const wallStart=Date.now();
+  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;
+   return d?.state==='error'||Number(d?.tick)>=7200||d?.fight==='ended';
+  },{},{timeout:240000,polling:250});
+  const info=await duelDiagnostic();
+  console.log('MATCH_RESULT_DIAGNOSTIC',JSON.stringify({...info,wallSeconds:(Date.now()-wallStart)/1000}));
+  assert.equal(info.fight,'ended','Seed 19 must finish naturally within 120 simulated seconds: '+JSON.stringify(info));
+  assert.ok(info.tick<=7200,'Exceeded simulated duel budget: '+JSON.stringify(info));
+  await page.locator('#match-result').waitFor({state:'visible',timeout:10000});
+ }catch(error){
+  const info=await duelDiagnostic().catch(()=>({unavailable:true}));
+  throw new Error('Quick-match natural result failed: '+JSON.stringify(info)+'; browser errors: '+errors.join('; '),{cause:error});
+ }finally{
+  if(resultViewport)await page.setViewportSize(resultViewport);
+ }
  assert.match(await page.locator('#match-result-title').textContent(),/Победил пациент № [01]|Ничья/);
  assert.match(await page.locator('#match-result p').textContent(),/Время боя \d+:\d{2}/);
  await page.locator('#control-patient').selectOption('0');
