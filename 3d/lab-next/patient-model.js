@@ -5,6 +5,20 @@ import {boneFrame} from '../core/dist/rig/bone-frame.js';
 
 const directory=new URL('./models/patients/',import.meta.url);
 const ids=new Set(LAB_SEGMENTS.map(p=>p.id));
+const gltfPortraits=new WeakMap();
+function gltfPortrait(portrait){
+ let material=gltfPortraits.get(portrait);
+ if(!material){
+  material=portrait.clone();
+  material.map=portrait.map.clone();
+  // External images use TextureLoader defaults; authored GLB UVs expect
+  // glTF's top-left texture origin. Keep the procedural face's map intact.
+  material.map.flipY=false;
+  material.map.needsUpdate=true;
+  gltfPortraits.set(portrait,material);
+ }
+ return material;
+}
 // Blender Z-up/-Y-front exports glTF Y-up/+Z-front. The game faces -Z
 // with the same L/R identifiers: reflect Z and reverse triangle winding.
 const mirror=new Matrix4().makeScale(1,1,-1);
@@ -91,7 +105,7 @@ export function preparePatientModel(root){
    const radial=radius/entry.radius,axial=entry.length>0?length/entry.length:radial;
    for(const t of entry.templates){
     if(t.isFace&&!portrait)continue;
-    const material=t.isFace?portrait:t.material.clone();
+    const material=t.isFace?gltfPortrait(portrait):t.material.clone();
     if(!t.isFace){
      // Preserve authored shading/materials and existing fighter distinction.
      material.color.multiply(palette.color);
