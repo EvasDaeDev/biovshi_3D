@@ -1,4 +1,4 @@
-import {FootstepAudio} from './footstep-audio.js';
+import {BattlefieldAudio} from './footstep-audio.js';
 import {loadArenaCatalog,populatePatientCounts} from './arena-options.js';
 import {loadRingModel} from './arena-model.js';
 import {MatchFlow} from './match-flow.js';
@@ -69,7 +69,7 @@ function updateCameraLighting(profile){
  headLamp.visible=profile==='gopro';
  // The camera's attached head cannot block its own lamp, including when it
  // pitches downward. Restore the previous owner's shadow after switching.
- const nextHead=headLamp.visible?meshes.get(cameraPatient.value+':head'):undefined;
+ const nextHead=headLamp.visible?meshes.get(cameraPatient.value+(cameraControl.mode==='gopro-chest'?':chest':':head')):undefined;
  if(nextHead!==lampOwnerHead){
   if(lampOwnerHead)segmentShadow(lampOwnerHead);
   if(nextHead)segmentShadow(nextHead,false);
@@ -77,7 +77,7 @@ function updateCameraLighting(profile){
  }
  if(headLamp.visible){
   camera.getWorldDirection(headLampDirection);
-  headLamp.position.copy(camera.position).addScaledVector(headLampDirection,-.48);
+  headLamp.position.copy(camera.position).addScaledVector(headLampDirection,cameraControl.mode==='gopro-chest'?.02:-.48);
   headLamp.target.position.copy(camera.position).addScaledVector(headLampDirection,4);
  }
 }
@@ -132,16 +132,16 @@ let paused=false,last=null,frameRequest=0,checkSnapshot=true,floorOperation=0;
 const playback=new Playback(clock),stepButton=document.getElementById('frame-step'),rateInput=document.getElementById('playback-rate');
 let motionPeak=null,motionLast=null;
 let previousFrame=null,currentFrame=null;
-const footsteps=new FootstepAudio();
+const battlefieldAudio=new BattlefieldAudio();
 const audioForward=new THREE.Vector3(),audioUp=new THREE.Vector3();
-function unlockFootsteps(){if(!document.hidden)void footsteps.unlock();}
-addEventListener('pointerdown',unlockFootsteps,{capture:true});
-addEventListener('keydown',unlockFootsteps,{capture:true});
+function unlockBattlefieldAudio(){if(!document.hidden)void battlefieldAudio.unlock();}
+addEventListener('pointerdown',unlockBattlefieldAudio,{capture:true});
+addEventListener('keydown',unlockBattlefieldAudio,{capture:true});
 const captureFrame=()=>({state:core.getSnapshot(),debris:debris.snapshot()});
-function resetFrameHistory(){footsteps.clear();previousFrame=currentFrame=captureFrame();}
+function resetFrameHistory(){battlefieldAudio.clear();previousFrame=currentFrame=captureFrame();}
 function tickFrame(t){
  previousFrame=currentFrame;const events=advanceCombatStep(core,debris,t,input(),pendingDamage);pendingDamage=null;currentFrame=captureFrame();
- footsteps.record(previousFrame.state,currentFrame.state);
+ battlefieldAudio.record(previousFrame.state,currentFrame.state,events);
  if(currentFrame.state.fight.ended){roundClock.sample(currentFrame.state);clearPlayerInput(true);}
  segmentTints.record(events,previousFrame.debris,currentFrame.debris,currentFrame.state.tick);
  cooling.record(currentFrame.state,currentFrame.debris);
@@ -186,16 +186,16 @@ function resetControl(s){
 }
 function syncPlayerCamera(){
  cameraControl.allowFree(controlPatient.value==='');
- if(controlPatient.value!==''&&(match||cameraControl.mode==='gopro')){
+ if(controlPatient.value!==''&&(match||cameraControl.mounted)){
   cameraPatient.value=controlPatient.value;
-  cameraControl.select('gopro');
+  if(!cameraControl.mounted)cameraControl.select('gopro');
  }
  updateReplayLink();
 }
 controlPatient.onchange=()=>{
  clearPlayerInput(true);
  controlPatient.blur();
- if(controlPatient.value!=='')cameraControl.select('gopro');
+ if(controlPatient.value!==''&&!cameraControl.mounted)cameraControl.select('gopro');
  syncPlayerCamera();
 };
 // An explicit seed pins a replay. Ordinary ring resets start a fresh match.
@@ -395,7 +395,7 @@ pauseButton.onclick=()=>{
  rateInput.onchange=()=>{playback.setRate(Number(rateInput.value));last=null;};
  stepButton.onclick=()=>{if(stats.dataset.state==='running'&&paused)playback.requestStep();};
  function suspendRound(message){
-  footsteps.clear();
+  battlefieldAudio.clear();
   if(frameRequest)cancelAnimationFrame(frameRequest);
   frameRequest=0;last=null;clearPlayerInput(true);
   window.labStartup.show(message);
@@ -485,19 +485,19 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
  reticle.hidden=!playerActive||cameraControl.mode!=='gopro'||cameraPatient.value!==controlPatient.value;
  const listenerId=playerActive?Number(controlPatient.value):null;
  const listener=listenerId===null?null:s.headFrames[s.fighterIds.indexOf(listenerId)];
- if(listener)footsteps.update(listener.center,listener.forward,listener.up,listenerId,
-  cameraControl.navigation?.sightClear.bind(cameraControl.navigation));
+ if(listener&&!cameraControl.mounted)battlefieldAudio.update(listener.center,listener.forward,listener.up,listenerId,
+  cameraControl.navigation?.sightClear.bind(cameraControl.navigation),paused||document.hidden);
  else{
   camera.getWorldDirection(audioForward);
   audioUp.set(0,1,0).applyQuaternion(camera.quaternion);
-  footsteps.update(camera.position.toArray(),audioForward.toArray(),audioUp.toArray(),null,
-   cameraControl.navigation?.sightClear.bind(cameraControl.navigation));
+  battlefieldAudio.update(camera.position.toArray(),audioForward.toArray(),audioUp.toArray(),listenerId,
+   cameraControl.navigation?.sightClear.bind(cameraControl.navigation),paused||document.hidden);
  }
  freeHint.hidden=cameraControl.mode!=='free';
  document.getElementById('manual-controls-hint').hidden=!playerActive;
  if(!playerActive&&document.pointerLockElement===view)clearPlayerInput(true);
- cameraAngle.disabled=cameraControl.mode!=='gopro';
- const effectsProfile=effects.enabled&&cameraControl.mode!=='free'?(cameraControl.mode==='gopro'?'gopro':'corner'):null;
+ cameraAngle.disabled=!cameraControl.mounted;
+ const effectsProfile=effects.enabled&&cameraControl.mode!=='free'?(cameraControl.mounted?'gopro':'corner'):null;
  updateCameraLighting(effectsProfile);
  stats.dataset.cameraEffects=effectsProfile??'off';
  stats.dataset.cameraFov=String(camera.fov);

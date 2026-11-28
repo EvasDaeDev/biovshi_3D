@@ -156,3 +156,27 @@ test('authored ring mounts are forward of the entire camera fixture, not inside 
  assert.deepEqual(camera.position.toArray(),native.toArray());
  assert.deepEqual(ringCameraRadii(new THREE.Group()),[null,null,null,null]);
 });
+
+test('chest GoPro follows the interpolated chest mesh and shares the GoPro FOV',()=>{
+ const {camera,controller}=setup(catalog.ring);
+ const chest={id:'chest',radius:.13,a:[0,1.3,0],b:[.4,1.3,0]};
+ const mesh=new THREE.Object3D();
+ mesh.position.set(0,1.3,0);
+ // Map segment X to world up and segment Z to the front.
+ mesh.quaternion.setFromAxisAngle(new THREE.Vector3(0,0,1),Math.PI/2);
+ const state={fighterIds:[0],rigSegments:[[chest]]};
+ const update=()=>controller.update(state,state,1,new Map([['0:chest',mesh]]),.05);
+ controller.select('gopro-chest');
+ controller.setHeadAngle(90);
+ update();
+ const first=camera.position.clone();
+ assert.ok(Math.abs(first.y-1.405)<1e-9&&Math.abs(first.z-.215)<1e-9);
+ assert.ok(camera.getWorldDirection(new THREE.Vector3()).dot(new THREE.Vector3(0,0,1))>.9999);
+ mesh.position.x=2;
+ update();
+ assert.ok(Math.abs(camera.position.x-first.x-2)<1e-9);
+ assert.equal(controller.patientInput.disabled,false);
+ assert.ok(Math.abs(2*Math.atan(Math.tan(camera.fov*Math.PI/360)*camera.aspect)-Math.PI/2)<1e-9);
+ controller.update({...state,rigSegments:[[]]},state,1,new Map(),.05);
+ assert.equal(controller.mode,'corner-1');
+});

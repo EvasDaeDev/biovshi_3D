@@ -22,6 +22,7 @@ export class LabCamera {
   this.modeInput.onchange=()=>this.select(this.modeInput.value);
   this.select(cornerModes[0]);
  }
+ get mounted(){return this.mode==='gopro'||this.mode==='gopro-chest';}
  setArena(arena,fixtureRadii=[]){
   this.navigation=arena?new PolygonNavigation(arena):null;
   this.mounts=arena?cornerMounts(arena,this.navigation,fixtureRadii):null;
@@ -37,18 +38,18 @@ export class LabCamera {
   if(mode==='free'&&!this.freeAllowed)return false;
   if(cornerModes.includes(mode))this.corner=cornerModes.indexOf(mode);
   this.mode=this.modeInput.value=mode;
-  this.patientInput.disabled=mode!=='gopro';
+  this.patientInput.disabled=!this.mounted;
   const mount=this.mounts?.[this.corner];
   const camera=this.camera;
   camera.up.copy(this.worldUp);
-  if(mode!=='gopro'){
+  if(!this.mounted){
    camera.position.set(mount?.x??5.8,mount?CAMERA_HEIGHT:3.6,mount?.z??6.6);
    this.homeYaw=Math.atan2(-camera.position.x,-camera.position.z);
    this.yaw=this.homeYaw;this.pitch=Math.atan2(1-camera.position.y,Math.hypot(camera.position.x,camera.position.z));
    this.aimAt(this.yaw,this.pitch);
   }
   this.framed=false;
-  if(mode==='gopro')this.projectHead();
+  if(this.mounted)this.projectHead();
   else this.project(65,.05);
   return true;
  }
@@ -60,12 +61,12 @@ export class LabCamera {
  }
  resize(aspect){
   this.camera.aspect=aspect;this.framed=false;this.camera.updateProjectionMatrix();
-  if(this.mode==='gopro')this.projectHead();
+  if(this.mounted)this.projectHead();
  }
  setHeadAngle(angle){
   if(!HEAD_ANGLES.includes(angle))return;
   this.headAngle=angle;
-  if(this.mode==='gopro')this.projectHead();
+  if(this.mounted)this.projectHead();
  }
  projectHead(){this.project(headVerticalFov(this.headAngle,this.camera.aspect),.015);}
  project(fov,near){
@@ -137,11 +138,25 @@ export class LabCamera {
  }
  update(s,prior,alpha,meshes,clearance,dt=0){
   if(this.mode==='free')return;
-  if(this.mode!=='gopro'){
+  if(!this.mounted){
    this.track(s.rigSegments.filter((_,i)=>s.lifeStates[i]==='active'),dt);
    return;
   }
   const id=Number(this.patientInput.value),i=s.fighterIds.indexOf(id),j=prior.fighterIds.indexOf(id);
+  if(this.mode==='gopro-chest'){
+   const chest=i>=0?s.rigSegments[i].find(part=>part.id==='chest'):null;
+   const mesh=meshes.get(id+':chest');
+   if(!chest||!mesh?.visible){this.select(cornerModes[this.corner]);return;}
+   // The chest segment uses local Y across the shoulders and X toward
+   // the neck. Put the lens high on the sternum, ahead of the chest mesh.
+   this.up.set(1,0,0).applyQuaternion(mesh.quaternion);
+   this.forward.set(0,0,1).applyQuaternion(mesh.quaternion);
+   this.camera.position.copy(mesh.position).addScaledVector(this.up,.105)
+    .addScaledVector(this.forward,chest.radius+.085);
+   this.camera.up.copy(this.up);
+   this.camera.lookAt(this.mount.copy(this.camera.position).add(this.forward));
+   return;
+  }
   const h=i>=0?s.headFrames?.[i]:null,m=meshes.get(id+':head');
   if(!h||!m?.visible){this.select(cornerModes[this.corner]);return;}
   const old=j>=0?prior.headFrames?.[j]:null,parts=s.rigSegments[i],oldParts=j>=0?prior.rigSegments[j]:null;

@@ -73,6 +73,11 @@ try{
   return {expected:files.length,loaded:loaded.size};
  },assetRelease);
  assert.equal(portraits.loaded,portraits.expected,'every catalog portrait must decode');
+ const audio=JSON.parse(await readFile(resolve(site,'3d/lab-next/audio/catalog.json'),'utf8'));
+ assert.ok(audio.step&&audio.crit&&audio.womanPain7&&audio.detach2&&audio.victory);
+ assert.ok(!audio.music&&!audio.menuMusic);
+ for(const file of new Set(Object.values(audio)))assert.ok((await readFile(resolve(site,'3d/lab-next/audio',file))).length>0,file);
+
  if(modelCatalog.active){
   const pixels=await page.evaluate(async release=>{
    const root='/releases/'+release+'/3d/lab-next/';
@@ -111,6 +116,9 @@ try{
   // WebGL frame, working simulation, camera height, HUD and round reset.
   await page.locator('#camera-mode').selectOption('gopro');
   await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='gopro'&&d.cameraEffects==='gopro';});
+  await page.locator('#camera-mode').selectOption('gopro-chest');
+  await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='gopro-chest'&&d.cameraEffects==='gopro';},{},{timeout:30000});
+  assert.equal(await page.locator('#gopro-angle').isEnabled(),true);
   for(const [id,geometry] of [['square','native'],['ring',expectedRingGeometry]]){
    await page.locator('#scenario').selectOption('location-'+id);
    await page.waitForFunction(([id,geometry])=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location===id&&d.arenaGeometry===geometry&&Number(d.tick)>3;},[id,geometry],{timeout:45000});

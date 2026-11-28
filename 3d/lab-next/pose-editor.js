@@ -71,8 +71,13 @@ const outlines=[];
 const primary=new THREE.MeshStandardMaterial({color:0xb1c6bd,roughness:.55});
 const selected=new THREE.MeshStandardMaterial({color:0xb5eda0,roughness:.6,emissive:0x193211});
 const referenceVisual=patientModel?.createReference(primary,previewPortrait);
-const patientVisuals=[];
-if(referenceVisual){scene.add(referenceVisual);element('reference-geometry-layer').hidden=false;}
+const patientVisuals=[],floorBounds=new THREE.Box3(),partBounds=new THREE.Box3();
+if(referenceVisual){
+ scene.add(referenceVisual);
+ referenceVisual.position.y=-floorBounds.setFromObject(referenceVisual,true).min.y;
+ referenceVisual.updateMatrixWorld(true);
+ element('reference-geometry-layer').hidden=false;
+}
 const basis=new THREE.Matrix4();
 const raycaster=new THREE.Raycaster();
 raycaster.params.Line.threshold=.018;
@@ -181,9 +186,9 @@ function renderPose(){
  controls.detach();
  for(const outline of outlines)outline.geometry.dispose();
  outlines.length=0;
- for(const visual of patientVisuals)disposePatientVisual(visual);
+ if(patientModel)for(const visual of patientVisuals)disposePatientVisual(visual);
  patientVisuals.length=0;
- actor.clear();pickable.length=0;
+ actor.clear();actor.position.y=0;pickable.length=0;
  const reference=!!referenceVisual&&referenceGeometry.checked;
  if(referenceVisual)referenceVisual.visible=reference&&showGeometry.checked;
  if(referenceVisual?.visible)for(const group of referenceVisual.children)pickable.push(...group.children);
@@ -211,14 +216,15 @@ function renderPose(){
   const frame=anatomicalBoneFrame(part,pose,0);
   const vector=values=>new THREE.Vector3(...values);
   const orientation=f=>basis.makeBasis(vector(f.x),vector(f.y),vector(f.z));
-  if(!reference&&showGeometry.checked){
+  if(!reference){
    const modelFrame=patientModel?patientSegmentFrame(part,pose,0,head):frame;
    const palette=part.id===segmentSelect.value?selected:primary;
    const visual=patientModel?patientModel.create(part.id,part.radius,modelFrame.length,palette,previewPortrait)
     :createSegmentVisual(part.id,part.radius,frame.length,palette,previewPortrait);
-   if(patientModel)patientVisuals.push(visual);
+   patientVisuals.push(visual);
    visual.position.copy(vector(modelFrame.center)).sub(anchor).add(bind);
    visual.quaternion.setFromRotationMatrix(orientation(modelFrame));
+   visual.visible=showGeometry.checked;
    joint.add(visual);pickable.push(...visual.children);
   }
   const dimensions=params.collider;
@@ -231,6 +237,13 @@ function renderPose(){
   outline.visible=showColliders.checked;outline.renderOrder=part.id===segmentSelect.value?2:1;
   outline.userData.segment=part.id;joint.add(outline);outlines.push(outline);
   pickable.push(outline);
+ }
+ actor.updateMatrixWorld(true);
+ if(reference)actor.position.y=referenceVisual.position.y;
+ else{
+  floorBounds.makeEmpty();
+  for(const visual of patientVisuals)floorBounds.union(partBounds.setFromObject(visual,true));
+  if(!floorBounds.isEmpty())actor.position.y=-floorBounds.min.y;
  }
  actor.updateMatrixWorld(true);attachControl();
  workspace.dataset.segments=String(nodes.size);

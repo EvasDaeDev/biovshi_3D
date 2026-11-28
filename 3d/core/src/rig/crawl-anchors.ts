@@ -94,13 +94,21 @@ export class CrawlAnchors {
     (lower.a[1]-upper.a[1])*(1-weight)+weight*.36,
     (lower.a[2]-upper.a[2])*(1-weight)+outward*(chest.b[2]-chest.a[2])
    ]:[0,1,0];
-   const ik=solveTwoBone(upper.a,target,distance(upper.a,upper.b),distance(lower.a,lower.b),bend);
-   const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end};
-   const ph=h===undefined?null:{...result[h]!,a:ik.end,b:ik.end};
-   // Never gain a plant by penetrating terrain; keep the corrected base pose
-   // if the candidate chain cannot fit. A later swing can replant it.
-   if(!clear(physicalCapsule(pu),ground)||!clear(physicalCapsule(pl),ground)||(a.count===3&&ph&&!clear(physicalCapsule(ph),ground)))continue;
-   result[u]=pu;result[l]=pl;if(h!==undefined&&ph)result[h]=ph;
+   const hand=h===undefined?null:result[h]!;
+   const upperLength=distance(upper.a,upper.b),lowerLength=distance(lower.a,lower.b);
+   const sample=(goal:Vec3)=>{
+    const ik=solveTwoBone(upper.a,goal,upperLength,lowerLength,bend);
+    const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end};
+    const ph=hand?{...hand,a:ik.end,b:ik.end}:null;
+    return clear(physicalCapsule(pu),ground)&&clear(physicalCapsule(pl),ground)&&
+     (a.count!==3||!ph||clear(physicalCapsule(ph),ground))?{pu,pl,ph}:null;
+   };
+   // Raise the IK target slightly if a longer forearm would otherwise
+   // clip through the floor and snap back to the unanchored pose.
+   const fitted=sample(target)??sample([target[0],target[1]+.025,target[2]]);
+   if(!fitted)continue;
+   result[u]=fitted.pu;result[l]=fitted.pl;
+   if(h!==undefined&&fitted.ph)result[h]=fitted.ph;
   }
   return result;
  }

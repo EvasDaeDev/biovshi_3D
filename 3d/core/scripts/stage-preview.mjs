@@ -1,7 +1,8 @@
 import {cp,mkdir,readFile,writeFile,rm,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {resolve,dirname} from 'node:path';
+import {resolve,dirname,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {ASSETS} from '../../../src/assets/manifest.js';
 import {buildLocationCatalog} from './catalog-locations.mjs';
 const core=resolve(dirname(fileURLToPath(import.meta.url)),'..'),repo=resolve(core,'../..');
 const site=resolve(repo,'_site'),lab=resolve(site,'3d/lab-next'),vendor=resolve(lab,'vendor');
@@ -32,7 +33,9 @@ for(const [folder,file] of [['loaders','GLTFLoader.js'],['utils','BufferGeometry
  await cp(resolve(core,'node_modules/three/examples/jsm',folder,file),resolve(vendor,folder,file));
 }
 await mkdir(resolve(lab,'audio'),{recursive:true});
-await cp(resolve(repo,'public/assets/sounds/effects/step_1.mp3'),resolve(lab,'audio/step_1.mp3'));
+const sounds=Object.entries(ASSETS.sounds).filter(([key])=>key!=='music'&&key!=='menuMusic');
+await Promise.all([...new Set(sounds.map(([,file])=>file))].map(file=>cp(resolve(repo,'public',file),resolve(lab,'audio',basename(file)))));
+await writeFile(resolve(lab,'audio/catalog.json'),JSON.stringify(Object.fromEntries(sounds.map(([key,file])=>[key,basename(file)]))));
 for(const file of ['three.module.js','three.core.js'])await cp(resolve(core,'node_modules/three/build',file),resolve(vendor,file));
 await cp(resolve(core,'node_modules/@dimforge/rapier3d-compat/rapier.es.js'),resolve(vendor,'rapier.es.js'));
 await cp(resolve(core,'node_modules/three/examples/jsm/controls/TransformControls.js'),resolve(vendor,'TransformControls.js'));

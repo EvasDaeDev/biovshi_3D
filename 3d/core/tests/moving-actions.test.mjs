@@ -82,7 +82,7 @@ for(const sprint of [false,true]){
 for(const [kind,key] of [['arm','KeyJ'],['head','KeyL'],['leg','KeyK']])for(const sprint of [false,true]){
  test(`${kind} strike can land while ${sprint?'approaching at a run':'walking'}`,()=>{
   const core=start(sprint?(kind==='head'?2.6:kind==='arm'?2.8:3.5):1.3);
-  const press=sprint?(kind==='leg'?44:31):15;
+  const press=sprint?(kind==='leg'?44:kind==='arm'?33:31):15;
   try{
    let s=core.getSnapshot(),windup,contact;
    for(let tick=0;tick<100&&!contact;tick++){

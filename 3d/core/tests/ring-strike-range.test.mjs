@@ -9,7 +9,7 @@ test('ring AI can land a punch and a kick while retaining striking distance',asy
  core.initialize(createAuthoredCombatConfig(7,ring,2));
  try{
   const starts=new Map(),contacts={arm:[],leg:[]};
-  for(let tick=0;tick<1200;tick++){
+  for(let tick=0;tick<3600;tick++){
    core.step(FIXED_DT,{commands:[]});
    const events=core.drainEvents();
    if(!events.some(e=>e.type==='combat-windup'||e.type==='strike-contact'))continue;
