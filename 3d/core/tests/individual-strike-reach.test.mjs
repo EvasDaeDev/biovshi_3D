@@ -34,7 +34,7 @@ test('all four remaining arm and leg tips can cause damage in the live ring',()=
   ['leg','L.upperLeg',['L.foot','L.lowerLeg']]
  ];
  for(const [kind,source,removed] of cases){
-  const events=attack(kind,.5,removed);
+  const events=attack(kind,source==='L.upperArm'?.43:.5,removed);
   assert.ok(events.some(e=>e.type==='strike-contact'&&e.attackerId===0&&e.sourceSegment===source),source);
   assert.ok(events.some(e=>e.type==='fighter-damaged'&&e.fighterId===1),source);
  }

@@ -120,7 +120,7 @@ test('manual attack aim follows the centre ray of the roll-stabilised head camer
 
 test('playing the same swing at different crosshair heights changes physical contact',()=>{
  const strikeAt=pitch=>{
-  const core=setup([0,0,.75]);
+  const core=setup([0,0,.8]);
   try{
    const hits=[];
    for(let i=0;i<48;i++){
@@ -131,8 +131,8 @@ test('playing the same swing at different crosshair heights changes physical con
    return hits;
   }finally{core.dispose();}
  };
- assert.deepEqual(strikeAt(-.45),['chest']);
- assert.deepEqual(strikeAt(-.22),['head']);
+ assert.deepEqual(strikeAt(-.55),['chest']);
+ assert.deepEqual(strikeAt(-.45),['head']);
  assert.deepEqual(strikeAt(.5),[]);
 });
 

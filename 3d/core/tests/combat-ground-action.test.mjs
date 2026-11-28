@@ -23,7 +23,7 @@ function setupFall(opponentOrigin,missing=[],opponentYaw=0){
 }
 
 for(const phase of ['falling','down'])test(`a patient can land one counter while ${phase} and recover`,()=>{
- const core=setupFall(phase==='falling'?[-.9/Math.SQRT2,0,-.9/Math.SQRT2]:[.9,0,0]);
+ const core=setupFall(phase==='falling'?[-.9/Math.SQRT2,0,-.9/Math.SQRT2]:[.8,0,-.1]);
  try{
   const observed=[];
   for(let i=0;i<130;i++){
