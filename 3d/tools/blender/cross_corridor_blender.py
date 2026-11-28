@@ -38,6 +38,7 @@ SCENE_NAME = "ECCEPRY_Cross_Corridor"
 
 H = WIDTH/2
 EPS = 1e-8
+SNAP = 1e-7  # common cut-boundary coordinate tolerance
 DIRECTIONS = ((1.,0.),(0.,1.),(-1.,0.),(0.,-1.))
 ARCH = "01_Architecture"
 ROOF = "02_Vault_and_oculus"
@@ -261,7 +262,12 @@ def cut_surface(domain,holes,xgrid=(),ygrid=()):
                         x=a[0]+t*(b[0]-a[0])
                         if x0<x<x1:xx.append(x)
             segments.append((a,b))
-    xx=sorted(set(round(x,8) for x in xx))
+    def canonical(values):
+        result=[]
+        for v in sorted(set(round(q,8) for q in values)):
+            if not result or v-result[-1]>SNAP:result.append(v)
+        return result
+    xx=canonical(xx)
     sloped=[(a,b) for a,b in segments if abs(a[0]-b[0])>EPS]
     def at(e,x):
         a,b=e
@@ -270,12 +276,18 @@ def cut_surface(domain,holes,xgrid=(),ygrid=()):
         values=list(yy)
         for a,b in segments:
             lo,hi=sorted((a[0],b[0]))
-            if lo-EPS*2<=x<=hi+EPS*2:
+            if lo-SNAP*2<=x<=hi+SNAP*2:
                 if abs(a[0]-b[0])<=EPS:
                     values.extend((a[1],b[1]))
                 else: values.append(at((a,b),x))
-        return sorted(set(round(clamp(v,y0,y1),8) for v in values if y0-EPS*2<=v<=y1+EPS*2))
+        return canonical(clamp(v,y0,y1) for v in values if y0-SNAP*2<=v<=y1+SNAP*2)
     ys={x:boundary_y(x) for x in xx}
+    def snap_y(x,y):
+        v=round(clamp(y,y0,y1),8)
+        q=min(ys[x],key=lambda q:abs(q-v))
+        if abs(q-v)>SNAP*2:
+            raise AssertionError("unmatched sweep endpoint "+str((x,v,q)))
+        return q
     for l,r in zip(xx,xx[1:]):
         if r-l<EPS: continue
         mid=(l+r)/2
@@ -290,7 +302,7 @@ def cut_surface(domain,holes,xgrid=(),ygrid=()):
             if yh-yl<EPS: continue
             sample=(mid,(yl+yh)/2)
             if any(contains(sample,h) for h in holes):continue
-            ll,lr,hl,hr=[round(clamp(y,y0,y1),8) for y in (at(low,l),at(low,r),at(high,l),at(high,r))]
+            ll,lr,hl,hr=[snap_y(x,at(line,x)) for line,x in ((low,l),(low,r),(high,l),(high,r))]
             # Insert the same edge split vertices into both neighboring cells.
             p=[(l,ll),(r,lr)]
             p.extend((r,y) for y in ys[r] if lr+EPS<y<hr-EPS)
@@ -406,7 +418,7 @@ def build_floor():
                 hint=(b[1]-a[1],a[0]-b[0],0)
                 rim.face([(*a,z),(*b,z),(*b,-.22),(*a,-.22)],"exposed",hint)
             elif not any(abs(mid[0]-q)<1e-6 for q in (x0,x1,-H,H)) and not any(abs(mid[1]-q)<1e-6 for q in (y0,y1,-H,H)):
-                raise AssertionError("unmatched floor interior edge "+str(mid))
+                raise AssertionError("unmatched floor interior edge "+str((a,b,mid)))
     # Bottom of the recess is visible through grating; no buried underside.
     for (x,y,r,n),p in zip(drains,drain_polys):
         rim.patch([(*a,-.22) for a in p],"shadow",(0,0,1))
