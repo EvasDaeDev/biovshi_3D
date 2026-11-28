@@ -22,6 +22,10 @@ const modelDir=resolve(lab,'models/patients');
 await mkdir(modelDir,{recursive:true});
 const modelFiles=await readdir(modelDir,{withFileTypes:true});
 await writeFile(resolve(modelDir,'catalog.json'),JSON.stringify({active:modelFiles.some(f=>f.isFile()&&f.name==='dummy02.glb')?'dummy02.glb':null}));
+const arenaDir=resolve(lab,'models/arenas');
+await mkdir(arenaDir,{recursive:true});
+const arenaFiles=await readdir(arenaDir,{withFileTypes:true});
+await writeFile(resolve(arenaDir,'catalog.json'),JSON.stringify({ring:arenaFiles.some(f=>f.isFile()&&f.name==='eccepry_ring_9m.glb')?'eccepry_ring_9m.glb':null}));
 await mkdir(vendor,{recursive:true});
 for(const [folder,file] of [['loaders','GLTFLoader.js'],['utils','BufferGeometryUtils.js']]){
  await mkdir(resolve(vendor,folder),{recursive:true});

@@ -18,6 +18,8 @@ await new Promise(ok=>server.listen(0,'127.0.0.1',ok));
 const base='http://127.0.0.1:'+server.address().port;
 const modelCatalog=JSON.parse(await readFile(resolve(site,'3d/lab-next/models/patients/catalog.json'),'utf8'));
 const expectedGeometry=modelCatalog.active?'glb':'ellipsoid';
+const arenaCatalog=JSON.parse(await readFile(resolve(site,'3d/lab-next/models/arenas/catalog.json'),'utf8'));
+const expectedRingGeometry=arenaCatalog.ring?'glb':'native';
 let browser;
 try{
  browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
@@ -33,6 +35,11 @@ try{
  assert.equal(await page.locator('canvas').count(),1);
  assert.equal(await page.locator('#stats').getAttribute('data-segment-geometry'),expectedGeometry);
  assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');
+ assert.equal(await page.locator('#stats').getAttribute('data-arena-geometry'),expectedRingGeometry);
+ if(arenaCatalog.ring){
+  assert.ok(Number(await page.locator('#stats').getAttribute('data-arena-visual-triangles'))>0);
+  assert.ok(Number(await page.locator('#stats').getAttribute('data-arena-visual-meshes'))>0);
+ }
  assert.match(await page.locator('#round-clock').textContent(),/^\d+:\d{2}$/);
  await page.waitForFunction(()=>/^\d+ FPS · CPU \d+%.*GPU/.test(document.querySelector('#frame-meter').textContent));
  assert.equal(await page.locator('#patient-hud .patient-card').count(),3);
@@ -416,6 +423,7 @@ try{
  for(const [id,count] of [['square','1'],['ring','0'],['square','1']]){
   await page.locator('#scenario').selectOption('location-'+id);
   await page.waitForFunction(([arena,count])=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location===arena&&d.floorVisuals===count;},[id,count]);
+  assert.equal(await page.locator('#stats').getAttribute('data-arena-geometry'),id==='ring'?expectedRingGeometry:'native');
  }
  await page.goto(base+'/');
  await page.getByRole('link',{name:'Быстрый бой'}).click();

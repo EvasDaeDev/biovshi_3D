@@ -1,5 +1,6 @@
 import {FootstepAudio} from './footstep-audio.js';
 import {loadArenaCatalog,populatePatientCounts} from './arena-options.js';
+import {loadRingModel} from './arena-model.js';
 import {MatchFlow} from './match-flow.js';
 import {DAMAGE} from '../core/dist/combat/damage.js';
 import {FrameMeter,RoundClock} from './round-telemetry.js';
@@ -31,7 +32,7 @@ import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
 await RAPIER.init();
 window.labStartup.show('Импорт авторских 3D арен…');
-const [authoredLocations,portraits,patientModel]=await Promise.all([loadArenaCatalog(),loadPatientPortraits(),loadPatientModel()]);
+const [authoredLocations,portraits,patientModel,ringModel]=await Promise.all([loadArenaCatalog(),loadPatientPortraits(),loadPatientModel(),loadRingModel()]);
 let roundPortraits=new Map();
 window.labStartup.show('Создание физического мира…');
 const debris=new DebrisWorld(RAPIER),debrisMeshes=new Map();
@@ -272,11 +273,16 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   :'W/S — движение, A/D — стрейф.';
  floor.visible=grid.visible=!location;
  cameraControl.setArena(location);
- if(location&&location.shape!=='circle'){
+ const useRingModel=!!ringModel&&location?.id==='ring'&&!(config.gradedSurface?.length);
+ if(ringModel){ringModel.visible=useRingModel;if(useRingModel&&ringModel.parent!==scene)scene.add(ringModel);}
+ stats.dataset.arenaGeometry=useRingModel?'glb':'native';
+ stats.dataset.arenaVisualMeshes=useRingModel?String(ringModel.children.length):'0';
+ stats.dataset.arenaVisualTriangles=useRingModel?String(ringModel.userData.triangles):'0';
+ if(!useRingModel&&location&&location.shape!=='circle'){
   const surface=new THREE.Mesh(new THREE.ShapeGeometry(arenaShape(location.boundary)),floor.material);
   surface.rotation.x=-Math.PI/2;surface.receiveShadow=true;scene.add(surface);wallMeshes.push(surface);
  }
- if(location?.shape==='circle'){
+ if(!useRingModel&&location?.shape==='circle'){
   const mat=floor.material;
   const surface=new THREE.Mesh(new THREE.CircleGeometry(location.width/2,location.boundary.length),mat);
   surface.rotation.x=-Math.PI/2;surface.receiveShadow=true;scene.add(surface);wallMeshes.push(surface);
@@ -294,7 +300,7 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
    geometry.rotateX(-Math.PI/2);
    const mesh=new THREE.Mesh(geometry,wallMaterial);mesh.castShadow=mesh.receiveShadow=true;scene.add(mesh);wallMeshes.push(mesh);
   }
-  for(let i=0;i<location.boundary.length;i++){
+  if(!useRingModel)for(let i=0;i<location.boundary.length;i++){
    const a=location.boundary[i],b=location.boundary[(i+1)%location.boundary.length];
    const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
    const height=location.boundaryHeight??2.8,offset=location.shape==='circle'?.10:0;
