@@ -272,8 +272,10 @@ function reset(savedFloor=null){try{if(frameRequest)cancelAnimationFrame(frameRe
   ?location.name+' · рост пациента 1,65 м'
   :'W/S — движение, A/D — стрейф.';
  floor.visible=grid.visible=!location;
- cameraControl.setArena(location);
  const useRingModel=!!ringModel&&location?.id==='ring'&&!(config.gradedSurface?.length);
+ const fixtureRadii=useRingModel?ringModel.userData.cameraRadii:[];
+ cameraControl.setArena(location,fixtureRadii);
+ stats.dataset.cameraFixtureRadii=JSON.stringify(fixtureRadii);
  if(ringModel){ringModel.visible=useRingModel;if(useRingModel&&ringModel.parent!==scene)scene.add(ringModel);}
  stats.dataset.arenaGeometry=useRingModel?'glb':'native';
  stats.dataset.arenaVisualMeshes=useRingModel?String(ringModel.children.length):'0';

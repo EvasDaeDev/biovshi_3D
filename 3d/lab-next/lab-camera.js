@@ -22,9 +22,9 @@ export class LabCamera {
   this.modeInput.onchange=()=>this.select(this.modeInput.value);
   this.select(cornerModes[0]);
  }
- setArena(arena){
+ setArena(arena,fixtureRadii=[]){
   this.navigation=arena?new PolygonNavigation(arena):null;
-  this.mounts=arena?cornerMounts(arena,this.navigation):null;
+  this.mounts=arena?cornerMounts(arena,this.navigation,fixtureRadii):null;
   this.select(this.mode);
  }
  allowFree(allowed){

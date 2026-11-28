@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {LabCamera} from '../../lab-next/lab-camera.js';
-import {CAMERA_CLEARANCE} from '../../lab-next/arena-camera-layout.js';
+import {CAMERA_CLEARANCE,CAMERA_FIXTURE_CLEARANCE,ringCameraRadii} from '../../lab-next/arena-camera-layout.js';
 import {buildLocationCatalog} from '../scripts/catalog-locations.mjs';
 
 const catalog=await buildLocationCatalog();
@@ -115,4 +115,44 @@ test('GoPro keeps its chosen horizontal angle after resize and switching camera 
  assert.equal(camera.fov,65);
  controller.select('gopro');
  assert.ok(Math.abs(horizontal()-120)<1e-9);
+});
+
+test('authored ring mounts are forward of the entire camera fixture, not inside the housing',()=>{
+ const root=new THREE.Group(),fixture=new THREE.Group();
+ root.add(fixture);
+ fixture.rotation.y=Math.PI/4;
+ fixture.position.y=3;
+ const dirs=[[1,1],[-1,1],[-1,-1],[1,-1]];
+ // Deliberately use nonmatching Blender indices and varied fixture depths.
+ const expected=[];
+ for(let i=0;i<4;i++){
+  const [sx,sz]=dirs[i],dir=new THREE.Vector3(sx,0,sz).normalize();
+  const depth=.3+i*.06,center=dir.clone().multiplyScalar(4.05);
+  const housing=new THREE.Mesh(new THREE.BoxGeometry(.24,.24,depth));
+  housing.name='camera_0'+(4-i)+'_housing';
+  housing.position.copy(center).applyAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/4);
+  housing.rotation.y=Math.atan2(sx,sz)-Math.PI/4;
+  fixture.add(housing);
+  const hood=new THREE.Mesh(new THREE.BoxGeometry(.22,.08,.08));
+  hood.name='camera_0'+(4-i)+'_hood';
+  hood.position.copy(dir.clone().multiplyScalar(4.05-depth/2-.02)).applyAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/4);
+  hood.rotation.y=housing.rotation.y;fixture.add(hood);
+  expected.push(4.05-depth/2-.06-CAMERA_FIXTURE_CLEARANCE);
+ }
+ // Non-camera geometry must not change the mount calculation.
+ const floor=new THREE.Mesh(new THREE.BoxGeometry(1,1,1));floor.name='arena_floor';root.add(floor);
+ const radii=ringCameraRadii(root),{camera,controller}=setup(catalog.ring);
+ controller.setArena(catalog.ring,radii);
+ for(let i=0;i<4;i++){
+  assert.ok(Math.abs(radii[i]-expected[i])<1e-6);
+  controller.select('corner-'+(i+1));
+  assert.equal(camera.position.y,3);
+  assert.ok(Math.hypot(camera.position.x,camera.position.z)<=radii[i]+1e-9);
+  assert.ok(controller.navigation.clear(camera.position,camera.position,CAMERA_CLEARANCE));
+ }
+ controller.setArena(catalog.square);
+ controller.select('corner-1');
+ const native=setup(catalog.square).camera.position;
+ assert.deepEqual(camera.position.toArray(),native.toArray());
+ assert.deepEqual(ringCameraRadii(new THREE.Group()),[null,null,null,null]);
 });

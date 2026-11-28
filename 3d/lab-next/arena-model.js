@@ -1,6 +1,7 @@
 import {Box3,Group,Mesh,Vector3} from 'three';
 import {GLTFLoader} from './vendor/loaders/GLTFLoader.js';
 import {mergeGeometries} from './vendor/utils/BufferGeometryUtils.js';
+import {ringCameraRadii} from './arena-camera-layout.js';
 
 const directory=new URL('./models/arenas/',import.meta.url);
 const file='eccepry_ring_9m.glb';
@@ -19,6 +20,7 @@ export function prepareRingModel(root){
  // Bake authored transforms, including the deliberately taller wall.
  const batches=new Map(),result=new Group();
  result.name='Authored ring visual';
+ result.userData.cameraRadii=ringCameraRadii(root);
  root.traverse(node=>{
   if(!node.isMesh)return;
   if(node.isSkinnedMesh||Array.isArray(node.material)||node.matrixWorld.determinant()<=0)

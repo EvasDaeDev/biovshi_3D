@@ -37,6 +37,18 @@ try{
  assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');
  assert.equal(await page.locator('#stats').getAttribute('data-arena-geometry'),expectedRingGeometry);
  if(arenaCatalog.ring){
+  const limits=JSON.parse(await page.locator('#stats').getAttribute('data-camera-fixture-radii'));
+  assert.equal(limits.length,4);
+  // Current GLB includes four named camera assemblies. Future models without
+  // a fixture in a quadrant keep the native mount.
+  for(let i=0;i<4;i++){
+   await page.locator('#camera-mode').selectOption('corner-'+(i+1));
+   await page.waitForFunction(mode=>document.getElementById('stats')?.dataset.camera===mode,'corner-'+(i+1));
+   const mount=await page.locator('#stats').evaluate(el=>({x:Number(el.dataset.cameraX),z:Number(el.dataset.cameraZ),y:Number(el.dataset.cameraHeight)}));
+   assert.equal(mount.y,3);
+   if(limits[i]!==null)assert.ok(Math.hypot(mount.x,mount.z)<=limits[i]+1e-6,JSON.stringify({i,mount,limit:limits[i]}));
+  }
+  await page.locator('#camera-mode').selectOption('corner-1');
   assert.ok(Number(await page.locator('#stats').getAttribute('data-arena-visual-triangles'))>0);
   assert.ok(Number(await page.locator('#stats').getAttribute('data-arena-visual-meshes'))>0);
  }
