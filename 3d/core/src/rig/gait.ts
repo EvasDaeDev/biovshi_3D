@@ -178,7 +178,9 @@ export class PatientGait {
   private ground:(x:number,z:number)=>number=()=>0;
   get posture(): 'upright'|'falling'|'prone' {return this.proneAmount===0?'upright':this.proneAmount===1?'prone':'falling';}
   private feet:[Foot,Foot];
+  private lastRoot:Vec3;
   constructor(root:Vec3,yaw=0,private readonly groundedStride=false,private readonly authored?:AuthoredMotion,private readonly motionProfile:MotionProfile=BASE_MOTION_PROFILE){
+    this.lastRoot=root;
     this.motion=new LocomotionMotion(motionProfile);
     this.carriage=new ArmCarriage(this.motionProfile);
     this.anchors=new CrawlAnchors(this.organic);
@@ -195,6 +197,7 @@ export class PatientGait {
     this.feet=[foot(-1),foot(1)];this.expressive=authored?.stance;
   }
   advance(root:Vec3,yaw:number,speed:number,dt:number,ground:(x:number,z:number)=>number=()=>root[1],mobility:Mobility=mobilityFor(LAB_SEGMENTS.map(s=>s.id)),active:readonly string[]=LAB_SEGMENTS.map(s=>s.id),forcedProne?:number,holdFeet=false,turnRate=0,driveSpeed=speed,travelYaw=yaw):void{
+    const previousRoot=this.lastRoot;this.lastRoot=root;
     this.mobility=mobility;this.active=active;this.ground=ground;
     this.recoveryCooldown=Math.max(0,this.recoveryCooldown-dt);
     const support=mobility.support;
@@ -260,10 +263,15 @@ export class PatientGait {
       this.motion.clearPreparation();if(this.organic)this.motion.advance(dt,0,0,0);
       const index=support[0]?0:1,side=index===0?-1:1,f=this.feet[index]!;
       this.feet[0].moving=false;this.feet[1].moving=false;
-      if(this.hopSample.followsRoot||Math.hypot(f.plant[0]-root[0],f.plant[2]-root[2])>.50){
+      if(this.hopSample.followsRoot){
+        // Carry the existing anchor through flight without replacing the
+        // stance at takeoff. The new location remains fixed after landing.
+        const x=f.plant[0]+root[0]-previousRoot[0],z=f.plant[2]+root[2]-previousRoot[2];
+        f.plant=[x,ground(x,z)+FOOT_RADIUS,z];
+      }else if(Math.hypot(f.plant[0]-root[0],f.plant[2]-root[2])>.50){
         const x=root[0]+Math.cos(yaw)*side*.18,z=root[2]+Math.sin(yaw)*side*.18;
-        f.plant=[x,ground(x,z)+.13,z];
-      }else f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+.13,f.plant[2]];
+        f.plant=[x,ground(x,z)+FOOT_RADIUS,z];
+      }else f.plant=[f.plant[0],ground(f.plant[0],f.plant[2])+FOOT_RADIUS,f.plant[2]];
       return;
     }
     for(let i=0;i<2;i++){
@@ -515,11 +523,11 @@ export class PatientGait {
       const steady=(pose:readonly RigPose[],height=0)=>this.organic?compensateHead(pose,add(steadyHead,[0,height,0]),(1-neckFollow)*(1-postureWeight)*this.motionProfile.compensation*(reactive?.55:1)):pose;
       const single=this.mobility.mode==='single-support';
       if(single){const i=this.mobility.support[0]?0:1;fixed=balanceSingleSupport(fixed,this.active,i===0?'L':'R',this.feet[i]!.plant,this.ground);}
-      if(lift>0&&this.authored?.jump&&this.hopSample.phase==='flight'){
+      if(!single&&lift>0&&this.authored?.jump&&this.hopSample.phase==='flight'){
        const reference=this.authored.jump;
        const flying=standing.map(part=>{
         const target=reference.get(part.id);
-        if(!target||!/Leg$|foot$/.test(part.id)||single&&part.id.startsWith(this.mobility.support[0]?'L.':'R.'))return part;
+        if(!target||!/Leg$|foot$/.test(part.id))return part;
         const targetHip=reference.get('pelvis');if(!targetHip)return part;
         const origin=center(targetHip);
         const position=(v:Vec3):Vec3=>world(add(pelvisCenter,[v[0]-origin[0],v[1]-origin[1],v[2]-origin[2]]));

@@ -4,6 +4,7 @@ import {PatientGait} from '../dist/rig/gait.js';
 import {compileAuthoredMotion} from '../dist/rig/authored-motion.js';
 import {referencePose} from '../dist/rig/pose-editor.js';
 import {punchPose} from '../dist/combat/strike.js';
+import {firstStrikeContact} from '../dist/combat/swept-contact.js';
 import {LAB_SEGMENTS} from '../dist/rig/anatomy.js';
 const slots=Object.fromEntries(['stance','stalk','punch','kick','headbutt'].map(k=>[k,referencePose(k)]));
 const motion=compileAuthoredMotion({schemaVersion:1,stature:1.65,slots});
@@ -82,4 +83,21 @@ test('the edited punch torso pitch reaches the shared attack pose',()=>{
  const stock=punchPose(base,p,31,()=>0,motion),adjusted=punchPose(base,p,31,()=>0,edit);
  assert.ok(pitch(adjusted)-pitch(stock)>.25);
  assert.deepEqual(get(adjusted,'L.foot'),get(stock,'L.foot'));
+});
+
+test('the side swing opens the elbow at full reach before it folds back',()=>{
+ for(const side of ['L','R']){
+  const p={kind:'arm',side,targetId:1,start:0,yaw:0,aim:[0,1.45,-.53]};
+  const sample=tick=>punchPose(base,p,tick,()=>0,motion);
+  const reach=pose=>dist(get(pose,side+'.upperArm').a,get(pose,side+'.hand').a);
+  const peak=sample(31),hand=get(peak,side+'.hand').a;
+  assert.ok(reach(sample(19))<.56);
+  assert.ok(reach(peak)>.675,JSON.stringify({side,reach:reach(peak)}));
+  assert.ok(reach(sample(34))>.635);
+  assert.ok(reach(sample(39))<.65,JSON.stringify({side,reach:reach(sample(39))}));
+  assert.deepEqual(sample(48),base);
+  const target={id:'head',a:hand,b:hand,radius:.02};
+  assert.ok(dist(p.aim,hand)>.20);
+  assert.equal(firstStrikeContact(sample(27),peak,[target],[target],side),'head');
+ }
 });

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {referencePose} from '../dist/rig/pose-editor.js';
 import {HopCycle} from '../dist/rig/hop-cycle.js';
 import {MOVEMENT,stepLead} from '../dist/rig/movement-timing.js';
 import {LabSimulationCore,createLabConfig,FIXED_DT} from '../dist/index.js';
@@ -30,4 +31,28 @@ test('one-leg patient hops, lands, preserves leg lengths, and stops after input 
  assert.ok(max>.09&&sawPause);
  for(let i=0;i<180;i++)step(0);const a=c.getSnapshot();assert.equal(a.hopPhases[0],'idle');
  for(let i=0;i<60;i++)step(0);assert.equal(c.getSnapshot().roots[2],a.roots[2]);
+});
+
+test('authored one-leg hops keep a continuous body pose while the foot leaves and meets the floor',()=>{
+ const f=createLabConfig(7).fighters[0],slots=Object.fromEntries(['stance','stalk','balance','jump'].map(id=>[id,referencePose(id)]));
+ const ids=f.segmentIds.filter(id=>!/^R\.(upperLeg|lowerLeg|foot)$/.test(id));
+ const core=new LabSimulationCore();
+ core.initialize({seed:7,patientScale:.81,patientPoses:{schemaVersion:1,stature:1.65,slots},fighters:[{...f,origin:[0,0,0],yawRad:0,segmentIds:ids}]});
+ try{
+  let previous=core.getSnapshot(),transitions=0;
+  for(let i=0;i<120;i++){
+   core.step(FIXED_DT,{commands:[{fighterId:0,forward:1,turn:0,sprint:false}]});
+   const next=core.getSnapshot(),phase=next.hopPhases[0],prior=previous.hopPhases[0];
+   if(phase!==prior&&(phase==='flight'||prior==='flight')){
+    transitions++;
+    for(const id of ['pelvis','chest','head','L.foot']){
+     const a=previous.rigSegments[0].find(p=>p.id===id).a,b=next.rigSegments[0].find(p=>p.id===id).a;
+     const delta=Math.hypot(...a.map((value,j)=>value-b[j]));
+     assert.ok(delta<.045,JSON.stringify({id,prior,phase,delta,tick:next.tick}));
+    }
+   }
+   previous=next;
+  }
+  assert.ok(transitions>=6);
+ }finally{core.dispose();}
 });

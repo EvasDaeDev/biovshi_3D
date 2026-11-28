@@ -25,7 +25,7 @@ import RAPIER from '@rapier';
 import {DebrisWorld} from './debris.js';
 import * as THREE from 'three';
 import {LabSimulationCore,createLabConfig,createAuthoredCombatConfig,FixedClock,lowHill} from '../core/dist/index.js';
-import {boneFrame,anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
+import {patientSegmentFrame} from './patient-frame.js';
 import {HEAD_CAMERA_CLEARANCE} from '../core/dist/rig/head-frame.js';
 import {LabCamera} from './lab-camera.js';
 window.labStartup.show('Инициализация Rapier / WASM…');
@@ -442,11 +442,6 @@ pauseButton.onclick=()=>{
 addEventListener('resize',()=>{cameraControl.resize(innerWidth/innerHeight);renderer.setSize(innerWidth,innerHeight);});
 const v=a=>new THREE.Vector3(...a),basis=new THREE.Matrix4(),priorRotation=new THREE.Quaternion();
 function frameRotation(f,out){return out.setFromRotationMatrix(basis.makeBasis(v(f.x),v(f.y),v(f.z)));}
-function segmentFrame(p,parts,yaw,head){
- if(p.id==='head'&&head){const f=boneFrame(p.a,p.a.map((n,i)=>n+head.up[i]),head.forward);return {...f,center:p.a,length:0};}
- if(p.id.endsWith('.hand')){const arm=parts.find(q=>q.id===p.id.replace('.hand','.lowerArm'));if(arm){const f=anatomicalBoneFrame(arm,parts,yaw);return {...f,center:p.a,length:0};}}
- return anatomicalBoneFrame(p,parts,yaw);
-}
 function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt=last===null?0:(now-last)/1000;last=now;playback.advance(match?match.advance(dt,document.hidden):dt,tickFrame,document.hidden);const s=currentFrame.state,prior=previousFrame.state,alpha=playback.alpha;patientHud.draw(s);const time=roundClock.sample(s);match?.showResult(s,time);if(time!==clockOutput.textContent)clockOutput.textContent=time;if(checkSnapshot){assertSnapshot(s);checkSnapshot=false;}
  for(const mesh of meshes.values())mesh.visible=false;
  const tinted=[],renderTick=prior.tick+(s.tick-prior.tick)*alpha;
@@ -456,7 +451,7 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
   // Never resurrect severed anatomy or interpolate across an ownership handoff.
   const compatible=oldParts&&oldParts.length===parts.length&&prior.lifeStates[j]===s.lifeStates[i]&&parts.every(p=>oldParts.some(q=>q.id===p.id));
   for(const p of parts){
-   const id=fighterId,key=id+':'+p.id,f=segmentFrame(p,parts,s.roots[i*4+3],s.headFrames?.[i]);
+   const id=fighterId,key=id+':'+p.id,f=patientSegmentFrame(p,parts,s.roots[i*4+3],s.headFrames?.[i]);
    let m=meshes.get(key);
    if(!m){
     const portrait=p.id==='head'?portraits.get(roundPortraits.get(id)):undefined;
@@ -470,7 +465,7 @@ function frame(now){frameRequest=0;const cpuStart=performance.now();try{const dt
    paintSegment(m,id,tint,pulse,saturation);if(tint.strength)tinted.push(key);
    const old=compatible&&alpha<1?oldParts.find(q=>q.id===p.id):null;
    if(old){
-    const o=segmentFrame(old,oldParts,prior.roots[j*4+3],prior.headFrames?.[j]);
+    const o=patientSegmentFrame(old,oldParts,prior.roots[j*4+3],prior.headFrames?.[j]);
     m.position.copy(v(o.center)).lerp(v(f.center),alpha);
     frameRotation(o,priorRotation);m.quaternion.slerp(priorRotation,1-alpha);
    }

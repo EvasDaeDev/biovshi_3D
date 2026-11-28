@@ -7,6 +7,8 @@ const dot=(a:Vec3,b:Vec3)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const cross=(a:Vec3,b:Vec3):Vec3=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const unit=(a:Vec3,fallback:Vec3):Vec3=>{const n=Math.hypot(...a);return n>1e-9?mul(a,1/n):fallback;};
 const clamp=(v:number)=>Math.max(-1,Math.min(1,v));
+const UPPER_ARM_LENGTH=.36,FOREARM_LENGTH=.32;
+export const ARM_REACH=UPPER_ARM_LENGTH+FOREARM_LENGTH;
 /** Transport the outward elbow direction from a forward-down reference axis
  * to the wrist axis, avoiding the old lateral/down pole singularity. */
 export function transportedElbow(root:Vec3,target:Vec3,yaw:number,side:'L'|'R'):Vec3{
@@ -31,10 +33,10 @@ export function directionBlend(from:Vec3,to:Vec3,t:number):Vec3{
  * bone directions instead of a potentially degenerate pole vector. */
 export function authoredArmStrike(upper:PhysicsSegmentPose,lower:PhysicsSegmentPose,target:Vec3,yaw:number,side:'L'|'R',weight:number):TwoBonePose{
  if(weight<=0)return {joint:upper.b,end:lower.b};
- const ik=solveTwoBone(upper.a,target,.36,.32,transportedElbow(upper.a,target,yaw,side));
+ const ik=solveTwoBone(upper.a,target,UPPER_ARM_LENGTH,FOREARM_LENGTH,transportedElbow(upper.a,target,yaw,side));
  if(weight>=1)return ik;
  const u=directionBlend(sub(upper.b,upper.a),sub(ik.joint,upper.a),weight);
  const l=directionBlend(sub(lower.b,lower.a),sub(ik.end,ik.joint),weight);
- const joint=add(upper.a,mul(u,.36));
- return {joint,end:add(joint,mul(l,.32))};
+ const joint=add(upper.a,mul(u,UPPER_ARM_LENGTH));
+ return {joint,end:add(joint,mul(l,FOREARM_LENGTH))};
 }

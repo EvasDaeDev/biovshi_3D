@@ -462,7 +462,10 @@ try{
  await page.locator('#match-exit').click();
  await page.locator('#start-match').waitFor({state:'visible'});
  await page.goto(base+'/3d/lab-next/pose-editor.html');
- await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
+ await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17',{},{timeout:45000});
+ const editorViewport=page.locator('#viewport'),reference=page.locator('#reference-geometry');
+ assert.equal(await editorViewport.getAttribute('data-geometry'),expectedGeometry);
+ assert.equal(await reference.isVisible(),expectedGeometry==='glb');
  await page.locator('#tab-effects').click();
  await page.locator('#effects-profile').selectOption('gopro');
  const grain=page.locator('#effect-grain'),defaultGrain=await grain.inputValue();
@@ -482,6 +485,10 @@ try{
  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17');
  await page.locator('[data-view="front"]').click();
  assert.equal(await page.locator('[data-view="front"]').getAttribute('aria-pressed'),'true');
+ if(expectedGeometry==='glb'){
+  await reference.check();
+  assert.equal(await editorViewport.getAttribute('data-geometry'),'glb-reference');
+ }
  const boneLength=await page.locator('#length').inputValue();
  await page.locator('#collider-radius').fill('0.11');
  await page.locator('#collider-radius').press('Tab');
@@ -492,6 +499,11 @@ try{
  await page.locator('#length').fill('0.38');
  await page.locator('#length').press('Tab');
  assert.equal(await page.locator('#collider-length').inputValue(),'0.2');
+ if(expectedGeometry==='glb'){
+  assert.equal(await editorViewport.getAttribute('data-geometry'),'glb-reference');
+  await reference.uncheck();
+  assert.equal(await editorViewport.getAttribute('data-geometry'),'glb');
+ }
  await page.locator('#show-bones').uncheck();
  await page.locator('#show-geometry').uncheck();
  await page.locator('#show-colliders').uncheck();

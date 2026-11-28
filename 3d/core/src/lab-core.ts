@@ -749,7 +749,7 @@ export class LabSimulationCore implements SimulationCore {
           const manualMovingKick=needsPlant&&mobileStrikes&&command?.attackKind==='leg';
           if(needsPlant&&mobileStrikes&&!manualMovingKick&&!(horror&&distance>1)&&mobility.mode!=='single-support')continue;
           if(needsPlant&&!horror&&!(this.authored?.stalk&&command?.attackKind==='leg')&&(!lowVictim||command))continue;
-          const score=horror&&!prone?(c:PunchChoice)=>attackScore(kind,c,opportunity)+(kind==='leg'&&distance>1?.28:0)+a.variety.adjustment(kind,c)+(raiding?a.raid.strikePreference(kind):0)+(c.crouch?(lowVictim?.65:.12):0)+(c.pounce?.35:0):undefined;
+          const score=horror&&!prone?(c:PunchChoice)=>attackScore(kind,c,opportunity)+(kind==='leg'?clamp((distance-.85)*2,0,.65):0)+a.variety.adjustment(kind,c)+(raiding?a.raid.strikePreference(kind):0)+(c.crouch?(lowVictim?.65:.12):0)+(c.pounce?.35:0):undefined;
           let best=prone&&kind!=='leg'?chooseProneStrike(pose,a.segments,victim,a.yaw,eligible,kind,ground,a.strike.attempts+a.id,horror,this.authored):kind==='arm'?choosePunch(pose,a.segments,victim,a.yaw,eligible,a.strike.attempts+a.id,this.authored,ground,score,false,horror):chooseExtra(pose,a.segments,victim,a.yaw,eligible,kind,ground,this.authored,lowVictim,score,horror||mobileStrikes&&kind==='head'&&!command?.sprint);
           if(a.crouchAmount>.01)best=null;
           if(kind==='arm'&&mobileStrikes&&mobility.mode==='biped'&&distance<1.15&&a.gait.hopPhase==='idle'){

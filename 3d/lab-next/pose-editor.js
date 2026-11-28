@@ -5,6 +5,9 @@ import {createSegmentVisual} from './segment-visual.js';
 import {loadPatientPortraits} from './patient-portraits.js';
 import {POSE_DRAFT_KEY,readPoseDraft} from './pose-draft.js';
 import {anatomicalBoneFrame} from '../core/dist/rig/bone-frame.js';
+import {headFrame} from '../core/dist/rig/head-frame.js';
+import {patientSegmentFrame} from './patient-frame.js';
+import {disposePatientVisual,loadPatientModel} from './patient-model.js';
 import {solveTwoBone} from '../core/dist/rig/two-bone.js';
 import {TransformControls} from './vendor/TransformControls.js';
 import * as THREE from 'three';
@@ -14,7 +17,7 @@ import {buildEditedPose,POSE_SLOTS,readPoseDocument,referencePose} from '../core
 const element=id=>document.getElementById(id);
 const poseSelect=element('pose'),segmentSelect=element('segment'),status=element('status');
 const enabled=element('enabled'),lengthInput=element('length'),radius=element('radius');
-const workspace=element('viewport');
+const workspace=element('viewport'),referenceGeometry=element('reference-geometry');
 const colliderRadius=element('collider-radius'),colliderLength=element('collider-length');
 const showGeometry=element('show-geometry'),showBones=element('show-bones'),showColliders=element('show-colliders');
 const labels={pelvis:'Таз',abdomen:'Живот',chest:'Грудная клетка',neck:'Шея',head:'Голова',
@@ -38,10 +41,10 @@ async function loadDefaults(){
   throw new Error('Неполный набор исходных поз.');
  return {...slots,tPose:slots.tPose??referencePose('tPose')};
 }
-const [defaults,portraits]=await Promise.all([loadDefaults().catch(error=>{
+const [defaults,portraits,patientModel]=await Promise.all([loadDefaults().catch(error=>{
  status.textContent=error.message;
  throw error;
-}),loadPatientPortraits()]);
+}),loadPatientPortraits(),loadPatientModel()]);
 const previewPortrait=portraits.values().next().value;
 const source=()=>data.slots[poseSelect.value]??defaults[poseSelect.value];
 const current=()=>useSharedAnatomy(source(),data.slots.tPose??defaults.tPose);
@@ -67,6 +70,9 @@ bones.frustumCulled=false;bones.renderOrder=3;scene.add(bones);
 const outlines=[];
 const primary=new THREE.MeshStandardMaterial({color:0xb1c6bd,roughness:.55});
 const selected=new THREE.MeshStandardMaterial({color:0xb5eda0,roughness:.6,emissive:0x193211});
+const referenceVisual=patientModel?.createReference(primary,previewPortrait);
+const patientVisuals=[];
+if(referenceVisual){scene.add(referenceVisual);element('reference-geometry-layer').hidden=false;}
 const basis=new THREE.Matrix4();
 const raycaster=new THREE.Raycaster();
 raycaster.params.Line.threshold=.018;
@@ -175,11 +181,17 @@ function renderPose(){
  controls.detach();
  for(const outline of outlines)outline.geometry.dispose();
  outlines.length=0;
+ for(const visual of patientVisuals)disposePatientVisual(visual);
+ patientVisuals.length=0;
  actor.clear();pickable.length=0;
+ const reference=!!referenceVisual&&referenceGeometry.checked;
+ if(referenceVisual)referenceVisual.visible=reference&&showGeometry.checked;
+ if(referenceVisual?.visible)for(const group of referenceVisual.children)pickable.push(...group.children);
  const parts=current(),settings=new Map(parts.map(p=>[p.id,p]));
  nodes.clear();
  const anchors=new Map();
  const pose=buildEditedPose(parts),byId=new Map(pose.map(part=>[part.id,part]));
+ const head=patientModel?headFrame(pose,0):null;
  for(const part of pose){
   const a=new THREE.Vector3(...part.a),b=new THREE.Vector3(...part.b),axis=b.clone().sub(a);
   const anchor=new THREE.Vector3(...poseJointAnchor(part,byId));
@@ -197,23 +209,32 @@ function renderPose(){
   joint.rotation.set(...(params.rotation??[0,0,0]));
   (nodes.get(parent)??actor).add(joint);nodes.set(part.id,joint);anchors.set(part.id,anchor);
   const frame=anatomicalBoneFrame(part,pose,0);
-  const visual=createSegmentVisual(part.id,part.radius,frame.length,part.id===segmentSelect.value?selected:primary,previewPortrait);
-  visual.position.copy(a).lerp(b,.5).sub(anchor).add(bind);
   const vector=values=>new THREE.Vector3(...values);
-  visual.quaternion.setFromRotationMatrix(basis.makeBasis(vector(frame.x),vector(frame.y),vector(frame.z)));
-  visual.visible=showGeometry.checked;
-  joint.add(visual);pickable.push(...visual.children);
+  const orientation=f=>basis.makeBasis(vector(f.x),vector(f.y),vector(f.z));
+  if(!reference&&showGeometry.checked){
+   const modelFrame=patientModel?patientSegmentFrame(part,pose,0,head):frame;
+   const palette=part.id===segmentSelect.value?selected:primary;
+   const visual=patientModel?patientModel.create(part.id,part.radius,modelFrame.length,palette,previewPortrait)
+    :createSegmentVisual(part.id,part.radius,frame.length,palette,previewPortrait);
+   if(patientModel)patientVisuals.push(visual);
+   visual.position.copy(vector(modelFrame.center)).sub(anchor).add(bind);
+   visual.quaternion.setFromRotationMatrix(orientation(modelFrame));
+   joint.add(visual);pickable.push(...visual.children);
+  }
   const dimensions=params.collider;
   const r=dimensions?.radius??part.radius,l=dimensions?.length??frame.length;
   const shape=l>0?new THREE.CapsuleGeometry(r,l,5,12):new THREE.SphereGeometry(r,12,10);
   const outline=new THREE.LineSegments(new THREE.WireframeGeometry(shape),part.id===segmentSelect.value?selectedCollider:colliderMaterial);
-  shape.dispose();outline.position.copy(visual.position);outline.quaternion.copy(visual.quaternion);
+  shape.dispose();
+  outline.position.copy(vector(frame.center)).sub(anchor).add(bind);
+  outline.quaternion.setFromRotationMatrix(orientation(frame));
   outline.visible=showColliders.checked;outline.renderOrder=part.id===segmentSelect.value?2:1;
   outline.userData.segment=part.id;joint.add(outline);outlines.push(outline);
   pickable.push(outline);
  }
  actor.updateMatrixWorld(true);attachControl();
  workspace.dataset.segments=String(nodes.size);
+ workspace.dataset.geometry=showGeometry.checked?(reference?'glb-reference':patientModel?'glb':'ellipsoid'):'hidden';
  draw();
 }
 function refresh(){
@@ -284,7 +305,7 @@ const editCollider=(name,value)=>{
 colliderRadius.onchange=()=>editCollider('radius',colliderRadius.valueAsNumber);
 colliderLength.onchange=()=>editCollider('length',colliderLength.valueAsNumber);
 element('reset-collider').onclick=()=>edit({collider:undefined});
-for(const layer of [showBones,showGeometry,showColliders])layer.onchange=renderPose;
+for(const layer of [showBones,showGeometry,showColliders,referenceGeometry])layer.onchange=renderPose;
 element('reset-pose').onclick=()=>{
  const {slots}=data;delete slots[poseSelect.value];
  save('Выбранная поза сброшена.');refresh();

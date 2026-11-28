@@ -9,7 +9,7 @@ import type { Vec3,PhysicsSegmentPose } from '../types.js';
 import { FIXED_DT } from '../fixed-clock.js';
 import { proneStrikePose } from './prone-strike.js';
 import { extraStrikePose } from './extra-strikes.js';
-import {authoredArmStrike} from '../rig/arm-strike-ik.js';
+import {ARM_REACH,authoredArmStrike} from '../rig/arm-strike-ik.js';
 import { solveTwoBone } from '../rig/two-bone.js';
 export const STRIKE=Object.freeze({windup:.32,thrust:.20,recover:.26,cooldown:.90});
 const ticks=(s:number)=>Math.ceil(s/FIXED_DT-1e-9);
@@ -160,8 +160,16 @@ function strikePose(pose:readonly PhysicsSegmentPose[],punch:Punch,tick:number,g
  const back:Vec3=[a[0]-Math.sin(aimYaw)*.17+Math.cos(aimYaw)*lateral,a[1]-.16+.13*low,a[2]+Math.cos(aimYaw)*.17+Math.sin(aimYaw)*lateral];
  const base=l?.b??u.b;
  const aim:Vec3=coordinated?[punch.aim[0],Math.max(punch.aim[1],ground(punch.aim[0],punch.aim[2])+(h??l??u).radius),punch.aim[2]]:punch.aim;
+ // The shoulder advances into the swing. Contact can occur along the
+ // sweep, but finishing at the target centre would fold the elbow again.
+ let sweepAim=aim;
+ if(coordinated&&l&&phase!=='windup'){
+  const amount=phase==='thrust'?smooth((progress-.48)/.42):1-smooth(progress/.8);
+  const reach=Math.hypot(aim[0]-a[0],aim[1]-a[1],aim[2]-a[2]);
+  if(reach>1e-8&&reach<ARM_REACH)sweepAim=mix(aim,mix(a,aim,ARM_REACH/reach),amount);
+ }
  const legacyBack:Vec3=[a[0]-Math.sin(aimYaw)*.13,a[1]-.25,a[2]+Math.cos(aimYaw)*.13];
- const rawTarget=coordinated?strikeTrajectory(base,back,aim,phase,progress,low,'arm',aimYaw,punch.side):phase==='windup'?mix(base,legacyBack,progress):phase==='thrust'?mix(legacyBack,aim,progress):mix(aim,base,progress);
+ const rawTarget=coordinated?strikeTrajectory(base,back,sweepAim,phase,progress,low,'arm',aimYaw,punch.side):phase==='windup'?mix(base,legacyBack,progress):phase==='thrust'?mix(legacyBack,aim,progress):mix(aim,base,progress);
  const target=weight===1?rawTarget:mix(base,rawTarget,weight);
  if(age===0)return pose;
  const strikePole:Vec3=[Math.cos(punch.yaw)*(punch.side==='L'?-1:1),-.65,Math.sin(punch.yaw)*(punch.side==='L'?-1:1)];

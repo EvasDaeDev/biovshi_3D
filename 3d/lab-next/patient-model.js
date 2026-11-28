@@ -66,7 +66,8 @@ export function preparePatientModel(root){
   // roll convention so it faces forward in normal locomotion.
   const front=id==='abdomen'||id==='neck'?[0,0,1]:[0,0,-1];
   const f=boneFrame([0,0,0],axis.toArray(),front);
-  const transform=new Matrix4().makeBasis(new Vector3(...f.x),new Vector3(...f.y),new Vector3(...f.z)).setPosition(center).invert();
+  const bindFrame=new Matrix4().makeBasis(new Vector3(...f.x),new Vector3(...f.y),new Vector3(...f.z)).setPosition(center);
+  const transform=bindFrame.clone().invert();
   const templates=[];
   const add=(parent,isFace)=>parent.traverse(mesh=>{
    if(!mesh.isMesh||(!isFace&&mesh===face))return;
@@ -80,7 +81,7 @@ export function preparePatientModel(root){
    const before=templates.length;add(face,true);
    if(templates.length!==before+1)throw new Error('Expected one face primitive');
   }
-  entries.set(id,{templates,length,radius});
+  entries.set(id,{templates,length,radius,bindFrame});
  }
  return {
   create(id,radius,length,palette,portrait){
@@ -104,6 +105,16 @@ export function preparePatientModel(root){
    }
    group.userData.bodyMaterials=bodyMaterials;
    return group;
+  },
+  createReference(palette,portrait){
+   const reference=new Group();
+   for(const [id,{radius,length,bindFrame}] of entries){
+    const segment=this.create(id,radius,length,palette,portrait);
+    segment.matrix.copy(bindFrame);
+    segment.matrixAutoUpdate=false;
+    reference.add(segment);
+   }
+   return reference;
   }
  };
 }
