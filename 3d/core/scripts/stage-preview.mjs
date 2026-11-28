@@ -18,7 +18,15 @@ await cp(resolve(core,'dist'),resolve(site,'3d/core/dist'),{recursive:true});
 // asset before computing the content-addressed release. Never ship v1 runtime.
 const catalog=await buildLocationCatalog();
 await writeFile(resolve(lab,'location-catalog.json'),JSON.stringify(catalog));
+const modelDir=resolve(lab,'models/patients');
+await mkdir(modelDir,{recursive:true});
+const modelFiles=await readdir(modelDir,{withFileTypes:true});
+await writeFile(resolve(modelDir,'catalog.json'),JSON.stringify({active:modelFiles.some(f=>f.isFile()&&f.name==='dummy02.glb')?'dummy02.glb':null}));
 await mkdir(vendor,{recursive:true});
+for(const [folder,file] of [['loaders','GLTFLoader.js'],['utils','BufferGeometryUtils.js']]){
+ await mkdir(resolve(vendor,folder),{recursive:true});
+ await cp(resolve(core,'node_modules/three/examples/jsm',folder,file),resolve(vendor,folder,file));
+}
 await mkdir(resolve(lab,'audio'),{recursive:true});
 await cp(resolve(repo,'public/assets/sounds/effects/step_1.mp3'),resolve(lab,'audio/step_1.mp3'));
 for(const file of ['three.module.js','three.core.js'])await cp(resolve(core,'node_modules/three/build',file),resolve(vendor,file));

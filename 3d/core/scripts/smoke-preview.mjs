@@ -16,6 +16,8 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(ok=>server.listen(0,'127.0.0.1',ok));
 const base='http://127.0.0.1:'+server.address().port;
+const modelCatalog=JSON.parse(await readFile(resolve(site,'3d/lab-next/models/patients/catalog.json'),'utf8'));
+const expectedGeometry=modelCatalog.active?'glb':'ellipsoid';
 let browser;
 try{
  browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
@@ -29,6 +31,7 @@ try{
   await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&Number(document.getElementById('stats')?.dataset.tick)>2,{},{timeout:45000});
  }catch(e){throw new Error('Lab startup failed: '+await page.locator('#stats').innerText()+'; browser errors: '+errors.join('; '),{cause:e});}
  assert.equal(await page.locator('canvas').count(),1);
+ assert.equal(await page.locator('#stats').getAttribute('data-segment-geometry'),expectedGeometry);
  assert.equal(await page.locator('#stats').getAttribute('data-camera-height'),'3');
  assert.match(await page.locator('#round-clock').textContent(),/^\d+:\d{2}$/);
  await page.waitForFunction(()=>/^\d+ FPS · CPU \d+%.*GPU/.test(document.querySelector('#frame-meter').textContent));
@@ -154,7 +157,7 @@ try{
  await page.locator('#scenario').selectOption('damage');
  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.health==='4';});
  await page.locator('#damage-crit').click();
- await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.health==='1'&&d.segmentGeometry==='ellipsoid'&&d.hitTint==='0:R.upperArm';});
+ await page.waitForFunction(geometry=>{const d=document.getElementById('stats')?.dataset;return d?.health==='1'&&d.segmentGeometry===geometry&&d.hitTint==='0:R.upperArm';},expectedGeometry);
  const firstCard=page.locator('#patient-hud [data-patient-id="0"]');
  assert.equal(await firstCard.locator('[data-segment="R.upperArm"]').getAttribute('data-state'),'damaged');
  assert.equal(await firstCard.locator('[data-segment="L.upperArm"]').getAttribute('data-state'),'healthy');
@@ -342,6 +345,29 @@ try{
  assert.ok(faces.front>faces.radius&&faces.front-faces.radius<.002);
  assert.ok(Math.abs(faces.aspect-faces.sourceAspect)<1e-8);
  assert.equal(faces.side,0,'portrait is rendered only from the front');
+ if(modelCatalog.active){
+  const skin=await page.evaluate(async release=>{
+   const root='/releases/'+release+'/3d/lab-next/';
+   const T=await import(root+'vendor/three.module.js');
+   const {loadPatientModel,paintModel,disposePatientVisual}=await import(root+'patient-model.js');
+   const {loadPatientPortraits}=await import(root+'patient-portraits.js');
+   const model=await loadPatientModel(),portraits=await loadPatientPortraits();
+   if(!model)return null;
+   const palette=new T.MeshStandardMaterial({color:0xffffff}),portrait=portraits.values().next().value;
+   const a=model.create('head',.1541374,0,palette,portrait),b=model.create('head',.1541374,0,palette,portrait);
+   const face=a.getObjectByName('portrait');
+   const sameGeometry=a.children[0].geometry===b.children[0].geometry;
+   const differentMaterial=a.children[0].material!==b.children[0].material;
+   const before=b.children[0].material.color.clone();
+   paintModel(a,{critical:false,strength:1},0,1,new T.Color(1,0,0));
+   const tinted=a.children[0].material.color.r===1&&b.children[0].material.color.equals(before);
+   const normal=face.geometry.getAttribute('normal');
+   let z=0;for(let i=0;i<normal.count;i++)z+=normal.getZ(i);
+   const result={sameGeometry,differentMaterial,tinted,portrait:face.material===portrait,normalZ:z/normal.count};
+   disposePatientVisual(a);disposePatientVisual(b);palette.dispose();return result;
+  },release);
+  assert.ok(skin&&skin.sameGeometry&&skin.differentMaterial&&skin.tinted&&skin.portrait&&skin.normalZ>0,JSON.stringify(skin));
+ }
  assert.match(release,/^[a-f0-9]{20}$/);
  // Real IndexedDB persistence across reload, session and arena switches.
  // A synthetic settled remain avoids spending another 60 seconds waiting for
