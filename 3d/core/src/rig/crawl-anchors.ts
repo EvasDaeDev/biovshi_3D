@@ -15,7 +15,6 @@ const supportRadius=(pose:readonly RigPose[],side:Side,count:number)=>{
  return part?physicalCapsule(part).radius:defaultRadius;
 };
 const distance=(a:Vec3,b:Vec3)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
-const endpoint=(pose:readonly RigPose[],side:Side)=>pose.find(p=>p.id===side+'.lowerArm')!.b;
 const segmentId=(side:Side,count:number)=>side+(count===3?'.hand':'.lowerArm');
 const clear=(p:RigPose,ground:Ground)=>[0,.5,1].every(t=>{
  const x=p.a[0]+(p.b[0]-p.a[0])*t,y=p.a[1]+(p.b[1]-p.a[1])*t,z=p.a[2]+(p.b[2]-p.a[2])*t;
@@ -33,8 +32,10 @@ export class CrawlAnchors {
   for(let i=0;i<2;i++){
    const side=sides[i]!,count=mobility.arms[i]??0;
    if(count<2){this.arms[i]=null;continue;}
+   const upper=pose.find(p=>p.id===side+'.upperArm'),lower=pose.find(p=>p.id===side+'.lowerArm');
+   if(!upper||!lower||count===3&&!pose.some(p=>p.id===side+'.hand')){this.arms[i]=null;continue;}
    const radius=supportRadius(pose,side,count);
-   const current=endpoint(pose,side),shoulder=pose.find(p=>p.id===side+'.upperArm')!.a;
+   const current=lower.b,shoulder=upper.a;
    const landing=():Vec3=>{
     const reach=this.timing.reach+Math.min(this.organic?.10:.07,Math.abs(speed)*MOVEMENT.stepLeadSeconds);
     const x=shoulder[0]+Math.cos(yaw)*(i===0?-.10:.10)+Math.sin(yaw)*reach*dir;
@@ -77,7 +78,11 @@ export class CrawlAnchors {
   for(let i=0;i<2;i++){
    const a=this.arms[i],side=sides[i]!;
    if(!a||a.count!==mobility.arms[i])continue;
-   const u=index.get(side+'.upperArm')!,l=index.get(side+'.lowerArm')!,h=index.get(side+'.hand')!,upper=result[u]!,lower=result[l]!,hand=result[h]!;
+   const u=index.get(side+'.upperArm'),l=index.get(side+'.lowerArm'),h=index.get(side+'.hand');
+   // A hit may remove the supporting chain after gait advance. The live
+   // pose already omits it even though the cached mobility is one tick old.
+   if(u===undefined||l===undefined||a.count===3&&h===undefined)continue;
+   const upper=result[u]!,lower=result[l]!;
    const end=lower.b,radius=supportRadius(pose,side,a.count);
    const point:Vec3=a.phase==='plant'?[a.point[0],ground(a.point[0],a.point[2])+radius,a.point[2]]:a.point;
    const target:Vec3=weight===1?point:[end[0]+(point[0]-end[0])*weight,end[1]+(point[1]-end[1])*weight,end[2]+(point[2]-end[2])*weight];
@@ -90,11 +95,12 @@ export class CrawlAnchors {
     (lower.a[2]-upper.a[2])*(1-weight)+outward*(chest.b[2]-chest.a[2])
    ]:[0,1,0];
    const ik=solveTwoBone(upper.a,target,distance(upper.a,upper.b),distance(lower.a,lower.b),bend);
-   const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end},ph={...hand,a:ik.end,b:ik.end};
+   const pu={...upper,b:ik.joint},pl={...lower,a:ik.joint,b:ik.end};
+   const ph=h===undefined?null:{...result[h]!,a:ik.end,b:ik.end};
    // Never gain a plant by penetrating terrain; keep the corrected base pose
    // if the candidate chain cannot fit. A later swing can replant it.
-   if(!clear(physicalCapsule(pu),ground)||!clear(physicalCapsule(pl),ground)||(a.count===3&&!clear(physicalCapsule(ph),ground)))continue;
-   result[u]=pu;result[l]=pl;result[h]=ph;
+   if(!clear(physicalCapsule(pu),ground)||!clear(physicalCapsule(pl),ground)||(a.count===3&&ph&&!clear(physicalCapsule(ph),ground)))continue;
+   result[u]=pu;result[l]=pl;if(h!==undefined&&ph)result[h]=ph;
   }
   return result;
  }
@@ -103,7 +109,8 @@ export class CrawlAnchors {
   for(let i=0;i<2;i++){
    const a=this.arms[i],side=sides[i]!;
    if(!a||a.count!==mobility.arms[i])continue;
-   const lower=pose.find(p=>p.id===side+'.lowerArm');if(!lower||!pose.some(p=>p.id===segmentId(side,a.count)))continue;
+   const lower=pose.find(p=>p.id===side+'.lowerArm');
+   if(!lower||!pose.some(p=>p.id===side+'.upperArm')||a.count===3&&!pose.some(p=>p.id===side+'.hand'))continue;
    const end=lower.b,radius=supportRadius(pose,side,a.count);
    const point:Vec3=a.phase==='plant'?[a.point[0],ground(a.point[0],a.point[2])+radius,a.point[2]]:a.point;
    const valid=a.phase==='plant'&&distance(end,point)<.002;

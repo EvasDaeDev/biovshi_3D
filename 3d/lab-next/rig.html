@@ -39,7 +39,7 @@
  const stats=document.getElementById('stats');let stage='Подготовка запуска',finished=false;
  const show=(s)=>{stage=s;stats.textContent=s;stats.dataset.state='loading';};
  const fail=(e)=>{finished=true;clearTimeout(watchdog);stats.dataset.state='error';stats.textContent='Ошибка ('+stage+'): '+(e?.message||String(e))+' — нажмите Сброс или обновите страницу.';const stack=typeof e?.stack==='string'?e.stack.split('\n').slice(0,4).join('\n'):'';document.getElementById('error-detail').textContent=stack;console.error(e);};
- const ready=()=>{finished=true;clearTimeout(watchdog);stats.dataset.state='running';document.getElementById('error-detail').textContent='';};
+ const ready=()=>{stage='Симуляция';finished=true;clearTimeout(watchdog);stats.dataset.state='running';document.getElementById('error-detail').textContent='';};
  const watchdog=setTimeout(()=>{if(!finished)stats.textContent='Загрузка заняла больше 20 секунд: '+stage+'. Проверьте WebGL или обновите страницу.';},20000);
  window.labStartup={show,fail,ready};
  window.addEventListener('error',e=>fail(e.error||e.message));window.addEventListener('unhandledrejection',e=>fail(e.reason));
