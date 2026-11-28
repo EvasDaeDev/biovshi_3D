@@ -50,6 +50,41 @@ try{
   return d?.state==='running'&&d.seed!==seed&&Number(d.tick)>2;
  },openingSeed);
  assert.equal(await page.locator('#patient-hud .patient-card [data-segment]').count(),51);
+ const assetRelease=await page.locator('#stats').getAttribute('data-build');
+ const portraits=await page.evaluate(async release=>{
+  const root='/releases/'+release+'/3d/lab-next/';
+  const response=await fetch(root+'portraits/catalog.json');
+  if(!response.ok)throw Error('Portrait catalog unavailable');
+  const files=await response.json();
+  const {loadPatientPortraits}=await import(root+'patient-portraits.js');
+  const loaded=await loadPatientPortraits();
+  return {expected:files.length,loaded:loaded.size};
+ },assetRelease);
+ assert.equal(portraits.loaded,portraits.expected,'every catalog portrait must decode');
+ if(process.argv.includes('--assets-only')){
+  // The initial checks already require active GLBs (no fallback), a
+  // WebGL frame, working simulation, camera height, HUD and round reset.
+  await page.locator('#camera-mode').selectOption('gopro');
+  await page.waitForFunction(()=>{const d=document.getElementById('stats').dataset;return d.camera==='gopro'&&d.cameraEffects==='gopro';});
+  for(const [id,geometry] of [['square','native'],['ring',expectedRingGeometry]]){
+   await page.locator('#scenario').selectOption('location-'+id);
+   await page.waitForFunction(([id,geometry])=>{const d=document.getElementById('stats').dataset;return d.state==='running'&&d.location===id&&d.arenaGeometry===geometry&&Number(d.tick)>3;},[id,geometry],{timeout:45000});
+  }
+  await page.goto(base+'/');
+  await page.getByRole('link',{name:'Быстрый бой'}).click();
+  await page.locator('#arena').selectOption('location-ring');
+  await page.locator('#participants').selectOption('2');
+  await page.locator('#start-match').click();
+  await page.waitForFunction(()=>{const d=document.getElementById('stats')?.dataset;return d?.state==='running'&&d.location==='ring'&&Number(d.tick)>3;},{},{timeout:45000});
+  assert.equal(await page.locator('#stats').getAttribute('data-arena-geometry'),expectedRingGeometry);
+  assert.equal(await page.locator('#stats').getAttribute('data-segment-geometry'),expectedGeometry);
+  await page.goto(base+'/3d/lab-next/pose-editor.html');
+  await page.waitForFunction(()=>document.getElementById('viewport')?.dataset.segments==='17',{},{timeout:45000});
+  assert.equal(await page.locator('#viewport').getAttribute('data-geometry'),expectedGeometry);
+  assert.ok(modules.length>0&&modules.every(url=>url.includes('/releases/'+assetRelease+'/')),JSON.stringify(modules));
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+  console.log('Visual-assets smoke passed: GLB, portraits, GoPro, arena switch, quick fight, pose editor.');
+ }else{
  await page.locator('#support-debug').check();
  await page.waitForFunction(()=>Number(document.getElementById('stats')?.dataset.supportCount)>0);
  await page.locator('#support-debug').uncheck();
@@ -564,4 +599,5 @@ try{
  assert.ok(modules.length>0);assert.ok(modules.every(url=>url.includes('/releases/'+release+'/')),JSON.stringify(modules));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Browser smoke passed: offline modules, WebGL first frame, fixed ticks, pause and reset.');
+ }
 }finally{await browser?.close();await new Promise(ok=>server.close(ok));}

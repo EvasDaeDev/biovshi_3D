@@ -16,31 +16,72 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --prefix 3d/core --no-audit --no-fund
+      - name: Classify push and fingerprint verified code
+        id: classify
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: node 3d/core/scripts/ci-preview-mode.mjs
+      - name: Restore exact full-CI verification marker
+        if: steps.classify.outputs.reusable == 'true'
+        id: verified
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/3d-full-verified
+          key: 3d-full-ci-v1-${{ steps.classify.outputs.fingerprint }}
+      - name: Select CI mode (fail closed)
+        id: mode
+        env:
+          ASSET_ONLY: ${{ steps.classify.outputs.asset_only }}
+          CACHE_HIT: ${{ steps.verified.outputs.cache-hit }}
+          FINGERPRINT: ${{ steps.classify.outputs.fingerprint }}
+        run: |
+          full=true
+          if [ "$ASSET_ONLY" = true ] && [ "$CACHE_HIT" = true ] && [ -n "$FINGERPRINT" ] &&
+             [ -f "$RUNNER_TEMP/3d-full-verified" ] &&
+             [ "$(cat "$RUNNER_TEMP/3d-full-verified")" = "$FINGERPRINT" ]; then
+            full=false
+          fi
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          if [ "$full" = true ]; then
+            echo "### Full 3D CI" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Fast visual-assets CI (exact verified code/dependencies)" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - run: npm --prefix 3d/core test
+        if: steps.mode.outputs.full == 'true'
+      - name: Compile TypeScript for visual-assets release
+        if: steps.mode.outputs.full == 'false'
+        run: npm --prefix 3d/core run build
       - name: Record core CPU benchmark (informational)
+        if: steps.mode.outputs.full == 'true'
         run: node 3d/core/scripts/benchmark-core.mjs
       - name: Record Rapier ragdoll CPU benchmark (informational)
+        if: steps.mode.outputs.full == 'true'
         run: node 3d/core/scripts/benchmark-ragdoll.mjs
       - name: Audit P4 authored arenas for 60 simulated seconds at full capacity
+        if: steps.mode.outputs.full == 'true'
         timeout-minutes: 15
         env:
           P4_AUDIT_SECONDS: '60'
         run: node 3d/core/scripts/audit-authored-arenas.mjs
       - name: Upload P4 capacity and Rapier performance audit
-        if: always()
+        if: always() && steps.mode.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: authored-arena-audit
           path: 3d/core/authored-arena-audit.json
           if-no-files-found: warn
       - name: Audit full combat cycles with Rapier (six seeded cases)
+        if: steps.mode.outputs.full == 'true'
         run: node 3d/core/scripts/audit-combat-cycle.mjs
       - name: Upload P3 integrated combat audit report
-        if: always()
+        if: always() && steps.mode.outputs.full == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: combat-audit
@@ -60,8 +101,26 @@ jobs:
       # The install command is idempotent: cached binaries are reused.
       # OS packages still need verification on each fresh runner.
       - run: npx --prefix 3d/core playwright install --with-deps chromium
-      - run: npm --prefix 3d/core run preview:smoke
+      - name: Full browser regression
+        if: steps.mode.outputs.full == 'true'
+        run: npm --prefix 3d/core run preview:smoke
         timeout-minutes: 12
+      - name: Fast browser visual-assets smoke
+        if: steps.mode.outputs.full == 'false'
+        run: npm --prefix 3d/core run preview:smoke -- --assets-only
+        timeout-minutes: 5
+      # Never record a marker from fast, failed or cancelled validation.
+      - name: Record fully verified code fingerprint
+        if: success() && steps.mode.outputs.full == 'true' && steps.classify.outputs.reusable == 'true'
+        env:
+          FINGERPRINT: ${{ steps.classify.outputs.fingerprint }}
+        run: printf '%s' "$FINGERPRINT" > "$RUNNER_TEMP/3d-full-verified"
+      - name: Save full-CI verification marker
+        if: success() && steps.mode.outputs.full == 'true' && steps.classify.outputs.reusable == 'true' && steps.verified.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/3d-full-verified
+          key: 3d-full-ci-v1-${{ steps.classify.outputs.fingerprint }}
       - name: Upload tested Lab Next preview for manual debugging
         uses: actions/upload-artifact@v4
         with:
