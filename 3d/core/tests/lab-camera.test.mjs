@@ -157,7 +157,7 @@ test('authored ring mounts are forward of the entire camera fixture, not inside 
  assert.deepEqual(ringCameraRadii(new THREE.Group()),[null,null,null,null]);
 });
 
-test('third-person camera follows behind the patient and shortens against walls',()=>{
+test('third-person camera looks down past the patient and shortens against walls',()=>{
  const {camera,controller}=setup(catalog.square);
  const state={fighterIds:[0],roots:[0,0,2,0],headFrames:[{center:[0,1.6,2],forward:[0,0,-1]}]};
  const update=()=>controller.update(state,state,1,new Map(),1/60);
@@ -165,7 +165,8 @@ test('third-person camera follows behind the patient and shortens against walls'
  update();
  assert.equal(controller.patientInput.disabled,false);
  assert.ok(camera.position.z>3.9&&camera.position.z<=4.34);
- assert.ok(camera.position.x>0&&camera.position.y>1.5);
+ assert.equal(camera.position.x,0);
+ assert.ok(camera.position.y>2.1);
  const close=camera.position.clone();
  state.roots[2]=.8;
  state.headFrames[0].center[2]=.8;
@@ -173,6 +174,16 @@ test('third-person camera follows behind the patient and shortens against walls'
  assert.ok(camera.position.distanceTo(close)<.45);
  for(let i=0;i<90;i++)update();
  assert.ok(Math.abs(camera.position.z-3.95)<.08);
+ assert.ok(Math.abs(camera.position.y-2.66)<.01);
+ camera.updateMatrixWorld();
+ const direction=camera.getWorldDirection(new THREE.Vector3());
+ assert.ok(direction.y<-.3);
+ const ground=camera.position.clone().addScaledVector(direction,-camera.position.y/direction.y);
+ assert.ok(Math.abs(ground.z-(state.roots[2]-4.5))<.01);
+ for(const y of [0,1.6]){
+  const patient=new THREE.Vector3(0,y,state.roots[2]).project(camera);
+  assert.ok(Math.abs(patient.x)<.01&&Math.abs(patient.y)<1);
+ }
  controller.look(250,30);
  const before=camera.position.clone();
  for(let i=0;i<60;i++)update();

@@ -165,7 +165,7 @@ export class LabCamera {
   this.chaseOwner=id;
   const sin=Math.sin(this.chaseYaw),cos=Math.cos(this.chaseYaw),distance=3.15;
   const reach=Math.cos(this.chasePitch)*distance;
-  this.chaseOffset.set(-sin*reach+.50*cos,.34-Math.sin(this.chasePitch)*distance,cos*reach+.50*sin);
+  this.chaseOffset.set(-sin*reach,1.34-Math.sin(this.chasePitch)*distance,cos*reach);
   this.chaseOffset.y=Math.max(y+.26-this.chasePivot.y,this.chaseOffset.y);
   const p=this.chasePivot,nav=this.navigation;
   if(nav&&!nav.clear(this.view,p,.16)){p.x=this.view.x;p.z=this.view.z;}
@@ -181,7 +181,9 @@ export class LabCamera {
   this.chaseFraction=immediate?available:Math.min(available,this.chaseFraction+(available-this.chaseFraction)*damping(dt,.24));
   this.camera.position.copy(p).addScaledVector(this.chaseOffset,this.chaseFraction);
   this.camera.up.copy(this.worldUp);
-  this.camera.lookAt(this.chaseTarget.set(p.x+sin*3,p.y+Math.tan(this.chasePitch)*3,p.z-cos*3));
+  // Aim toward the floor beyond the patient, with their head in the center of the chase view.
+  const lookAhead=4.5;
+  this.camera.lookAt(this.chaseTarget.set(p.x+sin*lookAhead,y+Math.tan(this.chasePitch)*3,p.z-cos*lookAhead));
  }
  update(s,prior,alpha,meshes,dt=0,controlled=null){
   if(this.mode==='free')return;

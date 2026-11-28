@@ -350,9 +350,24 @@ addEventListener('keydown',e=>{
  const number=/^(?:Digit|Numpad)([1-4])$/.exec(e.code);
  if(number&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();const mode='corner-'+number[1];if(!e.repeat&&cameraControl.mode!==mode)cameraControl.select(mode);return;}
  if(controls.has(e.code)){e.preventDefault();keys.add(e.code);}
-});addEventListener('keyup',e=>keys.delete(e.code));document.addEventListener('focusin',e=>{if(capturesTextInput(e.target))keys.clear();});addEventListener('blur',()=>clearPlayerInput(true));document.addEventListener('visibilitychange',()=>{clearPlayerInput(true);playback.reset();last=null;if(currentFrame)resetFrameHistory();});
+});
+addEventListener('keyup',e=>keys.delete(e.code));
+document.addEventListener('focusin',e=>{
+ if(capturesTextInput(e.target)||e.target.tagName==='SELECT')clearPlayerInput();
+});
+addEventListener('blur',()=>clearPlayerInput(true));
+document.addEventListener('visibilitychange',()=>{clearPlayerInput(true);playback.reset();last=null;if(currentFrame)resetFrameHistory();});
 const has=(...c)=>Number(c.some(k=>keys.has(k)));
 const view=renderer.domElement,freeHint=document.getElementById('free-camera-hint');
+view.tabIndex=-1;
+const focusView=()=>view.focus({preventScroll:true});
+document.getElementById('hud').addEventListener('change',event=>{
+ if(event.target.tagName==='SELECT'&&(manualActive()||cameraControl.mode==='free'))focusView();
+});
+document.addEventListener('fullscreenchange',()=>{
+ clearPlayerInput();
+ if((!document.fullscreenElement||document.fullscreenElement.contains(view))&&(manualActive()||cameraControl.mode==='free'))focusView();
+});
 const reticle=document.getElementById('player-reticle');
 let cameraPointer=null;
 view.addEventListener('contextmenu',event=>{if(manualActive())event.preventDefault();});
@@ -367,6 +382,7 @@ view.addEventListener('mousedown',e=>{
  }
 });
 view.addEventListener('pointerdown',e=>{
+ focusView();
  if(e.button!==0||!(cameraControl.mode==='free'||cameraControl.mode==='third-person'&&!manualActive()))return;
  cameraPointer=e.pointerId;view.setPointerCapture(e.pointerId);
 });

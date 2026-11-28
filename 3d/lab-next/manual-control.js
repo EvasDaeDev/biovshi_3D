@@ -10,7 +10,7 @@ export function manualInput(ids,states,selected,has,fall=false,player=null){
 
 /** Checkboxes/radios/buttons are not text entry. Keeping their focus after
  * toggling a diagnostic must not disable WASD. Selects retain normal keyboard
- * navigation; scenario/control selects explicitly blur on change. */
+ * navigation while focused. The scene reclaims focus after a selection. */
 export function capturesTextInput(element){
  if(!element)return false;
  if(element.isContentEditable||element.tagName==='TEXTAREA')return true;

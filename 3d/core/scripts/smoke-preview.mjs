@@ -164,9 +164,9 @@ try{
    return Math.abs(horizontal-want)<.01;
   },angle);
  }
+ await page.locator('#camera-mode').focus();
  await page.locator('#camera-mode').selectOption('free');
- await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='free');
- await page.locator('#camera-mode').evaluate(el=>el.blur());
+ await page.waitForFunction(()=>document.getElementById('stats')?.dataset.camera==='free'&&document.activeElement?.tagName==='CANVAS');
  const xz=()=>page.locator('#stats').evaluate(el=>[Number(el.dataset.cameraX),Number(el.dataset.cameraZ)]);
  const startCamera=await xz();
  await page.mouse.move(540,540);
@@ -307,6 +307,23 @@ try{
  }finally{await page.keyboard.up('KeyW');}
  await page.locator('#scenario').selectOption('walk');
  await page.waitForFunction(()=>document.getElementById('stats')?.dataset.state==='running'&&document.getElementById('stats')?.dataset.mode==='biped');
+ const fullScreen=await page.evaluate(async()=>{
+  await document.documentElement.requestFullscreen();
+  return document.fullscreenElement===document.documentElement;
+ });
+ assert.equal(fullScreen,true);
+ await page.locator('#camera-mode').focus();
+ await page.locator('#camera-mode').selectOption('third-person');
+ await page.waitForFunction(()=>document.activeElement?.tagName==='CANVAS'&&document.getElementById('stats').dataset.camera==='third-person');
+ const walkStart=Number(await page.locator('#stats').getAttribute('data-z'));
+ await page.keyboard.down('KeyW');
+ try{
+  await page.waitForFunction(start=>Number(document.getElementById('stats').dataset.z)<start-.05,walkStart);
+ }finally{await page.keyboard.up('KeyW');}
+ await page.locator('#camera-mode').focus();
+ await page.evaluate(()=>document.exitFullscreen());
+ await page.waitForFunction(()=>!document.fullscreenElement&&document.activeElement?.tagName==='CANVAS');
+ await page.locator('#camera-mode').selectOption('corner-1');
  await page.locator('#next-round').click();
  assert.match(await page.locator('#floor-status').innerText(),/Сначала необходимо завершить бой/,'cannot archive an unfinished or noncombat round');
  assert.equal(await page.locator('#stats').getAttribute('data-floor-visuals'),'0');
