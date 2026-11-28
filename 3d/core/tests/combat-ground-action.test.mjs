@@ -151,3 +151,25 @@ test('an autonomous pursuer takes an opening before the victim finishes the fall
   assert.ok(landed,'a hit still depends on a real segment contact');
  }finally{core.dispose();}
 });
+
+for(const part of ['hand','lowerArm'])test(`a downed patient can lose a planted ${part} before the next snapshot`,()=>{
+ const core=setupFall([1.5,0,0]);
+ try{
+  let support;
+  for(let i=0;i<100&&!support;i++){
+   const down=core.getSnapshot().balanceStates[0]==='down';
+   core.step(FIXED_DT,commands(down?{turn:-1}:{}));
+   const snapshot=core.getSnapshot();
+   if(snapshot.balanceStates[0]==='down')support=snapshot.crawlAnchors[0].find(anchor=>anchor.valid);
+  }
+  assert.ok(support,'the limb must be planted before it is severed');
+  const side=support.segmentId[0];
+  const severed=side+'.'+part;
+  assert.ok(core.applyDamage({fighterId:0,attackerId:1,segmentId:severed,amount:4}));
+  const snapshot=core.getSnapshot();
+  assert.ok(!snapshot.rigSegments[0].some(segment=>segment.id===severed));
+  assert.ok(!snapshot.crawlAnchors[0].some(anchor=>anchor.segmentId===support.segmentId),'usable anchors must reflect the live limb immediately');
+  for(let i=0;i<100;i++)core.step(FIXED_DT,commands());
+  assert.equal(core.getSnapshot().balanceStates[0],'standing');
+ }finally{core.dispose();}
+});

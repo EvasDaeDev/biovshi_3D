@@ -73,6 +73,39 @@ try{
   return {expected:files.length,loaded:loaded.size};
  },assetRelease);
  assert.equal(portraits.loaded,portraits.expected,'every catalog portrait must decode');
+ if(modelCatalog.active){
+  const pixels=await page.evaluate(async release=>{
+   const root='/releases/'+release+'/3d/lab-next/';
+   const T=await import(root+'vendor/three.module.js');
+   const {loadPatientModel}=await import(root+'patient-model.js');
+   const model=await loadPatientModel(),image=document.createElement('canvas');
+   image.width=image.height=32;
+   const ctx=image.getContext('2d');
+   for(const [x,y,color] of [[0,0,'red'],[16,0,'lime'],[0,16,'blue'],[16,16,'white']]){
+    ctx.fillStyle=color;ctx.fillRect(x,y,16,16);
+   }
+   const texture=new T.CanvasTexture(image);
+   const input=new T.MeshStandardMaterial({map:texture});
+   const head=model.create('head',.1541374,0,input,input);
+   const face=head.getObjectByName('portrait');
+   const box=face.geometry.boundingBox,center=box.getCenter(new T.Vector3());
+   const {x:width,y:height}=box.getSize(new T.Vector3());
+   const camera=new T.OrthographicCamera(-width/2,width/2,height/2,-height/2,.01,10);
+   camera.position.copy(center);camera.position.z+=1;camera.lookAt(center);
+   const scene=new T.Scene(),material=new T.MeshBasicMaterial({map:face.material.map});
+   scene.add(new T.Mesh(face.geometry,material));
+   const renderer=new T.WebGLRenderer(),target=new T.WebGLRenderTarget(32,32);
+   try{
+    renderer.setRenderTarget(target);renderer.render(scene,camera);
+    return [[8,24],[24,24],[8,8],[24,8]].map(([x,y])=>{
+     const pixel=new Uint8Array(4);
+     renderer.readRenderTargetPixels(target,x,y,1,1,pixel);
+     return [...pixel.slice(0,3)].map(value=>Number(value>127));
+    });
+   }finally{renderer.dispose();target.dispose();material.dispose();}
+  },assetRelease);
+  assert.deepEqual(pixels,[[1,0,0],[0,1,0],[0,0,1],[1,1,1]],'GLB portrait preserves top, bottom, left and right');
+ }
  if(process.argv.includes('--assets-only')){
   // The initial checks already require active GLBs (no fallback), a
   // WebGL frame, working simulation, camera height, HUD and round reset.
@@ -417,7 +450,7 @@ try{
    const tinted=a.children[0].material.color.r===1&&b.children[0].material.color.equals(before);
    const normal=face.geometry.getAttribute('normal');
    let z=0;for(let i=0;i<normal.count;i++)z+=normal.getZ(i);
-   const result={sameGeometry,differentMaterial,tinted,portrait:face.material===portrait,normalZ:z/normal.count};
+   const result={sameGeometry,differentMaterial,tinted,portrait:face.material===b.getObjectByName('portrait').material&&face.material.map.image===portrait.map.image&&!face.material.map.flipY&&portrait.map.flipY,normalZ:z/normal.count};
    disposePatientVisual(a);disposePatientVisual(b);palette.dispose();return result;
   },release);
   assert.ok(skin&&skin.sameGeometry&&skin.differentMaterial&&skin.tinted&&skin.portrait&&skin.normalZ>0,JSON.stringify(skin));
