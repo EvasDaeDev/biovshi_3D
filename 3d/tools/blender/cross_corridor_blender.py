@@ -652,7 +652,7 @@ def build_ends():
         abox(lattice,arm,end+.02,.08,1.27,.09,.18,.23,"rust")
         # A visible recessed continuation prevents holes showing a bare void.
         far=end+1.6
-        passage.face([local(arm,end,-w,0),local(arm,far,-w,0),local(arm,far,w,0),local(arm,end,w,0)],"floor_dark" if "floor_dark" in PALETTE else "floor_dust",(0,0,1))
+        passage.face([local(arm,end,-w,0),local(arm,far,-w,0),local(arm,far,w,0),local(arm,end,w,0)],"floor_dust",(0,0,1))
         for side in (-1,1):
             passage.face([local(arm,end+.24,side*w,0),local(arm,far,side*w,0),local(arm,far,side*w,3.10),local(arm,end+.24,side*w,3.10)],"shadow",vec(arm,0,-side))
         passage.face([local(arm,far,-w,0),local(arm,far,w,0),local(arm,far,w,3.10),local(arm,far,-w,3.10)],"iron_dark",vec(arm,-1,0))
@@ -711,9 +711,9 @@ def build_utilities():
                 for k in range(16):
                     a,b=tau*k/16,tau*(k+1)/16
                     def p(r,t,h):return (x+r*cos(t),y+r*sin(t),h)
-                    lamps.face([p(.075,a,z+.05),p(.075,b,z+.05),p(.22,b,z-.08),p(.22,a,z-.08)],"iron",smooth=True)
+                    lamps.face([p(.075,a,z+.05),p(.075,b,z+.05),p(.22,b,z-.08),p(.22,a,z-.08)],"iron",(cos((a+b)/2),sin((a+b)/2),0),True)
                     lamps.face([p(.22,a,z-.08),p(.22,b,z-.08),p(.205,b,z-.08),p(.205,a,z-.08)],"edge",(0,0,-1))
-                    lamps.face([p(.205,a,z-.08),p(.205,b,z-.08),p(.066,b,z+.037),p(.066,a,z+.037)],"concrete_pale",smooth=True)
+                    lamps.face([p(.205,a,z-.08),p(.205,b,z-.08),p(.066,b,z+.037),p(.066,a,z+.037)],"concrete_pale",(-cos((a+b)/2),-sin((a+b)/2),0),True)
                 working=not chance(.31)
                 tube(bulbs,(x,y,z-.11),(x,y,z-.035),.078,"lamp_warm" if working else "glass",12,caps=(True,False))
                 if working:PREVIEW_LIGHTS.append(("POINT",(x,y,z-.12),None,35,(1.,.72,.42),.25))

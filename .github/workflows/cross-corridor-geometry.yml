@@ -1,0 +1,23 @@
+name: Cross corridor geometry only
+on:
+  push:
+    branches: [assets/cross-corridor-generator]
+    paths:
+      - '3d/tools/blender/cross_corridor_blender.py'
+      - '.github/workflows/cross-corridor-geometry.yml'
+permissions:
+  contents: read
+jobs:
+  geometry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile 3d/tools/blender/cross_corridor_blender.py
+      - name: Default geometry and triangle budget
+        run: python3 3d/tools/blender/cross_corridor_blender.py --check-geometry
+      - name: Intact and extreme decay geometry
+        run: |
+          cd 3d/tools/blender
+          python3 -c 'import cross_corridor_blender as g; g.DECAY=0.; g.generate()'
+          python3 -c 'import cross_corridor_blender as g; g.DECAY=1.; g.generate()'
