@@ -34,7 +34,7 @@ test('destroyed chest starts the delayed knockout with intact limbs and no open 
  const c=new LabSimulationCore(),cfg=createLabConfig(7),fighter=cfg.fighters[0];
  c.initialize({...cfg,fighters:[fighter]});
  try{
-  c.applyDamage({fighterId:fighter.id,segmentId:'abdomen',amount:4});
+  c.applyDamage({fighterId:fighter.id,segmentId:'abdomen',amount:3});
   run(c,1);
   assert.equal(c.getSnapshot().oil[0].failureTick,null);
   c.applyDamage({fighterId:fighter.id,segmentId:'chest',amount:4});

@@ -19,7 +19,7 @@ export class OilState{
  private deadline:number|null=null;private failureStart:number|null=null;private lastTick=0;
  cut(root:string,removed:readonly string[],active:readonly string[],tick:number,random:()=>number):void{
   for(const [id,w] of this.wounds)if(removed.includes(w.parent))this.wounds.delete(id);
-  const parent=parentById.get(root);
+  const parent=root==='pelvis'?'abdomen':parentById.get(root);
   if(parent&&active.includes(parent))this.wounds.set(root,{id:root,parent,nextTick:tick+span(OIL.minInterval,OIL.maxInterval,random())});
  }
  advance(tick:number,active:readonly string[],pose:()=>readonly PhysicsSegmentPose[],random:()=>number,emit:(id:string,origin:Vec3)=>void,chestDestroyed=false):boolean{
@@ -36,7 +36,7 @@ export class OilState{
    if(tick<w.nextTick)continue;
    parts??=pose();const p=parts.find(v=>v.id===w.parent);
    if(p){
-    const origin=w.parent==='pelvis'||w.parent==='chest'?(w.id.startsWith('L.')?p.a:p.b):p.b;
+    const origin=w.id==='pelvis'?p.a:w.parent==='pelvis'||w.parent==='chest'?(w.id.startsWith('L.')?p.a:p.b):p.b;
     emit(w.id,origin);
    }
    w.nextTick=tick+span(OIL.minInterval,OIL.maxInterval,random());

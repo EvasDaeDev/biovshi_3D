@@ -118,3 +118,40 @@ test('Rapier round reset preserves exact old body/branch/single visuals and stat
   }finally{next.dispose();}
  }finally{w.dispose();c.dispose();}
 });
+
+test('destroying the pelvis or spine drops one physical lower body and preserves the upper body',async()=>{
+ await RAPIER.init();
+ const lower=['pelvis','L.upperLeg','L.lowerLeg','L.foot','R.upperLeg','R.lowerLeg','R.foot'];
+ for(const target of ['pelvis','abdomen']){
+  const config=createLabConfig(7),core=new LabSimulationCore(),world=new DebrisWorld(RAPIER);
+  const expected=target==='abdomen'?lower.filter(id=>id!=='L.foot'):lower;
+  try{
+   core.initialize({seed:7,fighters:[{...config.fighters[0],segmentIds:config.fighters[0].segmentIds
+    .filter(id=>target!=='abdomen'||id!=='L.foot')}]});
+   const damage=amount=>core.applyDamage({fighterId:0,segmentId:target,amount});
+   const advance=()=>{core.step(FIXED_DT,{commands:[{fighterId:0,forward:0,turn:0,sprint:false}]});world.step(FIXED_DT);};
+   assert.ok(damage(3));
+   assert.ok(!core.drainEvents().some(event=>event.type==='segment-detached'));
+   assert.ok(core.getSnapshot().segmentIds[0].includes('pelvis'));
+   for(let i=0;i<17;i++)advance();
+   assert.ok(damage(2));
+   const cuts=core.drainEvents().filter(event=>event.type==='segment-detached');
+   assert.equal(cuts.length,1);
+   assert.equal(cuts[0].segmentId,'pelvis');
+   assert.deepEqual(cuts[0].detachedParts.map(part=>part.id),expected);
+   world.accept(cuts[0]);
+   const snapshot=core.getSnapshot();
+   assert.equal(snapshot.lifeStates[0],'active');
+   assert.equal(snapshot.mobilityModes[0],'arm-crawl');
+   assert.deepEqual(snapshot.oil[0].wounds,['pelvis']);
+   assert.ok(expected.every(id=>!snapshot.segmentIds[0].includes(id)));
+   assert.ok(['abdomen','chest','head','L.hand','R.hand'].every(id=>snapshot.segmentIds[0].includes(id)));
+   for(let i=0;i<900&&!world.branchSnapshot()[0]?.settled;i++)advance();
+   const branches=world.branchSnapshot();
+   assert.equal(branches.length,1);
+   assert.ok(branches[0].settled);
+   assert.deepEqual(world.exportSettledFloor('ward').visuals.map(part=>part.segmentId),expected);
+   assert.equal(core.getSnapshot().postures[0],'prone');
+  }finally{core.dispose();world.dispose();}
+ }
+});

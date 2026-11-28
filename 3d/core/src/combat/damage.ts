@@ -1,8 +1,7 @@
 import { LAB_SEGMENTS,severingChain } from '../rig/anatomy.js';
 import { FIXED_DT } from '../fixed-clock.js';
 /** Native 3D rules, sourced from src/config.js and src/robot/{robot,anatomy}.js.
- * Central torso capsules remain attached at zero HP. Endurance is the
- * remaining v1 trauma budget, reduced by lost anatomy (not by movement). */
+ * Endurance is the remaining v1 trauma budget, reduced by lost anatomy. */
 export const DAMAGE=Object.freeze({segmentHP:4,headHP:8,pelvisHP:5,invulnerabilitySeconds:.28,traumaThreshold:35,criticalDamage:3,headMultiplier:1.5,lostCapacityFraction:.4});
 export type IncapacitationCause='head-loss'|'torso-failure'|'trauma'|'oil-loss'|'manual';
 export interface SegmentHealth {readonly id:string;readonly hp:number;readonly maxHp:number;readonly attached:boolean}
@@ -11,6 +10,7 @@ export interface DamageResult {readonly amount:number;readonly remainingHP:numbe
 interface Part {hp:number;maxHp:number;attached:boolean;lastHit:number}
 const definitions=new Map(LAB_SEGMENTS.map(p=>[p.id,p]));
 const maxHp=(id:string)=>id==='head'?DAMAGE.headHP:id==='pelvis'?DAMAGE.pelvisHP:DAMAGE.segmentHP;
+const lowerBody=['pelvis',...severingChain('L.upperLeg'),...severingChain('R.upperLeg')];
 const cooldownTicks=Math.ceil(DAMAGE.invulnerabilitySeconds/FIXED_DT);
 export class DamageState {
  private parts=new Map<string,Part>();
@@ -30,11 +30,12 @@ export class DamageState {
   this.trauma+=actual*(id==='head'?DAMAGE.headMultiplier:1);
   let detached:string[]=[],cause:IncapacitationCause|null=null;
   if(p.hp===0){
-   if(!definitions.get(id)!.protected){
-    detached=severingChain(id).filter(key=>this.parts.get(key)?.attached);
-    this.detach(detached);
-    if(detached.includes('head'))cause='head-loss';
-   }
+   // The pelvis roots the full rig, so the normal dependency chain would
+   // also cut the upper body. Only the pelvis and attached legs separate.
+   const branch=id==='pelvis'||id==='abdomen'?lowerBody:severingChain(id);
+   detached=branch.filter(key=>this.parts.get(key)?.attached);
+   this.detach(detached);
+   if(detached.includes('head'))cause='head-loss';
   }
   if(!cause&&this.trauma>=this.maxEndurance)cause='trauma';
   if(cause)this.finish(cause);

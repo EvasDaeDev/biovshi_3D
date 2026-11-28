@@ -96,7 +96,7 @@ test('authored AI can sacrifice a real arm to throw at a visible low-endurance p
  const config=createAuthoredCombatConfig(seed,ring,2),core=new LabSimulationCore(),events=[];
  core.initialize({...config,fighters:[{...config.fighters[0],origin:[0,0,1.5],yawRad:0},{...config.fighters[1],origin:[0,0,-1.5],yawRad:Math.PI}]});
  try{
-  for(const [segmentId,amount] of [['chest',4],['abdomen',4],['pelvis',5],['head',7],['neck',3]])assert.ok(core.applyDamage({fighterId:1,segmentId,amount}));
+  for(const [segmentId,amount] of [['chest',4],['abdomen',3],['pelvis',4],['head',7],['neck',3],['L.upperLeg',2]])assert.ok(core.applyDamage({fighterId:1,segmentId,amount}));
   core.drainEvents();
   core.step(FIXED_DT,{commands:[]});events.push(...core.drainEvents());
   assert.equal(core.getSnapshot().distress[1].mode,'prey');
